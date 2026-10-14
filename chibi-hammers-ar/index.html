@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#ffb84d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>ちびハンマーズ AR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <!-- カメラ映像（AR背景） -->
+  <video id="cam" playsinline muted autoplay></video>
+  <div id="photoBg"></div>
+  <!-- three.js の描画先 -->
+  <div id="stage"></div>
+
+  <!-- UI 全体（WebXR の dom-overlay ルートにもなる） -->
+  <div id="ui">
+
+    <!-- タイトル -->
+    <section id="scrTitle" class="screen show">
+      <div class="title-card">
+        <div class="logo">
+          <span class="logo-sub">荒地をトンテンカン！</span>
+          <h1>ちびハンマーズ<span class="ar">AR</span></h1>
+        </div>
+        <div class="title-mascot" aria-hidden="true">
+          <div class="mascot"><i class="hat"></i><i class="eye l"></i><i class="eye r"></i><i class="cheek l"></i><i class="cheek r"></i><i class="hammer"></i></div>
+        </div>
+        <p class="lead">まわりの景色をカメラで撮ると、<br>そこが<b>荒地と廃墟</b>に大変身！<br>ちびたちがハンマーで<b>整地</b>していくよ。</p>
+        <button id="btnStart" class="btn big primary">はじめる</button>
+        <p class="small muted">カメラとモーションセンサーを使います</p>
+      </div>
+    </section>
+
+    <!-- 撮影 -->
+    <section id="scrCapture" class="screen">
+      <div class="cap-frame"><i></i><i></i><i></i><i></i></div>
+      <div class="cap-top">
+        <p class="bubble" id="capMsg">まわりを撮影してね！<br><span class="small">床や地面がうつるとGOOD</span></p>
+      </div>
+      <div class="cap-bottom">
+        <label class="btn round ghost" title="写真を選ぶ">
+          <input id="fileInput" type="file" accept="image/*" hidden>
+          🖼️
+        </label>
+        <button id="btnShutter" class="shutter" aria-label="撮影"></button>
+        <button id="btnSample" class="btn round ghost" title="カメラなしで遊ぶ">🎲</button>
+      </div>
+      <div id="flash"></div>
+    </section>
+
+    <!-- 解析 & 荒地レポート -->
+    <section id="scrAnalyze" class="screen">
+      <div class="panel report">
+        <div class="photo-wrap">
+          <canvas id="photoPreview"></canvas>
+          <div class="scanline"></div>
+          <canvas id="mapPreview"></canvas>
+        </div>
+        <div id="reportBody" class="hidden">
+          <h2 id="landName">荒地</h2>
+          <div class="meters">
+            <div><span>荒れっぷり</span><b id="mRough"></b></div>
+            <div><span>草ぼうぼう</span><b id="mWild"></b></div>
+            <div><span>廃墟度</span><b id="mRuin"></b></div>
+            <div><span>空もよう</span><b id="mSky"></b></div>
+          </div>
+          <div id="palette" class="palette"></div>
+          <div class="row">
+            <button id="btnRetake" class="btn ghost">とりなおす</button>
+            <button id="btnPlay" class="btn primary">整地スタート！</button>
+          </div>
+          <button id="btnPlayXR" class="btn xr hidden">📱 床に置いて本格AR (WebXR)</button>
+        </div>
+        <p id="analyzeMsg" class="center">景色を解析中…</p>
+      </div>
+    </section>
+
+    <!-- ゲームHUD -->
+    <section id="scrGame" class="screen hud">
+      <div class="hud-top">
+        <div class="pill stage"><span id="hudStage">Lv.1</span></div>
+        <div class="progress">
+          <div class="bar"><i id="hudBar"></i></div>
+          <span id="hudPct">0%</span><small>整地率</small>
+        </div>
+        <div class="pill coins">🪙 <span id="hudCoins">0</span></div>
+      </div>
+      <div class="hud-side">
+        <button id="btnMenu" class="btn round mini" title="メニュー">☰</button>
+        <button id="btnRecenter" class="btn round mini" title="正面にもどす">🎯</button>
+        <button id="btnSizeUp" class="btn round mini xr-only" title="大きく">＋</button>
+        <button id="btnSizeDown" class="btn round mini xr-only" title="小さく">－</button>
+      </div>
+      <p id="hint" class="hint">がれきをタップで<b>集中攻撃</b>！ ちびをタップで<b>応援</b>！</p>
+      <p id="placeHint" class="hint place hidden">床にマーカーが出たらタップして荒地を置いてね</p>
+      <div class="hud-bottom">
+        <button id="upCrew" class="up">
+          <span class="ico">🐣</span><span class="nm">なかま</span><span class="lv" id="lvCrew"></span><span class="cost" id="costCrew"></span>
+        </button>
+        <button id="upPower" class="up">
+          <span class="ico">🔨</span><span class="nm">パワー</span><span class="lv" id="lvPower"></span><span class="cost" id="costPower"></span>
+        </button>
+        <button id="btnFever" class="fever" disabled>
+          <span class="gauge"><i id="feverGauge"></i></span><span class="lbl">フィーバー</span>
+        </button>
+        <button id="upSpeed" class="up">
+          <span class="ico">⚡</span><span class="nm">スピード</span><span class="lv" id="lvSpeed"></span><span class="cost" id="costSpeed"></span>
+        </button>
+      </div>
+      <div id="toast" class="toast"></div>
+    </section>
+
+    <!-- メニュー -->
+    <section id="scrMenu" class="screen modal">
+      <div class="panel">
+        <h2>メニュー</h2>
+        <button id="btnResume" class="btn primary">つづける</button>
+        <button id="btnSound" class="btn ghost">🔊 サウンド: ON</button>
+        <button id="btnBgm" class="btn ghost">🎵 BGM: ON</button>
+        <button id="btnNewLand" class="btn ghost">📷 べつの景色を撮る</button>
+        <button id="btnReset" class="btn ghost danger">セーブデータを消す</button>
+      </div>
+    </section>
+
+    <!-- クリア -->
+    <section id="scrClear" class="screen modal">
+      <div class="panel clear">
+        <div class="stars">✨🎉✨</div>
+        <h2>整地かんりょう！</h2>
+        <p id="clearLand" class="center"></p>
+        <div class="result">
+          <div><span>タイム</span><b id="rTime"></b></div>
+          <div><span>こわした数</span><b id="rCount"></b></div>
+          <div><span>ボーナス</span><b id="rBonus"></b></div>
+        </div>
+        <button id="btnNextSame" class="btn primary">同じ景色で次のレベルへ</button>
+        <button id="btnNextShot" class="btn ghost">📷 新しい景色を撮る</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
