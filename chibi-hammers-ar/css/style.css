@@ -177,6 +177,7 @@ body.xr { background: transparent; }
   box-shadow: 0 4px 0 rgba(0,0,0,.18); white-space: nowrap;
 }
 .pill.stage { background: var(--c-ink); color: #ffd36b; }
+.pill.super { position: absolute; left: 16px; top: calc(66px + var(--st)); background: #ffd23f; font-size: 13px; animation: pulse .5s infinite alternate; }
 .progress {
   flex: 1; position: relative; height: 34px; background: rgba(255,255,255,.94); border-radius: 999px;
   box-shadow: 0 4px 0 rgba(0,0,0,.18); display: flex; align-items: center; padding: 0 10px; gap: 6px;
