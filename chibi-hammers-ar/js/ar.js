@@ -1,14 +1,18 @@
 // AR 表示まわり
 //  - screen モード: カメラ映像を背景にして、ジャイロ（端末の向き）で3Dの荒地を空間に固定して見せる
 //    ジャイロが無い端末ではドラッグで回せるオービット表示になる
+//    ジャイロ＋カメラ映像がある端末（iPhone など）では、床の模様を追う FloorTracker で
+//    カメラの位置も追いかける（6DoF）。このとき背景の映像も WebGL で描き、3D とコマずれしないようにする
 //  - xr モード: WebXR immersive-ar + hit-test で現実の床に荒地を置く（対応端末のみ）
 import * as THREE from 'three';
+import { FloorTracker } from './tracker.js';
 
 const EYE_H = 1.3, AHEAD = 1.45;
 export const BASE_H = 0.6;           // ジオラマ土台の厚み（盤面ローカル単位）
 const DEFAULT_LONG_FOV = 67;         // スマホ背面カメラ（標準レンズ）の長辺方向の画角（度）
 const Z = new THREE.Vector3(0, 0, 1);
 const Q_SCREEN = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const GYRO_LATENCY = 40;             // カメラ映像はセンサーより少し遅れて届く（ms）
 
 export class ARView {
   constructor({ renderer, camera, scene, anchor, dom, onTap }) {
@@ -25,11 +29,29 @@ export class ARView {
     this.fieldScale = 0.14;
     this.longFov = DEFAULT_LONG_FOV;
     this.basePos = new THREE.Vector3();
+    // 床トラッキング
+    this.tracker = FloorTracker.available ? new FloorTracker() : null;
+    this.trackState = 'off';   // off / aim / run / lost
+    this.video = null;
+    this.gyroHist = [];
+    this._frameQueued = false;
+    this._newFrame = null;
+    this.aimRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.128, 0.14, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthTest: false }),
+    );
+    this.aimRing.renderOrder = 20;
+    this.aimRing.visible = false;
+    scene.add(this.aimRing);
 
     this._onOrient = (e) => {
       if (e.alpha == null && e.beta == null) return;
       this.gyro = e;
       this.gyroSeen = true;
+      // 映像との時間合わせ用に少しだけ履歴を持つ
+      const now = performance.now();
+      this.gyroHist.push({ t: now, q: this._deviceQuat(new THREE.Quaternion()) });
+      while (this.gyroHist.length > 2 && now - this.gyroHist[0].t > 400) this.gyroHist.shift();
     };
     window.addEventListener('deviceorientation', this._onOrient);
 
@@ -63,7 +85,9 @@ export class ARView {
   // -------------------------------------------------------------------------
   // カメラ映像 + ジャイロ
   // -------------------------------------------------------------------------
-  startScreen() {
+  startScreen(video = null) {
+    this.stopTracking();
+    this.video = video;
     this.mode = 'screen';
     this.anchor.visible = true;
     this.anchor.position.set(0, 0, -AHEAD);
@@ -81,12 +105,13 @@ export class ARView {
 
   recenter() {
     if (this.mode === 'xr') { this.placed = false; this.anchor.visible = false; this.onNeedPlace?.(); return; }
+    if (this.trackState !== 'off') { this._enterAim(); return; }
     this.yawOffset = null;
     this.anchor.rotation.y = 0;
     this.orbit.yaw = 0; this.orbit.pitch = 0.8; this.orbit.dist = 1.75;
   }
 
-  shake(a) { if (this.mode === 'screen') this.shakeAmt = Math.min(0.03, this.shakeAmt + a); }
+  shake(a) { if (this.mode === 'screen' && this.trackState === 'off') this.shakeAmt = Math.min(0.03, this.shakeAmt + a); }
 
   _deviceQuat(out) {
     const e = this.gyro;
@@ -116,8 +141,12 @@ export class ARView {
       }
       // センサー値をそのまま使う（なめらかにする処理は遅れの原因になるので入れない）
       this.targetQ.copy(this.yawOffset).multiply(q);
-      cam.quaternion.copy(this.targetQ);
-      cam.position.set(0, EYE_H, 0);
+      if (this._canTrack()) {
+        this._updateTracking();
+      } else {
+        cam.quaternion.copy(this.targetQ);
+        cam.position.set(0, EYE_H, 0);
+      }
     } else {
       // オービット（PC など）
       const o = this.orbit, c = this.anchor.position;
@@ -169,7 +198,10 @@ export class ARView {
       this.pointers.delete(e.pointerId);
       if (this.pointers.size < 2) this.pinch0 = null;
       const moved = Math.hypot(e.clientX - p.x0, e.clientY - p.y0);
-      if (moved < 12 && performance.now() - p.t < 600 && this.mode === 'screen') this.onTap?.(e.clientX, e.clientY);
+      if (moved < 12 && performance.now() - p.t < 600 && this.mode === 'screen') {
+        if (this.trackState === 'aim') this._place();
+        else this.onTap?.(e.clientX, e.clientY);
+      }
     };
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', (e) => { this.pointers.delete(e.pointerId); this.pinch0 = null; });
@@ -219,6 +251,160 @@ export class ARView {
       this._aspect = this.camera.aspect;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // 床トラッキング（6DoF）
+  // -------------------------------------------------------------------------
+  _canTrack() {
+    const v = this.video;
+    return !!(this.tracker && v && v.srcObject && v.videoWidth && v.readyState >= 2);
+  }
+
+  _setTrackState(st) {
+    if (this.trackState === st) return;
+    this.trackState = st;
+    this.onTrackState?.(st);
+  }
+
+  /** 背景のカメラ映像を WebGL で描く（3D と同じコマを使うため） */
+  _ensureBackground() {
+    const v = this.video;
+    const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+    const w = Math.round(v.videoWidth * k), h = Math.round(v.videoHeight * k);
+    if (!this.bgCanvas || this.bgCanvas.width !== w || this.bgCanvas.height !== h) {
+      this.bgCanvas = document.createElement('canvas');
+      this.bgCanvas.width = w; this.bgCanvas.height = h;
+      this.bgCtx = this.bgCanvas.getContext('2d');
+      this.bgTex?.dispose();
+      this.bgTex = new THREE.CanvasTexture(this.bgCanvas);
+      this.bgTex.colorSpace = THREE.SRGBColorSpace;
+      this.bgTex.minFilter = THREE.LinearFilter;
+      this.bgTex.generateMipmaps = false;
+      this.tracker.setup(w, h, this.longFov);
+    }
+    // object-fit: cover と同じ切り抜き
+    const ia = w / h, sa = window.innerWidth / window.innerHeight;
+    if (ia > sa) { this.bgTex.repeat.set(sa / ia, 1); this.bgTex.offset.set((1 - sa / ia) / 2, 0); }
+    else { this.bgTex.repeat.set(1, ia / sa); this.bgTex.offset.set(0, (1 - ia / sa) / 2); }
+    this.scene.background = this.bgTex;
+    this.video.style.opacity = '0';
+  }
+
+  _drawFrame() {
+    this.bgCtx.drawImage(this.video, 0, 0, this.bgCanvas.width, this.bgCanvas.height);
+    this.bgTex.needsUpdate = true;
+  }
+
+  _watchFrames() {
+    const v = this.video;
+    if (this._frameQueued || !v) return;
+    if (v.requestVideoFrameCallback) {
+      this._frameQueued = true;
+      v.requestVideoFrameCallback((now, meta) => {
+        this._frameQueued = false;
+        // 撮影時刻が分かればそれを、無ければ少し前の時刻を使う
+        this._newFrame = { t: meta && meta.captureTime ? meta.captureTime : now - GYRO_LATENCY };
+      });
+    } else if (v.currentTime !== this._lastVideoTime) {
+      this._lastVideoTime = v.currentTime;
+      this._newFrame = { t: performance.now() - GYRO_LATENCY };
+    }
+  }
+
+  _gyroAt(t) {
+    const h = this.gyroHist;
+    if (!h.length) return this._deviceQuat(new THREE.Quaternion());
+    if (t <= h[0].t) return h[0].q.clone();
+    for (let i = h.length - 1; i > 0; i--) {
+      if (h[i - 1].t <= t) {
+        const a = h[i - 1], b = h[i];
+        const u = Math.min(1, (t - a.t) / Math.max(1, b.t - a.t));
+        return a.q.clone().slerp(b.q, u);
+      }
+    }
+    return h[h.length - 1].q.clone();
+  }
+
+  _enterAim() {
+    this._ensureBackground();
+    this.tracker.state = 'idle';
+    this.anchor.visible = false;
+    this._setTrackState('aim');
+  }
+
+  _updateTracking() {
+    const cam = this.camera;
+    if (this.trackState === 'off') this._enterAim();
+    this._ensureBackground();
+    this._watchFrames();
+    const frame = this._newFrame;
+    this._newFrame = null;
+    if (frame) this._drawFrame();
+
+    if (this.trackState === 'aim') {
+      // 置く前：ジャイロの向きだけで、床のどこに置くかを見せる
+      cam.quaternion.copy(this.targetQ);
+      cam.position.set(0, EYE_H, 0);
+      const p = this._centerFloor(cam.quaternion, cam.position);
+      this.aimRing.visible = !!p;
+      if (p) {
+        this.aimRing.position.copy(p);
+        const s = this.fieldScale * 4 / 0.14;   // リングの外径 ≒ 盤面の半分の幅
+        this.aimRing.scale.set(s, 1, s);
+        this.aimRing.material.opacity = 0.6 + Math.sin(performance.now() / 150) * 0.3;
+      }
+      return;
+    }
+
+    this.aimRing.visible = false;
+    if (frame) {
+      const gNow = this._gyroAt(frame.t);
+      const dq = this._gPrev ? this._gPrev.clone().invert().multiply(gNow) : null;
+      this._gPrev = gNow;
+      const qAbs = this.yawOffset.clone().multiply(gNow);
+      // 背景に描いたのと同じコマを追跡にも使う（同じ処理の中で続けて読むので同じフレームになる）
+      this.tracker.update(this.video, dq, qAbs);
+      this._setTrackState(this.tracker.state === 'tracking' ? 'run' : 'lost');
+      cam.quaternion.copy(this.tracker.q);
+      cam.position.copy(this.tracker.C);
+    }
+  }
+
+  /** 画面の真ん中の先にある床（y=0）の位置 */
+  _centerFloor(q, C) {
+    const d = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    if (d.y > -0.2) return null;
+    const t = -C.y / d.y;
+    if (t > EYE_H * 5) return null;
+    return C.clone().addScaledVector(d, t);
+  }
+
+  _place() {
+    const cam = this.camera;
+    const P = this._centerFloor(cam.quaternion, cam.position);
+    if (!P) { this.onTrackState?.('aim-low'); return; }
+    this._drawFrame();
+    const n = this.tracker.start(this.video, cam.quaternion, cam.position);
+    this._gPrev = this._gyroAt(performance.now() - GYRO_LATENCY);
+    this._floorY = 0;
+    this.anchor.position.set(P.x, 0, P.z);
+    this.anchor.rotation.set(0, Math.atan2(cam.position.x - P.x, cam.position.z - P.z), 0);
+    this.setFieldScale(this.fieldScale);
+    this.anchor.visible = true;
+    this.aimRing.visible = false;
+    this._setTrackState(n >= 12 ? 'run' : 'lost');
+    this.onPlaced?.(n);
+  }
+
+  stopTracking() {
+    if (this.trackState === 'off') return;
+    this.trackState = 'off';
+    if (this.tracker) this.tracker.state = 'idle';
+    this.scene.background = null;
+    if (this.video) this.video.style.opacity = '';
+    this.aimRing.visible = false;
+    this._floorY = null;
   }
 
   // -------------------------------------------------------------------------

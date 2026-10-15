@@ -195,6 +195,7 @@ body.xr .xr-only { display: inline-flex; }
 }
 .hint b { color: #ffd36b; }
 .hint.place { bottom: auto; top: 45%; font-size: 15px; padding: 10px 18px; }
+.hint.place.lost { top: auto; bottom: calc(118px + var(--sb)); background: rgba(214, 48, 49, .85); font-size: 13px; }
 .hint.fade { opacity: 0; }
 .hud-bottom { display: flex; gap: 6px; align-items: flex-end; justify-content: center; }
 .up {
