@@ -675,7 +675,11 @@ $('diagFov').addEventListener('input', (e) => {
   ar.setLongFov(parseFloat(e.target.value));
   $('diagFovVal').textContent = ar.longFov.toFixed(1) + '°';
 });
-bindTap('diagFovReset', () => { ar.setLongFov(67); setDiag(true); });
+bindTap('diagFovReset', () => {
+  ar.setLongFov(ar.defaultFov);
+  try { localStorage.removeItem('chibiHammers.cameraFov'); } catch (_) { /* なし */ }
+  setDiag(true);
+});
 bindTap('btnSizeUp', () => ar.setFieldScale(ar.fieldScale * 1.2));
 bindTap('btnSizeDown', () => ar.setFieldScale(ar.fieldScale / 1.2));
 
