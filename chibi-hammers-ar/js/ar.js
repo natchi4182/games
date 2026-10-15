@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 
 const EYE_H = 1.3, AHEAD = 1.45;
+export const BASE_H = 0.6;           // ジオラマ土台の厚み（盤面ローカル単位）
+const DEFAULT_LONG_FOV = 67;         // スマホ背面カメラ（標準レンズ）の長辺方向の画角（度）
 const Z = new THREE.Vector3(0, 0, 1);
 const Q_SCREEN = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 
@@ -21,6 +23,7 @@ export class ARView {
     this.pointers = new Map();
     this.pinch0 = null;
     this.fieldScale = 0.14;
+    this.longFov = DEFAULT_LONG_FOV;
     this.basePos = new THREE.Vector3();
 
     this._onOrient = (e) => {
@@ -65,7 +68,7 @@ export class ARView {
     this.anchor.visible = true;
     this.anchor.position.set(0, 0, -AHEAD);
     this.anchor.rotation.set(0, 0, 0);
-    this.anchor.scale.setScalar(this.fieldScale);
+    this.setFieldScale(this.fieldScale);
     this.camera.position.set(0, EYE_H, 0);
     this.yawOffset = null;
     this.orbit.yaw = 0;
@@ -100,6 +103,7 @@ export class ARView {
   update(dt) {
     if (this.mode !== 'screen') return;
     const cam = this.camera;
+    this._applyFov();
     if (this.usingGyro) {
       const q = this._deviceQuat(new THREE.Quaternion());
       if (this.yawOffset === null) {
@@ -110,8 +114,9 @@ export class ARView {
         this.targetQ.copy(this.yawOffset).multiply(q);
         cam.quaternion.copy(this.targetQ);
       }
+      // センサー値をそのまま使う（なめらかにする処理は遅れの原因になるので入れない）
       this.targetQ.copy(this.yawOffset).multiply(q);
-      cam.quaternion.slerp(this.targetQ, 1 - Math.pow(0.0005, dt));
+      cam.quaternion.copy(this.targetQ);
       cam.position.set(0, EYE_H, 0);
     } else {
       // オービット（PC など）
@@ -183,6 +188,37 @@ export class ARView {
   setFieldScale(s) {
     this.fieldScale = THREE.MathUtils.clamp(s, this.mode === 'xr' ? 0.03 : 0.06, this.mode === 'xr' ? 0.3 : 0.35);
     this.anchor.scale.setScalar(this.fieldScale);
+    // 土台の底が床（y=0）にのるように持ち上げる
+    if (this._floorY != null) this.anchor.position.y = this._floorY + BASE_H * this.fieldScale;
+    else if (this.mode === 'screen') this.anchor.position.y = BASE_H * this.fieldScale;
+  }
+
+  /**
+   * カメラ映像の見え方に 3D の画角を合わせる。
+   * 映像は object-fit: cover で画面いっぱいに切り抜かれているので、その切り抜き方も考える。
+   */
+  updateFov(video) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const vw = video?.videoWidth, vh = video?.videoHeight;
+    if (!vw || !vh || !video.srcObject) {
+      this.videoFov = null;
+    } else {
+      const f = (Math.max(vw, vh) / 2) / Math.tan(THREE.MathUtils.degToRad(this.longFov) / 2);
+      const s = Math.max(W / vw, H / vh);
+      this.videoFov = THREE.MathUtils.radToDeg(2 * Math.atan((H / 2) / (f * s)));
+    }
+    this.camera.aspect = W / H;
+    this._applyFov();
+  }
+
+  _applyFov() {
+    // 映像に重ねるときだけ映像の画角に合わせる。PC のオービット表示は見やすい画角で
+    const fov = this.usingGyro && this.videoFov ? this.videoFov : 62;
+    if (this.camera.fov !== fov || this._aspect !== this.camera.aspect) {
+      this.camera.fov = fov;
+      this._aspect = this.camera.aspect;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -212,6 +248,8 @@ export class ARView {
       if (!this.placed) {
         if (!this.reticle.visible) return;
         this.anchor.position.setFromMatrixPosition(this.reticle.matrix);
+        this._floorY = this.anchor.position.y;
+        this.anchor.position.y += BASE_H * this.fieldScale;
         const cam = this.renderer.xr.getCamera();
         const cp = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
         this.anchor.rotation.set(0, Math.atan2(cp.x - this.anchor.position.x, cp.z - this.anchor.position.z), 0);
@@ -233,6 +271,7 @@ export class ARView {
       this.hitSource = null;
       this.session = null;
       this.renderer.xr.enabled = false;
+      this._floorY = null;
       this.reticle.visible = false;
       this.mode = 'none';
       onEnd?.();
