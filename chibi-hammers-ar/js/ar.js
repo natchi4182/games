@@ -9,7 +9,21 @@ import { FloorTracker } from './tracker.js';
 
 const EYE_H = 1.3, AHEAD = 1.45;
 export const BASE_H = 0.6;           // ジオラマ土台の厚み（盤面ローカル単位）
-const DEFAULT_LONG_FOV = 67;         // スマホ背面カメラ（標準レンズ）の長辺方向の画角（度）
+const DEFAULT_LONG_FOV = 67;         // スマホ背面カメラ（標準 26mm 相当レンズ）の長辺方向の画角（度）
+
+/**
+ * 機種ごとの画角の目安。ブラウザから機種名は分からないので、iPhone は画面サイズで見分ける。
+ * 24mm 相当のメインカメラ（14 Pro 以降の Pro 系）は約 71.5°、26mm 相当は約 67°。
+ */
+export function guessLongFov() {
+  const ua = navigator.userAgent || '';
+  if (!/iPhone/.test(ua)) return DEFAULT_LONG_FOV;
+  const w = Math.min(screen.width, screen.height), h = Math.max(screen.width, screen.height);
+  const is = (a, b) => w === a && h === b;
+  if (is(430, 932) || is(402, 874) || is(440, 956)) return 71.5;   // 14/15 Pro Max（15 Plus も同じ画面）, 16 Pro, 16 Pro Max
+  if (is(393, 852)) return 69;                                       // 14 Pro / 15 / 15 Pro / 16（24mm と 26mm が混在）
+  return DEFAULT_LONG_FOV;
+}
 const Z = new THREE.Vector3(0, 0, 1);
 const Q_SCREEN = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 const GYRO_LATENCY = 40;
@@ -28,7 +42,8 @@ export class ARView {
     this.pointers = new Map();
     this.pinch0 = null;
     this.fieldScale = 0.14;
-    this.longFov = DEFAULT_LONG_FOV;
+    this.longFov = guessLongFov();
+    this.defaultFov = this.longFov;
     // 画角を手動で調整していればそれを使う
     try { const f = parseFloat(localStorage.getItem(FOV_KEY)); if (f > 40 && f < 100) this.longFov = f; } catch (_) { /* なし */ }
     this.basePos = new THREE.Vector3();
