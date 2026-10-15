@@ -121,11 +121,12 @@ export class Chibi {
     this.hammerHead = new THREE.Group();
     this.hammerHead.position.set(0, 0.54, 0.04);
     const head = new THREE.Mesh(GEO.head, MAT.head);
-    head.rotation.z = Math.PI / 2; head.castShadow = true;
+    // 頭は振る方向（前後）に向ける。平らな面が打撃面になる
+    head.rotation.x = Math.PI / 2; head.castShadow = true;
     this.headMesh = head;
-    for (const bx of [-0.1, 0.1]) {
+    for (const bz of [-0.1, 0.1]) {
       const b = new THREE.Mesh(GEO.band, MAT.band);
-      b.rotation.z = Math.PI / 2; b.position.x = bx;
+      b.rotation.x = Math.PI / 2; b.position.z = bz;
       this.hammerHead.add(b);
     }
     this.hammerHead.add(head);
