@@ -135,6 +135,28 @@ const ar = new ARView({ renderer, camera, scene, anchor, dom: renderer.domElemen
 
 ARView.xrSupported().then((ok) => (xrOk = ok));
 
+// 床トラッキングの状態に合わせて案内を出す
+ar.onTrackState = (st) => {
+  const ph = $('placeHint');
+  if (!$('scrGame').classList.contains('show')) return;
+  if (st === 'aim') {
+    ph.innerHTML = '床やテーブルにカメラを向けて<br><b>タップで荒地を置こう</b>';
+    ph.classList.remove('hidden', 'lost');
+  } else if (st === 'aim-low') {
+    toast('もう少し下（床）に向けてね', 1200);
+  } else if (st === 'lost') {
+    ph.innerHTML = '床の模様が見えないよ<br>ゆっくり床をうつしてね';
+    ph.classList.remove('hidden');
+    ph.classList.add('lost');
+  } else {
+    ph.classList.add('hidden');
+  }
+};
+ar.onPlaced = (n) => {
+  audio.pop();
+  toast(n >= 12 ? 'ここを整地するよ！' : '模様が少ない床だと追いにくいよ', 1400);
+};
+
 // ---------------------------------------------------------------------------
 // 画面遷移
 // ---------------------------------------------------------------------------
@@ -334,18 +356,22 @@ function startStage(mode) {
 function enterScreenAR() {
   document.body.classList.remove('xr');
   $('placeHint').classList.add('hidden');
-  ar.startScreen();
+  // 床トラッキング中なら同じ場所のまま次のステージへ
+  const keep = ar.mode === 'screen' && (ar.trackState === 'run' || ar.trackState === 'lost');
+  if (!keep) ar.startScreen(stream ? $('cam') : null);
   ar.updateFov(stream ? $('cam') : null);
   if (stream) setBackground('video');
   else { $('photoBg').style.backgroundImage = `url(${photo.toDataURL('image/jpeg', 0.8)})`; setBackground('photo'); }
 }
 
 async function enterXR() {
+  ar.stopTracking();
   // WebXR はカメラを自分で使うので getUserMedia は止める
   stopCamera(stream); stream = null;
   setBackground('none');
   document.body.classList.add('xr');
-  $('placeHint').classList.remove('hidden');
+  $('placeHint').innerHTML = '床にマーカーが出たらタップして荒地を置いてね';
+  $('placeHint').classList.remove('hidden', 'lost');
   try {
     await ar.startXR($('ui'), {
       onPlaced: () => { $('placeHint').classList.add('hidden'); audio.pop(); toast('ここを整地するよ！'); },
@@ -639,6 +665,7 @@ bindTap('btnReset', () => {
 
 function leaveToCapture() {
   game.paused = false;
+  ar.stopTracking();
   if (ar.mode === 'xr') ar.endXR();
   clearStage();
   openCapture();
@@ -719,7 +746,7 @@ renderer.setAnimationLoop((t, frame) => {
   if (frame) ar.updateXR(frame);
   ar.update(dt);
 
-  if (game.world && !game.paused) {
+  if (game.world && !game.paused && anchor.visible) {
     if (game.fever > 0) {
       game.fever -= dt;
       if (game.fever <= 0) { for (const c of game.chibis) c.setFever(false); updateHud(); }
