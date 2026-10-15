@@ -119,6 +119,11 @@
         </button>
       </div>
       <div id="toast" class="toast"></div>
+      <div id="diag" class="diag hidden">
+        <pre id="diagText"></pre>
+        <label>画角 <input id="diagFov" type="range" min="50" max="90" step="0.5"> <b id="diagFovVal"></b></label>
+        <button id="diagFovReset" class="btn mini-text">67°に戻す</button>
+      </div>
     </section>
 
     <!-- メニュー -->
@@ -128,6 +133,7 @@
         <button id="btnResume" class="btn primary">つづける</button>
         <button id="btnSound" class="btn ghost">🔊 サウンド: ON</button>
         <button id="btnBgm" class="btn ghost">🎵 BGM: ON</button>
+        <button id="btnDiag" class="btn ghost">🔧 AR診断表示: OFF</button>
         <button id="btnNewLand" class="btn ghost">📷 べつの景色を撮る</button>
         <button id="btnReset" class="btn ghost danger">セーブデータを消す</button>
       </div>

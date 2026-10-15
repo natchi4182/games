@@ -663,6 +663,19 @@ bindTap('btnFever', () => {
 });
 
 bindTap('btnRecenter', () => { audio.click(); ar.recenter(); });
+function setDiag(on) {
+  diagOn = on;
+  $('diag').classList.toggle('hidden', !on);
+  $('btnDiag').textContent = `🔧 AR診断表示: ${on ? 'ON' : 'OFF'}`;
+  $('diagFov').value = ar.longFov.toFixed(1);
+  $('diagFovVal').textContent = ar.longFov.toFixed(1) + '°';
+}
+bindTap('btnDiag', () => { audio.click(); setDiag(!diagOn); });
+$('diagFov').addEventListener('input', (e) => {
+  ar.setLongFov(parseFloat(e.target.value));
+  $('diagFovVal').textContent = ar.longFov.toFixed(1) + '°';
+});
+bindTap('diagFovReset', () => { ar.setLongFov(67); setDiag(true); });
 bindTap('btnSizeUp', () => ar.setFieldScale(ar.fieldScale * 1.2));
 bindTap('btnSizeDown', () => ar.setFieldScale(ar.fieldScale / 1.2));
 
@@ -829,7 +842,13 @@ renderer.setAnimationLoop((t, frame) => {
     if (hudTimer <= 0) { hudTimer = 0.5; if (game.fever > 0) updateHud(); }
   }
 
-  // 影のカメラを盤面サイズに合わせる（盤面は AR で拡大縮小される）
+  watchPerf(t);
+  // 床トラッキング中は、映像フレームが届いたタイミングで描く（ar.onFrameRender）
+  if (!ar.frameSynced) renderFrame();
+});
+
+// 描画（影のカメラを盤面サイズに合わせてから）
+function renderFrame() {
   const s = anchor.scale.x;
   if (s !== lastShadowScale) {
     lastShadowScale = s;
@@ -840,9 +859,44 @@ renderer.setAnimationLoop((t, frame) => {
     sc.updateProjectionMatrix();
     sun.shadow.normalBias = 0.02 * s;
   }
-
   renderer.render(scene, camera);
-});
+  perf.renders++;
+}
+ar.onFrameRender = renderFrame;
+
+// ---------------------------------------------------------------------------
+// 動作の重さを見て解像度を下げる ＋ AR 診断表示
+// ---------------------------------------------------------------------------
+const DPR_STEPS = [2, 1.6, 1.3, 1];
+const perf = { last: 0, avg: 16, slowFor: 0, renders: 0, lastCount: 0, lastFrames: 0, lastT: 0, dprIdx: 0 };
+perf.dprIdx = Math.max(0, DPR_STEPS.findIndex((d) => d <= Math.min(window.devicePixelRatio, 2)));
+let diagOn = false;
+function watchPerf(t) {
+  const now = performance.now();
+  if (perf.last) perf.avg += (Math.min(100, now - perf.last) - perf.avg) * 0.05;
+  perf.last = now;
+  // 重い状態（約 45fps 未満）が続いたら 1 段階ずつ解像度を下げる
+  if (!renderer.xr.isPresenting && $('scrGame').classList.contains('show') && !game.paused) {
+    perf.slowFor = perf.avg > 22 ? perf.slowFor + 1 : 0;
+    if (perf.slowFor > 90 && perf.dprIdx < DPR_STEPS.length - 1) {
+      perf.dprIdx++;
+      perf.slowFor = 0;
+      renderer.setPixelRatio(DPR_STEPS[perf.dprIdx]);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  }
+  if (diagOn && now - perf.lastT > 500) {
+    const dtS = (now - perf.lastT) / 1000;
+    const rf = (perf.renders - perf.lastCount) / dtS, vf = (ar.stats.frames - perf.lastFrames) / dtS;
+    perf.lastCount = perf.renders; perf.lastFrames = ar.stats.frames; perf.lastT = now;
+    const tr = ar.tracker;
+    $('diagText').textContent =
+      `描画 ${rf.toFixed(0)}fps / ループ ${(1000 / perf.avg).toFixed(0)}fps\n` +
+      `追跡 ${vf.toFixed(0)}fps ${ar.stats.trackMs.toFixed(1)}ms\n` +
+      `状態 ${ar.trackState}  点 ${tr ? tr.count : '-'} / 一致 ${tr ? tr.inliers : '-'}\n` +
+      `解像度 x${DPR_STEPS[perf.dprIdx]}  画角 ${ar.longFov.toFixed(1)}°  映像 ${$('cam').videoWidth}x${$('cam').videoHeight}`;
+  }
+}
 
 // デバッグ・テスト用（コンソールから触れるように）
 window.__game = { game, save, ar, startStage: (m) => startStage(m), goAnalyze, makeSamplePhoto };

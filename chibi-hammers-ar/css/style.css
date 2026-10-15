@@ -236,3 +236,14 @@ body.xr .xr-only { display: inline-flex; }
 .result { display: grid; gap: 6px; }
 .result b { font-size: 16px; }
 .panel .btn { width: 100%; }
+
+/* ---------- AR 診断 ---------- */
+.diag {
+  position: absolute; left: 12px; top: calc(110px + var(--st)); width: min(300px, calc(100% - 80px));
+  background: rgba(20, 16, 24, .78); color: #d8ffd8; border-radius: 12px; padding: 8px 10px;
+  font: 11px/1.45 ui-monospace, Menlo, monospace; pointer-events: auto;
+}
+.diag pre { margin: 0 0 6px; white-space: pre-wrap; font: inherit; }
+.diag label { display: flex; align-items: center; gap: 6px; }
+.diag input[type=range] { flex: 1; }
+.diag .mini-text { margin-top: 6px; padding: 4px 10px; font-size: 11px; box-shadow: none; }

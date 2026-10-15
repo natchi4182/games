@@ -12,7 +12,8 @@ export const BASE_H = 0.6;           // ジオラマ土台の厚み（盤面ロ�
 const DEFAULT_LONG_FOV = 67;         // スマホ背面カメラ（標準レンズ）の長辺方向の画角（度）
 const Z = new THREE.Vector3(0, 0, 1);
 const Q_SCREEN = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-const GYRO_LATENCY = 40;             // カメラ映像はセンサーより少し遅れて届く（ms）
+const GYRO_LATENCY = 40;
+const FOV_KEY = 'chibiHammers.cameraFov';             // カメラ映像はセンサーより少し遅れて届く（ms）
 
 export class ARView {
   constructor({ renderer, camera, scene, anchor, dom, onTap }) {
@@ -28,14 +29,19 @@ export class ARView {
     this.pinch0 = null;
     this.fieldScale = 0.14;
     this.longFov = DEFAULT_LONG_FOV;
+    // 画角を手動で調整していればそれを使う
+    try { const f = parseFloat(localStorage.getItem(FOV_KEY)); if (f > 40 && f < 100) this.longFov = f; } catch (_) { /* なし */ }
     this.basePos = new THREE.Vector3();
     // 床トラッキング
     this.tracker = FloorTracker.available ? new FloorTracker() : null;
+
     this.trackState = 'off';   // off / aim / run / lost
     this.video = null;
     this.gyroHist = [];
     this._frameQueued = false;
-    this._newFrame = null;
+    this._poseQ = new THREE.Quaternion();
+    this._poseC = new THREE.Vector3();
+    this.stats = { trackMs: 0, frames: 0 };
     this.aimRing = new THREE.Mesh(
       new THREE.RingGeometry(0.128, 0.14, 48).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthTest: false }),
@@ -264,6 +270,14 @@ export class ARView {
     }
   }
 
+  /** カメラの画角（長辺方向, 度）を手動で変える。追跡中なら追跡側も合わせる */
+  setLongFov(deg) {
+    this.longFov = THREE.MathUtils.clamp(deg, 50, 90);
+    try { localStorage.setItem(FOV_KEY, this.longFov.toFixed(1)); } catch (_) { /* 保存できなくても動く */ }
+    this.updateFov(this.video);
+    if (this.tracker && this._bgW) this.tracker.setup(this._bgW, this._bgH, this.longFov);
+  }
+
   // -------------------------------------------------------------------------
   // 床トラッキング（6DoF）
   // -------------------------------------------------------------------------
@@ -278,20 +292,23 @@ export class ARView {
     this.onTrackState?.(st);
   }
 
-  /** 背景のカメラ映像を WebGL で描く（3D と同じコマを使うため） */
+  /** 背景のカメラ映像を WebGL で描く（3D と同じコマを使うため）。映像は GPU に直接渡す */
   _ensureBackground() {
     const v = this.video;
-    const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
-    const w = Math.round(v.videoWidth * k), h = Math.round(v.videoHeight * k);
-    if (!this.bgCanvas || this.bgCanvas.width !== w || this.bgCanvas.height !== h) {
-      this.bgCanvas = document.createElement('canvas');
-      this.bgCanvas.width = w; this.bgCanvas.height = h;
-      this.bgCtx = this.bgCanvas.getContext('2d');
+    const w = v.videoWidth, h = v.videoHeight;
+    if (!this.bgTex || this.bgTex.image !== v || this._bgW !== w || this._bgH !== h) {
+      this._bgW = w; this._bgH = h;
       this.bgTex?.dispose();
-      this.bgTex = new THREE.CanvasTexture(this.bgCanvas);
+      // three.js の「映像テクスチャ」として扱わせる（sRGB の変換をシェーダーでやる経路）。
+      // 更新はこちらで映像フレームごとに行うので、VideoTexture 自身の更新処理は使わない
+      this.bgTex = new THREE.Texture(v);
+      this.bgTex.isVideoTexture = true;
+      this.bgTex.update = () => {};
       this.bgTex.colorSpace = THREE.SRGBColorSpace;
       this.bgTex.minFilter = THREE.LinearFilter;
+      this.bgTex.magFilter = THREE.LinearFilter;
       this.bgTex.generateMipmaps = false;
+      this.bgTex.needsUpdate = true;
       this.tracker.setup(w, h, this.longFov);
     }
     // object-fit: cover と同じ切り抜き
@@ -303,24 +320,53 @@ export class ARView {
   }
 
   _drawFrame() {
-    this.bgCtx.drawImage(this.video, 0, 0, this.bgCanvas.width, this.bgCanvas.height);
     this.bgTex.needsUpdate = true;
   }
 
+  /** 映像フレームに合わせて描画しているか（そのときはメインループでは描かない） */
+  get frameSynced() {
+    return this.mode === 'screen' && this.trackState !== 'off' && !!this.video?.requestVideoFrameCallback && !!this.bgTex;
+  }
+
+  // 新しい映像フレームが来たら、そのフレームの中で「背景に描く→追跡する」までやる。
+  // こうすると、背景・追跡・ジャイロの時刻がすべて同じフレームにそろう
   _watchFrames() {
     const v = this.video;
-    if (this._frameQueued || !v) return;
+    if (!v) return;
     if (v.requestVideoFrameCallback) {
+      if (this._frameQueued) return;
       this._frameQueued = true;
       v.requestVideoFrameCallback((now, meta) => {
         this._frameQueued = false;
-        // 撮影時刻が分かればそれを、無ければ少し前の時刻を使う
-        this._newFrame = { t: meta && meta.captureTime ? meta.captureTime : now - GYRO_LATENCY };
+        if (this.trackState === 'off' || this.video !== v) return;
+        this._onVideoFrame(meta && meta.captureTime ? meta.captureTime : now - GYRO_LATENCY);
+        this._watchFrames();
       });
     } else if (v.currentTime !== this._lastVideoTime) {
       this._lastVideoTime = v.currentTime;
-      this._newFrame = { t: performance.now() - GYRO_LATENCY };
+      this._onVideoFrame(performance.now() - GYRO_LATENCY);
     }
+  }
+
+  _onVideoFrame(t) {
+    if (!this.bgTex) return;
+    this._drawFrame();
+    if (this.trackState !== 'run' && this.trackState !== 'lost') { this.onFrameRender?.(); return; }
+    const t0 = performance.now();
+    const gNow = this._gyroAt(t);
+    const dq = this._gPrev ? this._gPrev.clone().invert().multiply(gNow) : null;
+    this._gPrev = gNow;
+    const qAbs = this.yawOffset.clone().multiply(gNow);
+    this.tracker.update(this.video, dq, qAbs);
+    this.stats.trackMs = this.stats.trackMs * 0.9 + (performance.now() - t0) * 0.1;
+    this.stats.frames++;
+    this._poseQ.copy(this.tracker.q);
+    this._poseC.copy(this.tracker.C);
+    this.camera.quaternion.copy(this._poseQ);
+    this.camera.position.copy(this._poseC);
+    this._setTrackState(this.tracker.state === 'tracking' ? 'run' : 'lost');
+    // このフレームの映像と姿勢で、すぐに描く
+    this.onFrameRender?.();
   }
 
   _gyroAt(t) {
@@ -349,9 +395,6 @@ export class ARView {
     if (this.trackState === 'off') this._enterAim();
     this._ensureBackground();
     this._watchFrames();
-    const frame = this._newFrame;
-    this._newFrame = null;
-    if (frame) this._drawFrame();
 
     if (this.trackState === 'aim') {
       // 置く前：ジャイロの向きだけで、床のどこに置くかを見せる
@@ -369,17 +412,8 @@ export class ARView {
     }
 
     this.aimRing.visible = false;
-    if (frame) {
-      const gNow = this._gyroAt(frame.t);
-      const dq = this._gPrev ? this._gPrev.clone().invert().multiply(gNow) : null;
-      this._gPrev = gNow;
-      const qAbs = this.yawOffset.clone().multiply(gNow);
-      // 背景に描いたのと同じコマを追跡にも使う（同じ処理の中で続けて読むので同じフレームになる）
-      this.tracker.update(this.video, dq, qAbs);
-      this._setTrackState(this.tracker.state === 'tracking' ? 'run' : 'lost');
-      cam.quaternion.copy(this.tracker.q);
-      cam.position.copy(this.tracker.C);
-    }
+    cam.quaternion.copy(this._poseQ);
+    cam.position.copy(this._poseC);
   }
 
   /** 画面の真ん中の先にある床（y=0）の位置 */
@@ -405,6 +439,8 @@ export class ARView {
     this.setFieldScale(this.fieldScale);
     this.anchor.visible = true;
     this.aimRing.visible = false;
+    this._poseQ.copy(cam.quaternion);
+    this._poseC.copy(cam.position);
     this._setTrackState(n >= 12 ? 'run' : 'lost');
     this.onPlaced?.(n);
   }
@@ -414,6 +450,8 @@ export class ARView {
     this.trackState = 'off';
     if (this.tracker) this.tracker.state = 'idle';
     this.scene.background = null;
+    this.bgTex?.dispose();
+    this.bgTex = null;
     if (this.video) this.video.style.opacity = '';
     this.aimRing.visible = false;
     this._floorY = null;
