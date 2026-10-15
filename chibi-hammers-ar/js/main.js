@@ -73,6 +73,17 @@ const gazeRing = new THREE.Mesh(
 gazeRing.renderOrder = 2;
 gazeRing.visible = false;
 anchor.add(gazeRing);
+// 監督エリア（6DoF のとき、自分の足もとのまわり。近くのちびが張り切る）
+const SUPERVISE_R = 0.9;   // m
+const superRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.93, 1, 48).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.35, depthWrite: false }),
+);
+superRing.renderOrder = 2;
+superRing.visible = false;
+anchor.add(superRing);
+const _foot = new THREE.Vector3();
+let superHintShown = false;
 const _gazePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const _gazeRay = new THREE.Ray();
 const _inv = new THREE.Matrix4();
@@ -155,6 +166,7 @@ ar.onTrackState = (st) => {
 ar.onPlaced = (n) => {
   audio.pop();
   toast(n >= 12 ? 'ここを整地するよ！' : '模様が少ない床だと追いにくいよ', 1400);
+  if (n >= 12) setTimeout(() => toast('近づくと ちびが張り切るよ！', 1800), 1800);
 };
 
 // ---------------------------------------------------------------------------
@@ -374,7 +386,10 @@ async function enterXR() {
   $('placeHint').classList.remove('hidden', 'lost');
   try {
     await ar.startXR($('ui'), {
-      onPlaced: () => { $('placeHint').classList.add('hidden'); audio.pop(); toast('ここを整地するよ！'); },
+      onPlaced: () => {
+        $('placeHint').classList.add('hidden'); audio.pop(); toast('ここを整地するよ！');
+        setTimeout(() => toast('近づくと ちびが張り切るよ！', 1800), 1800);
+      },
       onNeedPlace: () => $('placeHint').classList.remove('hidden'),
       onRay: (o, d) => { raycaster.set(o, d); handleRay(); },
       onEnd: async () => {
@@ -522,6 +537,15 @@ function onHammerHit(chibi, ob, pos) {
     setTimeout(() => audio.coin(), 120);
     ar.shake(big ? 0.02 : 0.008);
     chibi.celebrate();
+    if (w.flush) {
+      // 本物の床がピカピカに
+      for (const c of ob.cells) {
+        const p = w.cellCenter(c.i, c.j);
+        fx.burst(p.clone().setY(0.05), 0xfff6c8, 8, 0.45, { size: 0.03, grav: -1.5 });
+        fx.ring(p, 0.7, 0xfff3b0);
+      }
+      if (Math.random() < 0.5) fx.text(ob.center.clone().setY(0.5), 'ピカッ', '#fff6c8', 0.26, 0.9);
+    }
     if (game.focus === ob) setFocus(null);
     if (big) toast(`${ob.def.name}をこわした！`);
     persist();
@@ -707,6 +731,44 @@ bindTap('btnNextSame', () => {
 });
 bindTap('btnNextShot', () => { audio.click(); overlay('scrClear', false); leaveToCapture(); });
 
+// 床に直接重ねるか（床を認識できるモード）、ジオラマで出すか
+function syncFlush() {
+  const w = game.world;
+  if (!w || w.flush === ar.flush) return;
+  w.setFlush(ar.flush);
+  shadowCatcher.position.y = ar.flush ? 0.001 : -BASE_H + 0.002;
+  ar.setFieldScale(ar.fieldScale);
+}
+
+// 自分（カメラ）の足もとの近くにいるちびは張り切る
+function updateSupervise() {
+  let n = 0;
+  if (ar.is6dof) {
+    const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    _foot.setFromMatrixPosition(cam.matrixWorld);
+    anchor.worldToLocal(_foot);
+    _foot.y = 0;
+    const r = SUPERVISE_R / anchor.scale.x;
+    for (const c of game.chibis) {
+      const on = c.root.position.distanceTo(_foot) < r;
+      if (on && !c.supervised) fx.text(c.root.position.clone().setY(0.9), '!', '#ffd23f', 0.3, 1.2);
+      c.supervised = on;
+      if (on) n++;
+    }
+    const lim = game.world.N / 2 + r;
+    superRing.visible = Math.abs(_foot.x) < lim && Math.abs(_foot.z) < lim;
+    superRing.position.set(_foot.x, 0.02, _foot.z);
+    superRing.scale.set(r, 1, r);
+    if (n > 0 && !superHintShown) { superHintShown = true; toast('近くのちびが張り切ってる！', 1600); }
+  } else {
+    for (const c of game.chibis) c.supervised = false;
+    superRing.visible = false;
+  }
+  const pill = $('superPill');
+  pill.classList.toggle('hidden', n === 0);
+  if (n > 0) pill.textContent = `📣 ${n}人 張り切り中`;
+}
+
 // 画面の真ん中の先にある地面の位置（盤面ローカル）
 function updateGaze() {
   const w = game.world;
@@ -745,6 +807,7 @@ renderer.setAnimationLoop((t, frame) => {
   const dt = Math.min(0.05, clock.getDelta());
   if (frame) ar.updateXR(frame);
   ar.update(dt);
+  syncFlush();
 
   if (game.world && !game.paused && anchor.visible) {
     if (game.fever > 0) {
@@ -761,6 +824,7 @@ renderer.setAnimationLoop((t, frame) => {
       marker.getObjectByName('ring').material.opacity = 0.5 + Math.sin(tt * 8) * 0.3;
     }
     updateGaze();
+    updateSupervise();
     hudTimer -= dt;
     if (hudTimer <= 0) { hudTimer = 0.5; if (game.fever > 0) updateHud(); }
   }

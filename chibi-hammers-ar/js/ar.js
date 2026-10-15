@@ -101,6 +101,16 @@ export class ARView {
     this.targetQ.copy(this.camera.quaternion);
   }
 
+  /** 位置まで追えている（6DoF）か */
+  get is6dof() {
+    return (this.mode === 'xr' && this.placed) || (this.mode === 'screen' && this.trackState === 'run');
+  }
+
+  /** 床を認識して置くモード（土台を出さずに本物の床に重ねる） */
+  get flush() {
+    return this.mode === 'xr' || (this.mode === 'screen' && this.trackState !== 'off');
+  }
+
   get usingGyro() { return this.mode === 'screen' && this.gyroSeen && this.gyroEnabled !== false; }
 
   recenter() {
@@ -220,9 +230,10 @@ export class ARView {
   setFieldScale(s) {
     this.fieldScale = THREE.MathUtils.clamp(s, this.mode === 'xr' ? 0.03 : 0.06, this.mode === 'xr' ? 0.3 : 0.35);
     this.anchor.scale.setScalar(this.fieldScale);
-    // 土台の底が床（y=0）にのるように持ち上げる
-    if (this._floorY != null) this.anchor.position.y = this._floorY + BASE_H * this.fieldScale;
-    else if (this.mode === 'screen') this.anchor.position.y = BASE_H * this.fieldScale;
+    // 土台の底が床（y=0）にのるように持ち上げる（床に直接重ねるときは持ち上げない）
+    const lift = this.flush ? 0 : BASE_H * this.fieldScale;
+    if (this._floorY != null) this.anchor.position.y = this._floorY + lift;
+    else if (this.mode === 'screen') this.anchor.position.y = lift;
   }
 
   /**
@@ -350,7 +361,7 @@ export class ARView {
       this.aimRing.visible = !!p;
       if (p) {
         this.aimRing.position.copy(p);
-        const s = this.fieldScale * 4 / 0.14;   // リングの外径 ≒ 盤面の半分の幅
+        const s = (this._placedOnce ? this.fieldScale : 0.2) * 4 / 0.14;   // リングの外径 ≒ 盤面の半分の幅
         this.aimRing.scale.set(s, 1, s);
         this.aimRing.material.opacity = 0.6 + Math.sin(performance.now() / 150) * 0.3;
       }
@@ -388,6 +399,7 @@ export class ARView {
     const n = this.tracker.start(this.video, cam.quaternion, cam.position);
     this._gPrev = this._gyroAt(performance.now() - GYRO_LATENCY);
     this._floorY = 0;
+    if (!this._placedOnce) { this.fieldScale = 0.2; this._placedOnce = true; }   // 初回は実物大（約 1.6m 四方）
     this.anchor.position.set(P.x, 0, P.z);
     this.anchor.rotation.set(0, Math.atan2(cam.position.x - P.x, cam.position.z - P.z), 0);
     this.setFieldScale(this.fieldScale);
@@ -424,7 +436,7 @@ export class ARView {
     this.mode = 'xr';
     this.placed = false;
     this.anchor.visible = false;
-    this.fieldScale = 0.1;
+    this.fieldScale = 0.15;   // 実物大（約 1.2m 四方）
     this.anchor.scale.setScalar(this.fieldScale);
     const viewer = await session.requestReferenceSpace('viewer');
     this.hitSource = await session.requestHitTestSource({ space: viewer });
@@ -435,7 +447,6 @@ export class ARView {
         if (!this.reticle.visible) return;
         this.anchor.position.setFromMatrixPosition(this.reticle.matrix);
         this._floorY = this.anchor.position.y;
-        this.anchor.position.y += BASE_H * this.fieldScale;
         const cam = this.renderer.xr.getCamera();
         const cp = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
         this.anchor.rotation.set(0, Math.atan2(cp.x - this.anchor.position.x, cp.z - this.anchor.position.z), 0);

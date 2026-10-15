@@ -245,6 +245,7 @@ export class World {
     this.base.receiveShadow = true;
     this.base.userData.ground = true;
     this.group.add(this.base);
+    this._buildDirtOverlay(topTex, rnd);
 
     // 整地後のタイル（ふかふかの土 → クリア時に芝生）
     const soil = (alt) => canvasTex(128, 128, (g, w, h) => {
@@ -268,13 +269,87 @@ export class World {
     this.disposables.push(this.tileGeo);
   }
 
+  // 本物の床に直接重ねる「汚れた地面」。整地したマスは拭き取られて本物の床が見える
+  _buildDirtOverlay(topTex, rnd) {
+    const N = this.N, size = N * CELL + 0.6, M = 256;
+    this.maskSize = M;
+    this.maskScale = M / size;
+    const c = document.createElement('canvas');
+    c.width = c.height = M;
+    const g = c.getContext('2d');
+    const img = g.createImageData(M, M), d = img.data;
+    const edge = 0.3 * this.maskScale, feather = 0.55 * this.maskScale;
+    // ふちはギザギザにぼかす（荒地のはしっこっぽく）
+    const wob = [];
+    for (let k = 0; k < 64; k++) wob.push(rnd());
+    const noise = (t) => { const x = t * 63, i = Math.floor(x), f = x - i; return wob[i & 63] * (1 - f) + wob[(i + 1) & 63] * f; };
+    for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) {
+      const din = Math.min(x, y, M - 1 - x, M - 1 - y) - edge * 0.2;
+      const along = (x + y * 1.7) / M;
+      const t = (din - feather * 0.3 * noise(along)) / feather;
+      const a = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+      const v = Math.round(255 * a * (0.88 + 0.12 * rnd()));
+      const o = (y * M + x) * 4;
+      d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    this.maskCanvas = c;
+    this.maskCtx = g;
+    this.maskTex = new THREE.CanvasTexture(c);
+    this.disposables.push(this.maskTex);
+    const mat = new THREE.MeshStandardMaterial({ map: topTex, alphaMap: this.maskTex, transparent: true, depthWrite: false, roughness: 1, opacity: 0.95 });
+    this.disposables.push(mat);
+    const geo = new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2);
+    this.disposables.push(geo);
+    this.dirt = new THREE.Mesh(geo, mat);
+    this.dirt.position.y = 0.004;
+    this.dirt.receiveShadow = true;
+    this.dirt.userData.ground = true;
+    this.dirt.visible = false;
+    this.group.add(this.dirt);
+    this.flush = false;
+  }
+
+  /** true: 本物の床に重ねる（土台なし） / false: ジオラマ */
+  setFlush(on) {
+    this.flush = on;
+    this.base.visible = !on;
+    this.dirt.visible = on;
+    for (const t of this.tiles) t.visible = !on;
+  }
+
+  // マス (i,j) の汚れを拭き取る
+  _wipe(i, j, instant) {
+    const k = this.maskScale, half = (this.N * CELL + 0.6) / 2;
+    const p = this.cellCenter(i, j);
+    const cx = (p.x + half) * k, cy = (p.z + half) * k, r = CELL * k * 0.5;
+    const g = this.maskCtx;
+    const finish = () => {
+      g.fillStyle = '#000';
+      g.fillRect(cx - r - 0.5, cy - r - 0.5, r * 2 + 1, r * 2 + 1);
+      this.maskTex.needsUpdate = true;
+    };
+    if (instant) { finish(); return; }
+    this.anims.push({ t: 0, dur: 0.5, fn: (u) => {
+      const rr = r * 1.45 * (0.25 + 0.75 * u);
+      const gr = g.createRadialGradient(cx, cy, rr * 0.4, cx, cy, rr);
+      gr.addColorStop(0, 'rgba(0,0,0,0.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+      this.maskTex.needsUpdate = true;
+      if (u >= 1) finish();
+    } });
+  }
+
   _makeTile(i, j, instant = false) {
+    this._wipe(i, j, instant);
     const m = new THREE.Mesh(this.tileGeo, this.tileMats[(i + j) % 2]);
     this.cellCenter(i, j, m.position);
     m.position.y = 0.012;
     m.receiveShadow = true;
     m.userData.ground = true;
     m.userData.cell = { i, j };
+    m.visible = !this.flush;
     this.group.add(m);
     this.tiles.push(m);
     if (!instant) {
@@ -504,6 +579,11 @@ export class World {
     const geoHead = new THREE.SphereGeometry(0.06, 8, 6);
     const geoStem = new THREE.CylinderGeometry(0.012, 0.012, 0.16, 5);
     this.disposables.push(geoHead, geoStem);
+    // 床に重ねているときは、残ったふちの汚れもすーっと消す
+    if (this.flush) {
+      const m = this.dirt.material, o0 = m.opacity;
+      this.anims.push({ t: -0.6, dur: 1.2, fn: (u) => { m.opacity = o0 * (1 - u); } });
+    }
     this.tiles.forEach((tile, idx) => {
       const delay = (Math.abs(tile.position.x) + Math.abs(tile.position.z)) * 0.08;
       this.anims.push({ t: -delay, dur: 0.4, fn: (u) => {

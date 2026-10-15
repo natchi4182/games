@@ -144,7 +144,7 @@ export class Chibi {
     this.root.scale.setScalar(1.35);
   }
 
-  get speedMul() { return this.game.swingSpeed * (this.boost > 0 ? 1.8 : 1) * (this.game.fever > 0 ? 2 : 1); }
+  get speedMul() { return this.game.swingSpeed * (this.boost > 0 ? 1.8 : 1) * (this.game.fever > 0 ? 2 : 1) * (this.supervised ? 1.5 : 1); }
 
   setFever(on) { this.headMesh.material = on ? FEVER_MAT : MAT.head; }
 
