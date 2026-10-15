@@ -190,8 +190,8 @@ body.xr { background: transparent; }
 body.xr .xr-only { display: inline-flex; }
 .hint {
   position: absolute; left: 50%; bottom: calc(118px + var(--sb)); transform: translateX(-50%);
-  margin: 0; background: rgba(74, 52, 38, .8); color: #fff; padding: 6px 14px; border-radius: 999px;
-  font-size: 12px; white-space: nowrap; transition: opacity 1s;
+  margin: 0; background: rgba(74, 52, 38, .8); color: #fff; padding: 6px 14px; border-radius: 18px;
+  font-size: 12px; text-align: center; line-height: 1.5; width: max-content; max-width: calc(100% - 32px); transition: opacity 1s;
 }
 .hint b { color: #ffd36b; }
 .hint.place { bottom: auto; top: 45%; font-size: 15px; padding: 10px 18px; }

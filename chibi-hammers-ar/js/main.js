@@ -5,7 +5,7 @@ import { World, planLayout, drawPlanPreview } from './world.js';
 import { Chibi } from './chibi.js';
 import { Fx } from './fx.js';
 import { Sfx } from './audio.js';
-import { ARView } from './ar.js';
+import { ARView, BASE_H } from './ar.js';
 
 const N = 8;                 // 盤面のマス数（N×N）
 const MAX_CREW = 12;
@@ -54,6 +54,29 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.bias = -0.0006;
 anchor.add(sun, sun.target);
+
+// 本物の床に影を落とすための透明な床（影だけ描く）
+const shadowCatcher = new THREE.Mesh(
+  new THREE.PlaneGeometry(N * 3.5, N * 3.5).rotateX(-Math.PI / 2),
+  new THREE.ShadowMaterial({ opacity: 0.32, depthWrite: false }),
+);
+shadowCatcher.position.y = -BASE_H + 0.002;
+shadowCatcher.receiveShadow = true;
+anchor.add(shadowCatcher);
+
+// 視線（画面の真ん中が指している地面）
+const gaze = { point: new THREE.Vector3(), valid: false, ob: null };
+const gazeRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.22, 0.3, 28).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false }),
+);
+gazeRing.renderOrder = 2;
+gazeRing.visible = false;
+anchor.add(gazeRing);
+const _gazePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _gazeRay = new THREE.Ray();
+const _inv = new THREE.Matrix4();
+const CENTER = new THREE.Vector2(0, 0);
 
 // 集中攻撃マーカー
 const marker = new THREE.Group();
@@ -162,6 +185,8 @@ async function openCapture() {
   }
   if (stream) {
     setBackground('video');
+    $('cam').addEventListener('loadedmetadata', () => ar.updateFov($('cam')), { once: true });
+    ar.updateFov($('cam'));
     $('btnShutter').disabled = false;
     $('capMsg').innerHTML = 'まわりを撮影してね！<br><span class="small">床や地面がうつるとGOOD</span>';
   } else {
@@ -310,6 +335,7 @@ function enterScreenAR() {
   document.body.classList.remove('xr');
   $('placeHint').classList.add('hidden');
   ar.startScreen();
+  ar.updateFov(stream ? $('cam') : null);
   if (stream) setBackground('video');
   else { $('photoBg').style.backgroundImage = `url(${photo.toDataURL('image/jpeg', 0.8)})`; setBackground('photo'); }
 }
@@ -403,6 +429,8 @@ function chooseTarget(chibi) {
       const key = b * n + a + ':' + c.i + ',' + c.j;
       let score = d + (ob.attackers || 0) * 1.1 + (slotUse.get(key) || 0) * 2.5 + Math.random() * 0.6;
       if (ob === chibi.target) score -= 0.5;
+      // スマホを向けている場所の近くを優先
+      if (!focus && gaze.valid) score += ob.center.distanceTo(gaze.point) * 0.9;
       if (focus) {
         if (ob === focus) score -= 100;
         else if (!focusReachable) score += ob.center.distanceTo(focus.center) * 3 - 50;
@@ -652,14 +680,34 @@ bindTap('btnNextSame', () => {
 });
 bindTap('btnNextShot', () => { audio.click(); overlay('scrClear', false); leaveToCapture(); });
 
+// 画面の真ん中の先にある地面の位置（盤面ローカル）
+function updateGaze() {
+  const w = game.world;
+  gaze.valid = false;
+  if (w && anchor.visible && !game.cleared) {
+    const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    raycaster.setFromCamera(CENTER, cam);
+    _inv.copy(anchor.matrixWorld).invert();
+    _gazeRay.copy(raycaster.ray).applyMatrix4(_inv);
+    if (_gazeRay.intersectPlane(_gazePlane, gaze.point)) {
+      const lim = w.N / 2 + 0.3;
+      gaze.valid = Math.abs(gaze.point.x) < lim && Math.abs(gaze.point.z) < lim;
+    }
+  }
+  gazeRing.visible = gaze.valid && !game.focus;
+  if (gazeRing.visible) {
+    gazeRing.position.set(gaze.point.x, 0.03, gaze.point.z);
+    gazeRing.material.opacity = 0.4 + Math.sin(performance.now() / 180) * 0.15;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // メインループ
 // ---------------------------------------------------------------------------
 function onResize() {
   if (renderer.xr.isPresenting) return;
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  ar.updateFov(stream ? $('cam') : null);
 }
 window.addEventListener('resize', onResize);
 
@@ -685,6 +733,7 @@ renderer.setAnimationLoop((t, frame) => {
       marker.getObjectByName('arrow').rotation.y = tt * 2;
       marker.getObjectByName('ring').material.opacity = 0.5 + Math.sin(tt * 8) * 0.3;
     }
+    updateGaze();
     hudTimer -= dt;
     if (hudTimer <= 0) { hudTimer = 0.5; if (game.fever > 0) updateHud(); }
   }
@@ -693,7 +742,7 @@ renderer.setAnimationLoop((t, frame) => {
   const s = anchor.scale.x;
   if (s !== lastShadowScale) {
     lastShadowScale = s;
-    const R = (N / 2 + 1) * s;
+    const R = (N / 2 + 2.5) * s;
     const sc = sun.shadow.camera;
     sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R;
     sc.near = 0.01; sc.far = 20 * s;
