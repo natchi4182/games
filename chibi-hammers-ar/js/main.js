@@ -875,7 +875,31 @@ const DPR_STEPS = [2, 1.6, 1.3, 1];
 const perf = { last: 0, avg: 16, slowFor: 0, renders: 0, lastCount: 0, lastFrames: 0, lastT: 0, dprIdx: 0 };
 perf.dprIdx = Math.max(0, DPR_STEPS.findIndex((d) => d <= Math.min(window.devicePixelRatio, 2)));
 let diagOn = false;
+// 診断表示中は、追いかけている床の点を画面に重ねて描く（緑=合っている / 黄=ややずれ / 赤=ずれ）
+const ptsCanvas = document.createElement('canvas');
+ptsCanvas.className = 'diag-pts hidden';
+document.getElementById('ui').prepend(ptsCanvas);
+function drawTrackPoints() {
+  const tr = ar.tracker;
+  const show = diagOn && tr && (ar.trackState === 'run' || ar.trackState === 'lost') && $('scrGame').classList.contains('show');
+  ptsCanvas.classList.toggle('hidden', !show);
+  if (!show) return;
+  const sw = window.innerWidth, sh = window.innerHeight, dpr = Math.min(2, window.devicePixelRatio);
+  if (ptsCanvas.width !== Math.round(sw * dpr)) { ptsCanvas.width = Math.round(sw * dpr); ptsCanvas.height = Math.round(sh * dpr); }
+  const g = ptsCanvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, sw, sh);
+  // 映像は object-fit: cover と同じ切り抜きで表示している
+  const k = Math.max(sw / tr.W, sh / tr.H), ox = (sw - tr.W * k) / 2, oy = (sh - tr.H * k) / 2;
+  for (let i = 0; i < tr.count; i++) {
+    const e = tr.err[i];
+    g.fillStyle = e < 2 ? '#3cff7a' : e < 4 ? '#ffd23f' : '#ff4d4d';
+    g.fillRect(tr.currXY[i * 2] * k + ox - 2, tr.currXY[i * 2 + 1] * k + oy - 2, 4, 4);
+  }
+}
+
 function watchPerf(t) {
+  drawTrackPoints();
   const now = performance.now();
   if (perf.last) perf.avg += (Math.min(100, now - perf.last) - perf.avg) * 0.05;
   perf.last = now;
@@ -897,7 +921,7 @@ function watchPerf(t) {
     $('diagText').textContent =
       `描画 ${rf.toFixed(0)}fps / ループ ${(1000 / perf.avg).toFixed(0)}fps\n` +
       `追跡 ${vf.toFixed(0)}fps ${ar.stats.trackMs.toFixed(1)}ms\n` +
-      `状態 ${ar.trackState}  点 ${tr ? tr.count : '-'} / 一致 ${tr ? tr.inliers : '-'}\n` +
+      `状態 ${ar.trackState}  点 ${tr ? tr.count : '-'} / 一致 ${tr ? tr.inliers : '-'}  誤差 ${tr && tr.medErr != null ? tr.medErr.toFixed(1) : '-'}px\n` +
       `解像度 x${DPR_STEPS[perf.dprIdx]}  画角 ${ar.longFov.toFixed(1)}°  映像 ${$('cam').videoWidth}x${$('cam').videoHeight}`;
   }
 }

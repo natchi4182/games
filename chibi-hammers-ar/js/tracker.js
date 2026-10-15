@@ -18,7 +18,7 @@ const _m = new THREE.Matrix4();
 export class FloorTracker {
   static get available() { return typeof window !== 'undefined' && !!window.jsfeat; }
 
-  constructor({ longSide = 320, maxPoints = 160, levels = 4, win = 17 } = {}) {
+  constructor({ longSide = 640, maxPoints = 160, levels = 5, win = 17 } = {}) {
     this.longSide = longSide;
     this.maxPoints = maxPoints;
     this.levels = levels;
@@ -30,6 +30,7 @@ export class FloorTracker {
     this.count = 0;
     this.frames = 0;
     this.vel = new THREE.Vector3();      // 1 フレームあたりの移動（等速予測用）
+    this._mid = [];
   }
 
   /** 映像サイズと画角（長辺方向, 度）に合わせて内部バッファを用意 */
@@ -62,7 +63,18 @@ export class FloorTracker {
   }
 
   _grab(src) {
-    this.ctx.drawImage(src, 0, 0, this.W, this.H);
+    // 一度に大きく縮小すると細かい模様（カーペットなど）がちらつく（エイリアシング）ので、
+    // 半分ずつ縮小して平均をとる
+    const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
+    let cur = src, cw = sw, ch = sh, k = 0;
+    while (cw > this.W * 2 + 1) {
+      const nw = Math.max(this.W, Math.round(cw / 2)), nh = Math.max(this.H, Math.round(ch / 2));
+      const mid = this._mid[k] || (this._mid[k] = document.createElement('canvas'));
+      if (mid.width !== nw || mid.height !== nh) { mid.width = nw; mid.height = nh; }
+      mid.getContext('2d').drawImage(cur, 0, 0, nw, nh);
+      cur = mid; cw = nw; ch = nh; k++;
+    }
+    this.ctx.drawImage(cur, 0, 0, this.W, this.H);
     const img = this.ctx.getImageData(0, 0, this.W, this.H);
     window.jsfeat.imgproc.grayscale(img.data, this.W, this.H, this.currPyr.data[0]);
     this.currPyr.build(this.currPyr.data[0], true);
@@ -113,7 +125,11 @@ export class FloorTracker {
     }
 
     let good = false;
-    if (this.count >= 6) {
+    this.medErr = 0;
+    if (this.count < 6) {
+      // 点がほとんど残っていない：前のフレームの数字を使い回さず、見失った扱いにする
+      this.inliers = 0;
+    } else {
       this.skip.fill(0);
       this._solve(qPred, qAbs);
       // 2 段階目：明らかに外れた点を除いて解き直す（外れ点に引っぱられないように）
@@ -123,14 +139,17 @@ export class FloorTracker {
       for (let i = 0; i < this.count; i++) if (this.err[i] > thr) { this.skip[i] = 1; ex++; }
       if (ex > 0 && this.count - ex >= 6) this._solve(qPred, qAbs);
       this._rejectOutliers();
-      good = this.inliers >= 10 && this.inliers >= this.count * 0.7 && this._medianErr() < 1.5;
+      this.medErr = this._medianErr();
+      good = this.inliers >= 10 && this.inliers >= this.count * 0.6 && this.medErr < 2.5;
     }
     this.state = this.inliers >= 10 ? 'tracking' : 'lost';
     if (this.state === 'lost') { this.q.copy(qPred); this.C.copy(Cprev); this.vel.set(0, 0, 0); }
     else this.vel.subVectors(this.C, Cprev).multiplyScalar(0.7);
 
     // 点が減ってきたら補充（推定がしっかりしているフレームだけ。ずれた姿勢で足すとずれが残るため）
-    if (this.count < this.maxPoints * 0.6 && (good || (this.state === 'lost' && this.frames % 10 === 0))) {
+    // 点がかなり減ったときや見失ったときは、条件がそろわなくても探し直す（でないと二度と立ち直れない）
+    const starving = this.count < this.maxPoints * 0.3;
+    if (this.count < this.maxPoints * 0.6 && (good || ((starving || this.state === 'lost') && this.frames % 3 === 0))) {
       this._detect(this.maxPoints - this.count);
     }
   }
