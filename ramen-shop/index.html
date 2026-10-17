@@ -142,6 +142,31 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .opt button[aria-pressed="true"]{border:2px solid var(--sumi);background:#fff7e3;padding:9px 11px}
 .textin{width:100%;padding:8px 10px;border:1px solid #c4ad7c;border-radius:4px;background:#fffaf0;font:inherit;color:var(--sumi)}
 
+
+.ladder{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ladder>li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:5px;background:#f7edd4;border:1px solid #d9c497;opacity:.6}
+.ladder>li.done{opacity:.85}.ladder>li.cur{opacity:1;border:2px solid var(--sumi);background:#fff7e3;padding:7px 9px}
+.ladder .sn{flex:none;width:26px;height:26px;border-radius:50%;background:var(--sumi);color:var(--hinoki);display:grid;place-items:center;font-size:12px;font-weight:700}
+.ladder>li.done .sn{background:var(--good)}
+.ladder>li>div{min-width:0;display:flex;flex-direction:column}
+.ladder>li span{font-size:12px;color:var(--sumi-soft)}
+.ladder ul{list-style:none;margin:6px 0 0;padding:0;font-size:12.5px}
+.ladder ul li{color:var(--sumi-soft)}.ladder ul li.ok{color:var(--good);font-weight:700}
+.diag{background:var(--ai-deep);color:var(--noren);border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.diag-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.lead{margin:0;font-size:14px}.lead b{font-family:var(--font-disp);font-weight:400;font-size:21px;letter-spacing:.02em;margin:0 2px}
+.diag .lead b{color:var(--tamago)}
+.grade{flex:none;width:58px;height:58px;border-radius:50%;border:3px solid var(--tamago);display:grid;place-items:center;font-family:var(--font-disp);font-size:30px;color:var(--tamago)}
+.diag .q{margin:0;padding-top:8px;border-top:1px dashed #3a4a70;color:#cfd8ec}
+.diag .q strong{color:var(--noren);font-size:16px}
+.axes{display:flex;flex-direction:column;gap:6px}
+.ax{display:grid;grid-template-columns:6.5em minmax(0,1fr) 2.5em;gap:8px;align-items:center;font-size:13px}
+.axbar{height:10px;background:#e3d1a6;border-radius:5px;overflow:hidden}
+.axbar i{display:block;height:100%;background:var(--sumi)}.axbar i.low{background:var(--bad)}.axbar i.high{background:var(--good)}
+.axv{font-family:var(--font-led);text-align:right;font-variant-numeric:tabular-nums}
+.diag-mini{background:#f7edd4;border:1px solid #d1bb8b;border-radius:6px;padding:10px 12px}
+.diag-mini p{margin:0}.diag-mini p+p{margin-top:6px;font-size:13px}
+.diag-mini .gr{margin-left:8px;font-size:12px;font-weight:700;color:var(--sumi-soft)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -170,6 +195,7 @@ const LOC={
   roadside:{name:'郊外ロードサイド',rent:260000,base:190,seats:16,priceTol:1.05,dow:[1.35,.9,.9,.9,.9,1.0,1.35],desc:'駐車場付きで家族連れ。週末に跳ね、雨の影響が小さい。',curve:{11:1.1,12:2.0,13:1.6,14:.9,15:.6,16:.6,17:.9,18:1.6,19:1.8,20:1.3,21:.8,22:.5,23:.3,24:.15,25:.08}},
   gakusei:{name:'大学前の学生街',rent:150000,base:170,seats:12,priceTol:.6,dow:[.6,1.1,1.1,1.1,1.1,1.0,.65],desc:'安くて量が正義。価格に厳しく、長期休みは客が消える。',curve:{11:1.2,12:2.4,13:1.8,14:.9,15:.7,16:.8,17:1.0,18:1.4,19:1.5,20:1.2,21:1.0,22:.8,23:.6,24:.3,25:.1}},
 };
+LOC.shotengai.short='商店街';LOC.ekimae.short='駅前';LOC.roadside.short='ロードサイド';LOC.gakusei.short='学生街';
 const STYLES={
   shoyu:{name:'醤油',soup:95,gas:12,exp:880,cook:4.5,eat:13,base:57,temp:.010,pork:.4,extra:{name:'大盛り',price:150,cost:30,rate:.18},desc:'鶏ガラ清湯。万人受けで原価が安定する。'},
   tonkotsu:{name:'豚骨',soup:80,gas:34,exp:880,cook:3.2,eat:11,base:58,temp:.012,pork:1.0,smell:true,extra:{name:'替玉',price:150,cost:28,rate:.38},desc:'強火で炊き続ける白濁スープ。茹で時間が短く回転が速いが、ガス代と匂いに注意。'},
@@ -212,19 +238,24 @@ let tab='prep';
 let speed=1, paused=false;
 
 function newGame(name,loc,style){
-  S={v:1,name,loc,style,day:0,cash:START_CASH,debt:LOAN,
-    rSum:0,rCnt:0,reviews:[],awareness:.42,buzz:[],competitor:0,skill:0,fatigue:10,
+  S={v:2,name,loc,style,day:0,cash:START_CASH,
+    stars:[],rTotal:0,reviews:[],awareness:.42,buzz:[],competitor:0,skill:0,fatigue:10,
     market:{pork:1,wheat:1},wage:WAGE_BASE,
     menu:{price:STYLES[style].exp,grade:0,noodle:0,chashu:0,ajitama:true,rice:!STYLES[style].riceFree,gyoza:false},
     hours:'split',closedDow:3,staff:{kitchen:0,hall:1},prep:80,
     sns:false,inv:{pot:false,cashless:false,sign:false,machine:false,deodor:false},
     month:blankMonth(),months:[],hist:[],
-    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false};
+    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false};
   S.weather=genWeather(0);S.tomorrow=genWeather(1);
   S.buzz.push({mult:.6,days:10,label:'開店景気'});
 }
-function blankMonth(){return{sales:0,food:0,waste:0,labor:0,util:0,rent:0,loan:0,ads:0,misc:0,invest:0,cust:0,lost:0,bowls:0,days:0}}
-const rating=()=> (3.0*10+S.rSum)/(10+S.rCnt);
+function blankMonth(){return{sales:0,food:0,waste:0,labor:0,util:0,rent:0,loan:0,ads:0,misc:0,invest:0,cust:0,lost:0,bowls:0,days:0,brSales:0,brCost:0,brCust:0}}
+const ratingOf=a=>(3.0*10+a.reduce((x,y)=>x+y,0))/(10+a.length);
+const rating=()=>ratingOf(S.stars);
+const seatsOf=(loc=S.loc,size=S.size)=>LOC[loc].seats+(size?8:0);
+const rentOf=(loc=S.loc,size=S.size)=>LOC[loc].rent*(size?1.7:1);
+const loanPay=()=>S.loans.reduce((a,l)=>a+l.pay,0);
+const debtOf=()=>S.loans.reduce((a,l)=>a+l.left,0);
 
 function genWeather(d){
   const x=dateOf(d),m=x.getMonth();
@@ -244,10 +275,11 @@ function bowlCost(){
   const chashu=CHASHU[m.chashu].cost*mk.pork;
   return {soup,noodle,chashu,top:TOPPING,total:soup+noodle+chashu+TOPPING};
 }
-function tasteBase(){
+function tasteCore(){
   const st=STYLES[S.style],m=S.menu;
-  return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill-Math.max(0,S.fatigue-60)*.28;
+  return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill;
 }
+function tasteBase(){return tasteCore()-Math.max(0,S.fatigue-60)*.28}
 function maxPrep(){return S.inv.pot?400:250}
 function openMinutes(){return HOURS[S.hours].iv.reduce((a,[s,e])=>a+(e-s)*60,0)}
 function laborCost(){
@@ -259,19 +291,18 @@ function laborCost(){
 }
 
 // ───────── 需要 ─────────
+function priceFactor(price,exp,tol){const d=price-exp;let f=d>0?Math.exp(-d/(380*tol)):Math.min(1.35,Math.exp(-d/(900*tol)));if(price>=1000)f*=tol<1?.8:.9;if(price>=1200)f*=.9;return f}
+function weatherF(loc,w){return {'晴':1,'曇':.97,'雨':loc==='roadside'?.9:.78,'雪':.6,'台風':.3}[w.w]}
+function dowF(loc,x){let f=LOC[loc].dow[x.getDay()];if(loc==='gakusei'){const mo=x.getMonth();if(mo===7||mo===1||(mo===2&&x.getDate()<25))f*=.55}return f}
 function demandFactors(){
   const L=LOC[S.loc],st=STYLES[S.style],m=S.menu,x=dateOf(S.day),w=S.weather;
   const r=rating();
   const fR=Math.min(3.6,Math.exp((r-3.2)*1.5));
   const exp=st.exp+S.expBoost;
-  const d=m.price-exp;
-  let fP=d>0?Math.exp(-d/(380*L.priceTol)):Math.min(1.35,Math.exp(-d/(900*L.priceTol)));
-  if(m.price>=1000) fP*=L.priceTol<1?.8:.9;
-  if(m.price>=1200) fP*=.9;
-  let fW={'晴':1,'曇':.97,'雨':S.loc==='roadside'?.9:.78,'雪':.6,'台風':.3}[w.w];
+  let fP=priceFactor(m.price,exp,L.priceTol);
+  let fW=weatherF(S.loc,w);
   let fT=clamp(1+(18-w.t)*st.temp,.7,1.35);
-  let fD=L.dow[x.getDay()];
-  if(S.loc==='gakusei'){const mo=x.getMonth();if(mo===7||mo===1||(mo===2&&x.getDate()<25))fD*=.55;}
+  let fD=dowF(S.loc,x);
   const buzz=1+S.buzz.reduce((a,b)=>a+b.mult,0);
   let fX=(1-S.competitor)*(S.sns?(S.loc==='gakusei'||S.loc==='ekimae'?1.18:1.12):1)*(S.inv.cashless?(S.loc==='ekimae'?1.08:1.04):1);
   const pot=L.base*fR*fP*fW*fT*fD*S.awareness*buzz*fX;
@@ -289,7 +320,7 @@ function startDay(){
   const bc=bowlCost();
   D={min:iv[0][0]*60,end:iv[iv.length-1][1]*60,iv,pot:f.pot,wsum,
     soupLeft:prep,prep,soupCost:bc.soup,
-    seats:Array.from({length:L.seats},()=>({c:null,dirty:0})),
+    seats:Array.from({length:seatsOf()},()=>({c:null,dirty:0})),
     queue:[],orders:[],cust:[],nextId:1,
     slots:(S.staff.hall>0?3:2)+kitchen*2,
     cleanT:S.staff.hall>0?1:3,
@@ -302,7 +333,7 @@ function startDay(){
   const soupTotal=prep*bc.soup;
   const gas=prep*st.gas;
   D.soupTotal=soupTotal;D.gas=gas;
-  log(hm(D.min),`暖簾を出した。スープ${prep}杯分、席${L.seats}。天気${S.weather.w} ${S.weather.t}℃`,'info');
+  log(hm(D.min),`暖簾を出した。スープ${prep}杯分、席${seatsOf()}。天気${S.weather.w} ${S.weather.t}℃`,'info');
   S.phase='open';
   render();
 }
@@ -393,7 +424,8 @@ function leave(c){
   const cPen=Math.max(0,cWait-8)*1.6;
   const hall=S.staff.hall>0?2:-1.5;
   const bonus=(st.riceFree?1.5:0)+(m.ajitama?.5:0);
-  const val=taste-pricePen-qPen-cPen+hall+bonus;
+  const hype=Math.max(0,rating()-3.6)*7; // 評判が上がるほど客の期待も上がる
+  const val=taste-pricePen-qPen-cPen+hall+bonus-hype;
   const star=clamp(1+(val-36)/12+gauss()*.5,1,5);
   D.sales+=c.bill;D.customers++;D.starSum+=star;D.starN++;
   c.state='gone';
@@ -431,21 +463,25 @@ function finishDay(){
   S.cash+=D.sales-D.food-D.soupTotal-labor-util-sns;
   const profit=D.sales-D.food-D.soupTotal-labor-util-sns;
   // 口コミ反映
-  for(const rv of D.newReviews){S.rSum+=rv.star;S.rCnt++;S.reviews.unshift(rv)}
+  for(const rv of D.newReviews){S.stars.push(rv.star);S.rTotal++;S.reviews.unshift(rv)}
+  if(S.stars.length>150)S.stars.splice(0,S.stars.length-150);
   S.reviews=S.reviews.slice(0,40);
   // 認知度
   const avg=D.starN?D.starSum/D.starN:3;
   S.awareness=clamp(S.awareness+.002+D.customers*(avg-2.7)*.00005,.2,1.25);
   // 熟練・疲労
-  S.skill=Math.min(12,S.skill+.02+D.served*.0004);
+  S.skill=Math.min(12,S.skill+.012+D.served*.00016);
   const load=openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8;
   S.fatigue=clamp(S.fatigue+load-38,0,100);
   // 月次集計
   const M=S.month;
   M.sales+=D.sales;M.food+=D.food+D.soupTotal-waste;M.waste+=waste;M.labor+=labor;M.util+=util;M.ads+=sns;M.cust+=D.customers;M.lost+=D.lost;M.bowls+=D.sold;M.days++;
-  S.hist.push({d:S.day,sales:D.sales,profit,cust:D.customers,rating:rating()});
+  S.hist.push({d:S.day,sales:D.sales,profit,cust:D.customers,rating:rating(),lost:D.lost,waste});
   if(S.hist.length>60)S.hist.shift();
   S.lastReport={day:S.day,sales:D.sales,food:D.food+D.soupTotal-waste,waste,wasteN:Math.max(0,D.soupLeft),labor,util,sns,profit,cust:D.customers,sold:D.sold,lost:D.lost,lostQ:D.lostQueue,lostS:D.lostSold,avgStar:D.starN?avg:null,reviews:D.newReviews.slice(0,3),waitMax:D.waitMax,soldOut:D.soldOut,prep:D.prep};
+  simBranches();S.lastReport.br=S.brToday;
+  if(S.critic&&S.critic.day===S.day)judgeCritic(avg);
+  checkStages();
   log(hm(D.min),`閉店。来客${D.customers}人、売上${yen(D.sales)}`,'info');
   S.phase='report';
   render();
@@ -466,36 +502,47 @@ function nextDay(){
   const mo=dateOf(S.day).getMonth();
   if(mo!==prevMonth){monthEnd();if(S.phase==='over')return}
   if(S.cash<-500000){gameOver('運転資金が50万円以上マイナスになり、仕入先が取引を止めた。');return}
-  if(S.day>=365){finale();return}
-  S.event=null;S.phase='morning';
-  // 体調
+  S.event=null;S.phase='morning';pendingClose=null;
   if(S.fatigue>=90&&Math.random()<.35){S.sick=true}
-  if(S.sick){S.phase='closed';S.closedReason='店主が体調を崩し、臨時休業。';}
-  else if(dateOf(S.day).getDay()===S.closedDow){S.phase='closed';S.closedReason='定休日。';}
-  else if(S.weather.w==='台風'&&Math.random()<.5){/* 営業は可能。客は減る */}
+  if(S.day<=S.closedUntil){S.phase='closed';S.closedTitle='移転工事中';S.closedReason=`${LOC[S.loc].name}の新店舗で内装工事中。${fmtDate(S.closedUntil+1)}に新装開店。`;}
+  else if(S.sick){S.phase='closed';S.closedTitle='臨時休業';S.closedReason='店主が体調を崩し、臨時休業。';}
+  else if(dateOf(S.day).getDay()===S.closedDow){S.phase='closed';S.closedTitle='定休日';S.closedReason='定休日。';}
+  if(S.critic&&S.critic.day===S.day&&S.phase!=='morning')S.critic.day=S.day+1;
+  if(S.critic&&S.critic.day===S.day)log('朝','今日は伝説の評論家が来店する日だ','info');
+  checkStages();
   if(S.phase==='morning'&&S.day>1&&Math.random()<.2)rollEvent();
   save();render();
 }
 function restDay(){
   // 休業日：家賃は日割りで発生（月末計上）。疲労回復。
   S.fatigue=clamp(S.fatigue-55,0,100);S.sick=false;
-  S.hist.push({d:S.day,sales:0,profit:0,cust:0,rating:rating(),closed:true});
+  simBranches();
+  S.hist.push({d:S.day,sales:0,profit:0,cust:0,rating:rating(),closed:true,lost:0,waste:0});
   if(S.hist.length>60)S.hist.shift();
   log('—',`${fmtDate(S.day)} 休業。店主は休んだ`,'info');
   nextDay();
 }
 function monthEnd(){
   const M=S.month;
-  M.rent=LOC[S.loc].rent;M.loan=LOAN_PAY;M.misc=LEASE+M.bowls*12+50000;
-  S.cash-=M.rent+M.loan+M.misc;
-  S.debt=Math.max(0,S.debt-LOAN_PAY*.85);
-  const profit=M.sales-M.food-M.waste-M.labor-M.util-M.rent-M.ads-M.misc;
-  const label=`${dateOf(S.day-1).getMonth()+1}月`;
-  S.months.push({label,...M,profit});
+  M.rent=rentOf();M.misc+=LEASE+M.bowls*12+50000;
+  S.cash-=M.rent+LEASE+M.bowls*12+50000;
+  for(const b of S.branches){if(S.day-1<b.openDay)continue;const f=rentOf(b.loc,b.size)+b.mgr.salary+50000;M.brCost+=f;b.month.cost+=f;S.cash-=f}
+  M.loan=0;
+  for(const l of S.loans){const pp=Math.min(l.pay,Math.ceil(l.left/.85));S.cash-=pp;M.loan+=pp;l.left=Math.max(0,Math.round(l.left-pp*.85))}
+  S.loans=S.loans.filter(l=>l.left>0);
+  const mainProfit=M.sales-M.food-M.waste-M.labor-M.util-M.rent-M.ads-M.misc;
+  const brProfit=M.brSales-M.brCost;
+  const profit=mainProfit+brProfit;
+  const label=`${Math.floor((S.day-1)/365)+1}年目 ${dateOf(S.day-1).getMonth()+1}月`;
+  const brs=S.branches.filter(b=>S.day-1>=b.openDay).map(b=>({name:b.name,sales:b.month.sales,profit:b.month.sales-b.month.cost,cust:b.month.cust,rating:ratingOf(b.stars)}));
+  S.branches.forEach(b=>b.month={sales:0,cost:0,cust:0});
+  S.months.push({label,...M,mainProfit,brProfit,profit,brs});
   S.totalProfit+=profit;
+  S.bestMonthCust=Math.max(S.bestMonthCust,M.cust);
+  S.streak42=rating()>=4.2?S.streak42+1:0;
   // 相場の月次変動
   S.market.wheat=clamp(S.market.wheat+gauss()*.015,.9,1.5);
-  showMonth(S.months[S.months.length-1]);
+  queueModal(monthHTML(S.months[S.months.length-1]));
   S.month=blankMonth();
   if(S.cash<0){gameOver(`${label}末の支払いで資金がマイナスに。家賃とローンが払えず、閉店を決めた。`)}
 }
@@ -503,7 +550,7 @@ function monthEnd(){
 // ───────── イベント ─────────
 const EVENTS=[
   {id:'magazine',w:1,ok:()=>S.day>14,title:'ラーメン雑誌から取材の依頼',body:'「新店特集で紹介させてください」。掲載されれば客は増えるが、期待値も上がる。',
-    choices:[{t:'受ける',d:'7日間 客足+45%／お客の期待価格+60円',f:()=>{S.buzz.push({mult:.45,days:7,label:'雑誌掲載',exp:true});S.expBoost=60;return '掲載号が店頭に並んだ。'}},{t:'断る',d:'いつも通り営業',f:()=>'丁重にお断りした。'}]},
+    choices:[{t:'受ける',d:'7日間 客足+45%／お客の期待価格+60円',f:()=>{S.buzz.push({mult:.45,days:7,label:'雑誌掲載',exp:true});S.expBoost=60;S.media=true;return '掲載号が店頭に並んだ。'}},{t:'断る',d:'いつも通り営業',f:()=>'丁重にお断りした。'}]},
   {id:'pork',w:1,ok:()=>true,title:'豚肉・豚骨の相場が高騰',body:'輸入飼料の値上がりで、精肉店から値上げの連絡。しばらく続きそうだ。',
     choices:[{t:'了解',d:'豚の相場 +22%（徐々に戻る）',f:()=>{S.market.pork*=1.22;return '仕入れ値が上がった。原価率に注意。'}}]},
   {id:'wheat',w:.6,ok:()=>S.menu.noodle!==2,title:'製麺所から値上げのお知らせ',body:'小麦粉と物流費の上昇を理由に、来月から麺の卸値を上げたいとのこと。',
@@ -517,10 +564,10 @@ const EVENTS=[
   {id:'burner',w:.6,ok:()=>true,title:'寸胴のバーナーが不調',body:'火力が安定しない。このままだと仕込みが半分しかできない。',
     choices:[{t:'すぐ修理',d:'修理代 8万円',f:()=>{S.cash-=80000;S.month.misc+=80000;return '業者が昼前に直してくれた。'}},{t:'今日は我慢',d:'仕込み上限が半分に',f:()=>{S.potHalf=true;return '今日は仕込み量を絞るしかない。'}}]},
   {id:'tv',w:.5,ok:()=>rating()>=3.6,title:'地元テレビの取材',body:'夕方の情報番組で「行列の店」として紹介したいとのこと。',
-    choices:[{t:'受ける',d:'5日間 客足+100%',f:()=>{S.buzz.push({mult:1.0,days:5,label:'テレビ放映'});return '放送の翌日から電話が鳴りやまない。'}},{t:'断る',d:'常連を大事にする',f:()=>{S.awareness=Math.min(1.25,S.awareness+.02);return '常連さんに喜ばれた。'}}]},
+    choices:[{t:'受ける',d:'5日間 客足+100%',f:()=>{S.buzz.push({mult:1.0,days:5,label:'テレビ放映'});S.media=true;return '放送の翌日から電話が鳴りやまない。'}},{t:'断る',d:'常連を大事にする',f:()=>{S.awareness=Math.min(1.25,S.awareness+.02);return '常連さんに喜ばれた。'}}]},
   {id:'smell',w:.8,ok:()=>STYLES[S.style].smell&&!S.inv.deodor,title:'近隣から匂いの苦情',body:'豚骨を炊く匂いについて、マンションの管理組合から申し入れがあった。',
     choices:[{t:'脱臭装置を入れる',d:'15万円（以後苦情なし）',f:()=>{S.cash-=150000;S.month.invest+=150000;S.inv.deodor=true;return '脱臭装置を設置した。'}},{t:'謝罪で済ませる',d:'認知度 −0.05、また来るかも',f:()=>{S.awareness=Math.max(.2,S.awareness-.05);return '菓子折りを持って謝りに行った。'}}]},
-  {id:'quit',w:.5,ok:()=>S.staff.kitchen+S.staff.hall>0,title:'バイトから時給の相談',body:'「近所のコンビニの方が時給がいいので…」。辞められると募集費もかかる。',
+  {id:'quit',w:.5,ok:()=>S.staff.kitchen+S.staff.hall>0&&S.wage<1450,title:'バイトから時給の相談',body:'「近所のコンビニの方が時給がいいので…」。辞められると募集費もかかる。',
     choices:[{t:'時給を上げる',d:'以後の時給 +100円',f:()=>{S.wage+=100;return `時給を${S.wage.toLocaleString()}円に上げた。`}},{t:'引き止めない',d:'求人広告費 5万円',f:()=>{S.cash-=50000;S.month.ads+=50000;return '求人を出し直した。'}}]},
   {id:'friend',w:.7,ok:()=>rating()>=3.3,title:'常連さんが職場の仲間を連れてきた',body:'「ここ、うまいんだよ」。口伝えが一番効く。',
     choices:[{t:'ありがたい',d:'認知度 +0.04',f:()=>{S.awareness=Math.min(1.25,S.awareness+.04);return '新しい顔が増えた。'}}]},
@@ -537,6 +584,255 @@ function showEvent(){
    <div class="cbody"><p style="margin:0">${esc(e.body)}</p><div class="opt">${e.choices.map((c,i)=>`<button data-act="ev" data-i="${i}"><b>${esc(c.t)}</b><span>${esc(c.d)}</span></button>`).join('')}</div></div></div>`);
 }
 
+// ───────── 目標：伝説への道 ─────────
+const STAGES=[
+  {name:'開業1周年',desc:'1年間、店を潰さずに続ける',conds:()=>[[`営業日数 ${Math.min(S.day+1,365)}/365日`,S.day>=364]]},
+  {name:'行列店',desc:'本店の評価★3.8以上、本店の月間来客3,000人',conds:()=>[[`本店の評価 ★${rating().toFixed(2)} / 3.80`,rating()>=3.8],[`月間来客の最高 ${S.bestMonthCust.toLocaleString()} / 3,000人（月末に集計）`,S.bestMonthCust>=3000]]},
+  {name:'一国一城',desc:'移転か支店出店をして、借入をすべて返す',conds:()=>[[`移転・出店 ${S.relocated||S.branches.length?'済':'まだ'}`,S.relocated||S.branches.length>0],[`借入残高 ${yen(debtOf())}`,debtOf()<=0]]},
+  {name:'名店',desc:'評価★4.2以上を6か月連続で保ち、雑誌かテレビに取り上げられる',conds:()=>[[`月末に★4.2以上の連続 ${S.streak42}/6か月`,S.streak42>=6],[`メディア掲載 ${S.media?'済':'まだ'}`,S.media]]},
+  {name:'伝説のラーメン屋',desc:'本店の評価★4.5、3店舗以上、伝説の評論家の審査に合格',conds:()=>[[`本店の評価 ★${rating().toFixed(2)} / 4.50`,rating()>=4.5],[`店舗数 ${1+S.branches.length}/3`,S.branches.length>=2],[`評論家の審査 ${S.legend?'合格':S.critic?fmtDate(S.critic.day)+'に来店予定':'条件を満たすと予告状が届く'}`,S.legend]]},
+];
+function checkStages(){
+  if(!S||S.phase==='over')return;
+  if(S.stage===4&&!S.critic&&!S.legend&&S.day>=S.criticNext&&rating()>=4.5&&S.branches.length>=2){
+    S.critic={day:S.day+3};
+    queueModal(noticeHTML('伝説の評論家から予告状',`「三日後、貴店の一杯を頂きに伺う」。${fmtDate(S.critic.day)}の営業で、味・待ち時間・お客の満足度を審査される。疲労を抜き、仕込みを万全に。`));
+    log('—','伝説の評論家から予告状が届いた','info');
+  }
+  while(S.stage<STAGES.length&&STAGES[S.stage].conds().every(c=>c[1])){
+    const i=S.stage;S.stageDay[i]=S.day;S.stage++;
+    queueModal(stageHTML(i));
+    log('—',`目標達成：${STAGES[i].name}`,'good');
+  }
+}
+function judgeCritic(avg){
+  const ok=D.taste>=82&&avg>=4.2&&D.waitMax<=30;
+  S.critic=null;
+  if(ok){S.legend=true;S.lastReport.criticMsg='伝説の評論家「……この一杯は、時代に残る」。審査に合格した。'}
+  else{
+    S.criticNext=S.day+30;
+    const why=D.taste<82?`味の点数が足りない（${D.taste.toFixed(1)}点／82点）`:avg<4.2?`お客の満足度が足りない（平均${avg.toFixed(2)}／4.2）`:`待ち時間が長すぎる（最長${Math.round(D.waitMax)}分）`;
+    S.lastReport.criticMsg=`伝説の評論家は無言で店を出た。不合格：${why}。30日後にまた予告状が届く。`;
+  }
+}
+function noticeHTML(title,body){
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="nth"><div class="chead"><p>${fmtDate(S.day)}</p><h2 id="nth">${esc(title)}</h2></div><div class="cbody"><p style="margin:0">${esc(body)}</p></div><div class="cfoot"><button class="btn primary" data-act="closemodal">受けて立つ</button></div></div>`;
+}
+function stageHTML(i){
+  const st=STAGES[i],legend=i===STAGES.length-1;
+  const y=Math.floor(S.day/365),mo=Math.floor((S.day%365)/30.4);
+  const dg=diagnose();
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="sth"><div class="chead"><p>目標 ${i+1}/${STAGES.length} 達成・開業から${y?y+'年':''}${mo}か月</p><h2 id="sth">${legend?'伝説のラーメン屋になった':esc(st.name)}</h2></div>
+   <div class="cbody"><p style="margin:0">${legend?`「${esc(S.name)}」は、ラーメン好きの間で語り継がれる店になった。${1+S.branches.length}店舗、本店の評価★${rating().toFixed(2)}、手元資金${yen(S.cash)}、通算営業利益${yen(S.totalProfit)}。`:esc(st.desc)+'を達成した。'}</p>
+   ${legend?'':`<p class="hint">次の目標：${esc(STAGES[i+1].name)}　${esc(STAGES[i+1].desc)}</p>`}
+   ${diagMini(dg)}</div>
+   <div class="cfoot"><button class="btn primary" data-act="closemodal">${legend?'このまま経営を続ける':'次の目標へ'}</button>${legend?'<button class="btn ghost" data-act="restart">新しく店を始める</button>':''}</div></div>`;
+}
+
+// ───────── 経営診断 ─────────
+function diagnose(){
+  const st=STYLES[S.style],m=S.menu,bc=bowlCost();
+  const rec=S.hist.filter(h=>!h.closed).slice(-30),n=rec.length;
+  const avg=k=>n?rec.reduce((a,h)=>a+(h[k]||0),0)/n:0;
+  const cust=avg('cust'),profit=avg('profit'),lost=avg('lost'),waste=avg('waste'),sales=avg('sales');
+  const fixedDaily=(rentOf()+loanPay()+LEASE+50000)/30;
+  const costR=bc.total/m.price, gap=m.price-(st.exp+S.expBoost);
+  const lostR=cust+lost>0?lost/(cust+lost):0;
+  const staff=S.staff.kitchen+S.staff.hall;
+  const ax={
+    taste:clamp((tasteBase()-50)/45*100,0,100),
+    value:clamp(60-gap/5,0,100),
+    turn:clamp(100-lostR*250-(S.staff.hall?0:12),0,100),
+    profit:n?clamp(50+(profit-fixedDaily)/Math.max(1,fixedDaily)*35,0,100):50,
+    stamina:clamp(100-S.fatigue,0,100),
+    future:clamp((rating()-3)*45+S.awareness*25+S.branches.length*8,0,100),
+  };
+  const score=Object.values(ax).reduce((a,b)=>a+b,0)/6;
+  const grade=score>=85?'S':score>=72?'A':score>=58?'B':score>=45?'C':'D';
+  const T=[
+    {s:n<7?999:0,name:'手探り開業型',desc:'まだ店の形が見えていない。数字より、毎日の手応えを集める時期。',q:'いまはまだ、勢いだけで走っている。'},
+    {s:(ax.taste-ax.profit)*1.2+(costR>.36?20:0),name:'職人こだわり型',desc:`一杯の完成度は高い。けれど原価率${(costR*100).toFixed(0)}%で、売るほど儲かる店にはなっていない。`,q:'その味を、続けられる値段で出せていない。'},
+    {s:(gap<-40?40:0)+(costR<.28?10:0)+(cust>80?20:0)-ax.taste*.2,name:'薄利多売型',desc:'安さで客を集めている。忙しさの割に、手元に残るお金は少ない。',q:'忙しさの割に、報われていない。'},
+    {s:(staff===0?40:0)+(S.fatigue>65?S.fatigue-30:0),name:'ワンオペ根性型',desc:`店主ひとりの体力で店が回っている。疲労は${Math.round(S.fatigue)}。倒れたら売上はゼロ。`,q:'あなたが倒れたら、この店は止まる。'},
+    {s:lostR*250,name:'行列取りこぼし型',desc:`並ぶのを諦めて帰る客が1日平均${lost.toFixed(0)}人。需要はあるのに、店が受け止めきれていない。`,q:'帰っていった客は、別の店の常連になっている。'},
+    {s:(sales?waste/sales*300:0)+(costR>.4?25:0)+(profit<0?20:0),name:'どんぶり勘定型',desc:'仕込みと値付けが感覚頼み。廃棄と原価が利益を食っている。',q:'今月いくら残るか、即答できない。'},
+    {s:(profit>fixedDaily?30:0)+(!S.branches.length&&!S.relocated?15:0)+(ax.taste<60?10:0),name:'堅実守り型',desc:'赤字は出さないが、攻めの一手もない。街の普通の店として落ち着きつつある。',q:'このままでは「普通の店」で終わる。'},
+    {s:S.branches.length*35+(S.relocated?15:0),name:'拡大路線型',desc:`${1+S.branches.length}店舗を抱える経営者。本店の味と支店の質の両立が鍵。`,q:'店を増やすほど、味が薄まる危うさがある。'},
+    {s:(rating()>=4?50:0)+(profit>fixedDaily*1.5?30:0),name:'ブランド確立型',desc:'味・評判・数字がそろい、街の顔になりつつある店。',q:'伝説まで、あと一歩のところにいる。'},
+  ];
+  T.sort((a,b)=>b.s-a.s);
+  const ADV={taste:'スープのグレードやチャーシューを見直して、味の点数を上げる。',
+    value:gap>0?`価格が相場より${gap}円高い。値付けと中身の釣り合いを見直す。`:'価格に対して中身が見劣りしている。素材を一段上げる。',
+    turn:'厨房かホールに人を足して、行列を受け止める。',
+    profit:'原価率と仕込み量を見直し、固定費を超える粗利を出す。',
+    stamina:'定休日を設けるかバイトを入れて、店主の疲労を下げる。',
+    future:'口コミ評価と認知度を上げる。チラシや看板、味の改善が効く。'};
+  const weak=Object.entries(ax).sort((a,b)=>a[1]-b[1]).slice(0,3).map(([k])=>ADV[k]);
+  return {t:T[0],ax,score,grade,weak};
+}
+function diagMini(dg=diagnose()){
+  return `<div class="diag-mini"><p class="lead">あなたの経営は<b>『${esc(dg.t.name)}』</b>です。<span class="gr">総合評価 ${dg.grade}</span></p><p>${esc(dg.t.q)}<br><strong>このままで本当に満足ですか？</strong></p></div>`;
+}
+function diagHTML(){
+  const dg=diagnose();
+  const AX=[['taste','味'],['value','お値打ち感'],['turn','回転・接客'],['profit','収益性'],['stamina','店主の余力'],['future','将来性']];
+  return `<div class="diag"><div class="diag-head"><p class="lead">あなたの経営は<b>『${esc(dg.t.name)}』</b>です。</p><div class="grade" aria-label="総合評価">${dg.grade}</div></div>
+    <p style="margin:0">${esc(dg.t.desc)}</p>
+    <p class="q">${esc(dg.t.q)}<br><strong>このままで本当に満足ですか？</strong></p></div>
+   <div><h3>経営の6軸（直近30営業日）</h3><div class="axes">${AX.map(([k,nm])=>`<div class="ax"><span>${nm}</span><span class="axbar"><i style="width:${dg.ax[k].toFixed(0)}%" class="${dg.ax[k]<40?'low':dg.ax[k]>=75?'high':''}"></i></span><span class="axv">${dg.ax[k].toFixed(0)}</span></div>`).join('')}</div></div>
+   <div><h3>次の一手</h3>${dg.weak.map(w=>`<p class="hint" style="color:var(--sumi)">・${esc(w)}</p>`).join('')}</div>
+   <p class="hint">総合評価は6軸の平均（${dg.score.toFixed(0)}点）。S 85点以上・A 72・B 58・C 45。</p>`;
+}
+
+// ───────── 店舗展開：移転・支店 ─────────
+const MGR_NAMES=['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤','吉田','山田','松本','井上','木村'];
+function genMgr(){
+  const sk=Math.round(rnd(2,9)*10)/10;
+  return {name:pick(MGR_NAMES)+'さん',skill:sk,salary:Math.round((260000+sk*22000)/10000)*10000,
+    note:sk>=7?'有名店で10年修業。味は任せられる':sk>=4.5?'チェーン店で店長経験あり':'飲食は未経験。やる気はある'};
+}
+const openCost=(loc,size)=>rentOf(loc,size)*6+3000000+(size?1500000:0);
+const relocCost=(loc,size)=>Math.max(0,2800000+(size?1500000:0)+rentOf(loc,size)*6-rentOf()*6*.8);
+function loanState(){
+  const last=S.months[S.months.length-1];
+  if(rating()<3.6)return {ok:false,why:'本店の評価が★3.6未満のため、銀行の審査に通らない'};
+  if(!last||last.profit<=0)return {ok:false,why:'前月が赤字（または決算前）のため、銀行の審査に通らない'};
+  return {ok:true};
+}
+function loanTerms(cost){const amt=Math.round(cost*.8/10000)*10000;return {amt,pay:Math.round(amt/60/.85/1000)*1000}}
+let BF=null,RL=null,pendingClose=null;
+function financeBlock(cost,useLoan){
+  const ls=loanState(),t=loanTerms(cost);
+  const loan=ls.ok&&useLoan;
+  return {loan,t,html:`<div><h3>資金</h3>
+    <label class="chk"><input type="checkbox" data-act="${BF?'bfloan':'rlloan'}" ${loan?'checked':''} ${ls.ok?'':'disabled'}> 銀行融資を使う（費用の8割・5年返済）</label>
+    <p class="hint">${ls.ok?`融資${yen(t.amt)}・月々の返済${yen(t.pay)}`:esc(ls.why)}</p></div>`};
+}
+function branchModal(){
+  if(!BF)BF={loc:'ekimae',size:0,mgr:0,loan:true,cands:[genMgr(),genMgr(),genMgr()]};
+  const cost=openCost(BF.loc,BF.size),fin=financeBlock(cost,BF.loan);
+  const need=cost-(fin.loan?fin.t.amt:0);
+  const mg=BF.cands[BF.mgr];
+  const monthly=rentOf(BF.loc,BF.size)+mg.salary+50000+(fin.loan?fin.t.pay:0);
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="bfh"><div class="chead"><p>契約から開店まで14日。支店は店長とバイト3人で毎日営業し、品書きは本店と共通。</p><h2 id="bfh">支店を出す</h2></div>
+   <div class="cbody">
+    <div><h3>物件</h3><div class="opt">${Object.entries(LOC).map(([k,l])=>`<button data-act="bf" data-k="loc" data-v="${k}" aria-pressed="${BF.loc===k}"><b>${l.name}</b><span>家賃 月${man(rentOf(k,BF.size))}・${seatsOf(k,BF.size)}席</span></button>`).join('')}</div></div>
+    <div><h3>広さ</h3><div class="seg"><button data-act="bf" data-k="size" data-v="0" aria-pressed="${!BF.size}">標準</button><button data-act="bf" data-k="size" data-v="1" aria-pressed="${!!BF.size}">大箱（+8席・家賃1.7倍）</button></div></div>
+    <div><h3>店長</h3><div class="opt">${BF.cands.map((c,i)=>`<button data-act="bf" data-k="mgr" data-v="${i}" aria-pressed="${BF.mgr===i}"><b>${esc(c.name)}　腕前 ${c.skill.toFixed(1)}</b><span>月給${man(c.salary)}・${esc(c.note)}</span></button>`).join('')}</div>
+     <p class="hint">店長の腕が低いほど、本店より味が落ちる。支店の評判が悪いと本店の認知度も下がる。</p></div>
+    ${fin.html}
+    <table class="ledger"><tbody>
+     <tr><td>保証金（家賃6か月）</td><td>${yen(rentOf(BF.loc,BF.size)*6)}</td></tr>
+     <tr><td>内装・厨房設備</td><td>${yen(cost-rentOf(BF.loc,BF.size)*6)}</td></tr>
+     <tr class="sum"><td>いま手元から払う額</td><td class="${S.cash<need?'neg':''}">${yen(need)}</td></tr>
+     <tr class="sub"><td>月々の固定費（家賃・店長給与・雑費${fin.loan?'・返済':''}）</td><td>${yen(-monthly)}</td></tr>
+    </tbody></table>
+   </div>
+   <div class="cfoot"><button class="btn primary" data-act="bfgo" ${S.cash<need?'disabled':''}>${S.cash<need?'資金が足りない':'契約して出店する'}</button><button class="btn ghost" data-act="modalcancel">やめる</button></div></div>`;
+}
+function doBranch(){
+  const cost=openCost(BF.loc,BF.size),fin=financeBlock(cost,BF.loan);
+  const need=cost-(fin.loan?fin.t.amt:0);if(S.cash<need)return;
+  S.cash-=need;S.month.invest+=cost;
+  const same=S.branches.filter(b=>b.loc===BF.loc).length;
+  const name=`${S.name} ${LOC[BF.loc].short}${same?same+1+'号':''}店`;
+  if(fin.loan)S.loans.push({name:`${name} 出店融資`,left:fin.t.amt,pay:fin.t.pay});
+  S.branches.push({id:S.nextBr++,loc:BF.loc,size:BF.size,name,mgr:BF.cands[BF.mgr],openDay:S.day+14,stars:[],total:0,aw:.25+S.awareness*.2,month:{sales:0,cost:0,cust:0}});
+  log('朝',`「${name}」の物件を契約した。${fmtDate(S.day+14)}に開店予定`,'info');
+  BF=null;
+}
+function relocModal(){
+  if(!RL)RL={loc:S.loc,size:S.size?0:1,loan:true};
+  const same=RL.loc===S.loc&&RL.size===S.size;
+  const cost=relocCost(RL.loc,RL.size),fin=financeBlock(cost,RL.loan);
+  const need=cost-(fin.loan?fin.t.amt:0);
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="rlh"><div class="chead"><p>いまの店：${esc(LOC[S.loc].name)}${S.size?'（大箱）':''}・${seatsOf()}席・家賃${man(rentOf())}</p><h2 id="rlh">本店を移転する</h2></div>
+   <div class="cbody">
+    <div><h3>移転先</h3><div class="opt">${Object.entries(LOC).map(([k,l])=>`<button data-act="rl" data-k="loc" data-v="${k}" aria-pressed="${RL.loc===k}"><b>${l.name}</b><span>家賃 月${man(rentOf(k,RL.size))}・${seatsOf(k,RL.size)}席<br>${l.desc}</span></button>`).join('')}</div></div>
+    <div><h3>広さ</h3><div class="seg"><button data-act="rl" data-k="size" data-v="0" aria-pressed="${!RL.size}">標準</button><button data-act="rl" data-k="size" data-v="1" aria-pressed="${!!RL.size}">大箱（+8席・家賃1.7倍）</button></div></div>
+    <div><h3>移転の影響</h3><p class="hint" style="color:var(--sumi)">・内装工事で5日間休業（家賃はかかる）<br>・常連の一部が離れ、認知度が35%下がる<br>・口コミ評価と店主の腕はそのまま引き継ぐ<br>・近くの競合店の影響はなくなる<br>・いまの物件の保証金は8割戻る</p></div>
+    ${fin.html}
+    <table class="ledger"><tbody>
+     <tr><td>新しい保証金・内装工事（旧保証金の返還を差し引き）</td><td>${yen(cost)}</td></tr>
+     <tr class="sum"><td>いま手元から払う額</td><td class="${S.cash<need?'neg':''}">${yen(need)}</td></tr>
+    </tbody></table>
+   </div>
+   <div class="cfoot"><button class="btn primary" data-act="rlgo" ${same||S.cash<need?'disabled':''}>${same?'いまの店と同じ条件':S.cash<need?'資金が足りない':'移転を決める'}</button><button class="btn ghost" data-act="modalcancel">やめる</button></div></div>`;
+}
+function doRelocate(){
+  const cost=relocCost(RL.loc,RL.size),fin=financeBlock(cost,RL.loan);
+  const need=cost-(fin.loan?fin.t.amt:0);if(S.cash<need)return;
+  S.cash-=need;S.month.invest+=cost;
+  if(fin.loan)S.loans.push({name:'移転融資',left:fin.t.amt,pay:fin.t.pay});
+  S.loc=RL.loc;S.size=RL.size;S.awareness=Math.max(.2,S.awareness*.65);S.competitor=0;S.relocated=true;
+  S.closedUntil=S.day+4;S.phase='closed';S.closedTitle='移転工事中';S.closedReason=`${LOC[S.loc].name}の新店舗で内装工事中。${fmtDate(S.closedUntil+1)}に新装開店。`;
+  S.prep=Math.min(S.prep,maxPrep());
+  log('朝',`本店を${LOC[S.loc].name}へ移転すると決めた`,'info');
+  RL=null;
+}
+function simBranches(){
+  S.brToday=[];
+  if(dateOf(S.day).getDay()===S.closedDow)return;
+  for(const b of S.branches){
+    if(S.day<b.openDay)continue;
+    const r=simBranch(b);
+    S.brToday.push({id:b.id,name:b.name,...r});
+    S.month.brSales+=r.sales;S.month.brCost+=r.cost;S.month.brCust+=r.cust;
+    b.month.sales+=r.sales;b.month.cost+=r.cost;b.month.cust+=r.cust;
+    S.cash+=r.sales-r.cost;
+    if(S.day===b.openDay)log('—',`「${b.name}」が開店した`,'good');
+  }
+}
+function simBranch(b){
+  const L=LOC[b.loc],st=STYLES[S.style],m=S.menu,w=S.weather,x=dateOf(S.day);
+  const r=ratingOf(b.stars);
+  const fR=Math.min(3.6,Math.exp((r-3.2)*1.5));
+  const fP=priceFactor(m.price,st.exp,L.priceTol);
+  const fT=clamp(1+(18-w.t)*st.temp,.7,1.35);
+  const brand=1+S.buzz.reduce((a,z)=>a+z.mult,0)*.5+Math.max(0,rating()-3.5)*.3;
+  const wsum=Object.values(L.curve).reduce((a,c)=>a+c,0);
+  let share=0;for(let h=11;h<22;h++)share+=L.curve[h]||0;share/=wsum;
+  const pot=L.base*fR*fP*weatherF(b.loc,w)*fT*dowF(b.loc,x)*b.aw*brand*(S.sns?1.08:1)*share*rnd(.85,1.15);
+  const cap=seatsOf(b.loc,b.size)*1.8*11*rnd(.9,1.05);
+  const cust=Math.round(Math.min(pot,cap)),lost=Math.max(0,Math.round(pot-cap));
+  const bc=bowlCost(),ex=st.extra;
+  const sideP=ex.rate*ex.price+(m.ajitama?SIDES.ajitama.rate*SIDES.ajitama.price:0)+(!st.riceFree&&m.rice?SIDES.rice.rate*SIDES.rice.price:0)+(m.gyoza?SIDES.gyoza.rate*SIDES.gyoza.price:0);
+  const sideC=ex.rate*ex.cost+(m.ajitama?SIDES.ajitama.rate*SIDES.ajitama.cost:0)+(st.riceFree?.7*SIDES.rice.cost:m.rice?SIDES.rice.rate*SIDES.rice.cost:0)+(m.gyoza?SIDES.gyoza.rate*SIDES.gyoza.cost:0);
+  const sales=cust*(m.price+sideP);
+  const food=cust*(bc.total+sideC+15)+Math.max(15,cust*.1)*bc.soup;
+  const labor=(2+Math.ceil(cust/90))*S.wage*12;
+  const util=3500+cust*1.1*st.gas+660*10;
+  const cost=food+labor+util;
+  const taste=tasteCore()-(10-b.mgr.skill)*1.1;
+  const val=taste-(m.price-st.exp)/12+2+(lost>cust*.2?-2:0)+(st.riceFree?1.5:0)+(m.ajitama?.5:0)-Math.max(0,r-3.6)*7;
+  const avg=clamp(1+(val-36)/12,1,5);
+  const nr=poisson(cust*.06);
+  for(let i=0;i<nr;i++){b.stars.push(Math.round(clamp(avg+gauss()*.55,1,5)*2)/2);b.total++}
+  if(b.stars.length>150)b.stars.splice(0,b.stars.length-150);
+  b.aw=clamp(b.aw+.002+cust*(avg-2.7)*.00005,.2,1.25);
+  if(avg<3)S.awareness=Math.max(.2,S.awareness-(3-avg)*.002);
+  b.mgr.skill=Math.min(10,b.mgr.skill+.01);
+  return {cust,lost,sales,cost,profit:sales-cost,avg,rating:ratingOf(b.stars)};
+}
+function expandHTML(){
+  const ladder=STAGES.map((st,i)=>{
+    const done=i<S.stage,cur=i===S.stage;
+    return `<li class="${done?'done':cur?'cur':''}"><span class="sn">${done?'済':i+1}</span><div><b>${esc(st.name)}</b><span>${esc(st.desc)}</span>${cur?`<ul>${st.conds().map(([t,ok])=>`<li class="${ok?'ok':''}">${ok?'✓':'・'} ${esc(t)}</li>`).join('')}</ul>`:''}${done&&S.stageDay[i]!=null?`<span>${fmtDate(S.stageDay[i])}に達成</span>`:''}</div></li>`;
+  }).join('');
+  const brs=S.branches.map(b=>{
+    const t=(S.brToday||[]).find(z=>z.id===b.id),pre=S.day<b.openDay;
+    const closeBtn=pendingClose===b.id?`<button class="btn accent" data-act="brclose2" data-id="${b.id}">本当に閉める</button>`:`<button class="btn ghost" data-act="brclose" data-id="${b.id}">閉店</button>`;
+    return `<div class="item"><div><b>${esc(b.name)}</b><span>${pre?`開店準備中（${fmtDate(b.openDay)}開店）`:`★${ratingOf(b.stars).toFixed(2)}・${seatsOf(b.loc,b.size)}席・店長 ${esc(b.mgr.name)}（腕前${b.mgr.skill.toFixed(1)}）`}${t?`<br>前日 客${t.cust}人・利益${yen(t.profit)}`:''}${pre?'':`<br>今月 売上${man(b.month.sales)}・費用${man(b.month.cost)}（固定費は月末）`}</span></div>${closeBtn}</div>`;
+  }).join('');
+  const loans=S.loans.map((l,i)=>`<div class="item"><div><b>${esc(l.name)}</b><span>残高${yen(l.left)}・月々${yen(l.pay)}</span></div><button class="btn ghost" data-act="prepay" data-i="${i}" ${S.cash<Math.min(1000000,l.left)?'disabled':''}>${l.left<1000000?'完済する':'100万円返す'}</button></div>`).join('');
+  return `<div><h3>伝説への道</h3><ol class="ladder">${ladder}</ol></div>
+   <div><h3>店舗（${1+S.branches.length}店）</h3><div class="invest">
+    <div class="item"><div><b>本店　${esc(LOC[S.loc].name)}${S.size?'（大箱）':''}</b><span>${seatsOf()}席・家賃${man(rentOf())}・★${rating().toFixed(2)}</span></div><button class="btn ghost" data-act="rlopen">移転する</button></div>
+    ${brs}</div>
+    <div style="display:flex;padding-top:8px"><button class="btn accent" data-act="bfopen" style="flex:1">支店を出す</button></div></div>
+   <div><h3>借入</h3>${loans?`<div class="invest">${loans}</div>`:'<p class="hint">借入はない。</p>'}<p class="hint">返済は毎月末。繰上げ返済すると残高がそのまま減る。</p></div>`;
+}
+
 // ───────── 描画：店内 ─────────
 const cv=$('#cv'),cx=cv.getContext('2d');
 const W=720,H=320;
@@ -549,7 +845,7 @@ let steam=[];
 function drawShop(t){
   if(!S)return;
   const L=LOC[S.loc],st=STYLES[S.style];
-  const nSeats=L.seats;
+  const nSeats=seatsOf();
   // 壁
   let g=cx.createLinearGradient(0,0,0,190);g.addColorStop(0,'#3a2a1d');g.addColorStop(1,'#4d3826');
   cx.fillStyle=g;cx.fillRect(0,0,W,190);
@@ -719,7 +1015,8 @@ function renderBar(){
    <div class="stat"><span class="k">営業${S.day+1}日目</span><span class="v">${fmtDate(S.day)}</span></div>
    <div class="stat"><span class="k">天気</span><span class="v">${WICON[S.weather.w]} ${S.weather.w} ${Math.round(S.weather.t)}℃</span></div>
    <div class="stat"><span class="k">手元資金</span><span class="v ${S.cash<0?'neg':''}">${yen(S.cash)}</span></div>
-   <div class="stat"><span class="k">口コミ評価 (${S.rCnt}件)</span><span class="v">★${r.toFixed(2)}</span></div>
+   <div class="stat"><span class="k">本店の評価 (${S.rTotal}件)</span><span class="v">★${r.toFixed(2)}</span></div>
+   <div class="stat"><span class="k">目標 ${Math.min(S.stage+1,5)}/5</span><span class="v">${S.stage>=5?'伝説達成':STAGES[S.stage].name}</span></div>
    <div class="stat"><span class="k">店主の疲労</span><span class="v">${Math.round(S.fatigue)}</span><span class="meter"><i class="${S.fatigue>70?'hot':''}" style="width:${S.fatigue}%"></i></span></div>`;
 }
 function renderLive(){
@@ -753,7 +1050,7 @@ function stepper(k,v,unit=''){
   return `<div class="stepper"><button data-act="step" data-k="${k}" data-d="-1" aria-label="減らす">−</button><output>${v}${unit}</output><button data-act="step" data-k="${k}" data-d="1" aria-label="増やす">＋</button></div>`;
 }
 function morningHTML(){
-  const tabs=[['prep','仕込み'],['menu','品書き'],['invest','投資・宣伝'],['books','帳簿']];
+  const tabs=[['prep','仕込み'],['menu','品書き'],['invest','投資'],['expand','店舗展開'],['diag','経営診断'],['books','帳簿']];
   let body='';
   if(tab==='prep'){
     const yest=S.hist.filter(h=>!h.closed).slice(-1)[0];
@@ -807,9 +1104,7 @@ function morningHTML(){
     ];
     body=`<div class="invest">${items.map(([k,t,d,b,dis])=>`<div class="item"><div><b>${t}</b><span>${d}</span></div><button class="btn ${k==='sns'&&S.sns?'ghost':'accent'}" data-act="buy" data-k="${k}" ${dis?'disabled':''}>${b}</button></div>`).join('')}</div>
      <p class="hint">認知度 ${(S.awareness*100).toFixed(0)}%。良い一杯を出すほど口コミで自然に広がり、悪い一杯は客を減らす。</p>`;
-  }else{
-    body=booksHTML();
-  }
+  }else if(tab==='expand'){body=expandHTML()}else if(tab==='diag'){body=diagHTML()}else{body=booksHTML()}
   return `<div class="phead"><h2>開店前の段取り</h2><p>${fmtDate(S.day)}　仕込みと品書きを決めて暖簾を出す</p></div>
    <div class="tabs" role="tablist">${tabs.map(([k,n])=>`<button role="tab" data-act="tab" data-k="${k}" aria-selected="${tab===k}">${n}</button>`).join('')}</div>
    <div class="pbody">${body}</div>
@@ -817,8 +1112,8 @@ function morningHTML(){
 }
 function booksHTML(){
   const M=S.month;
-  const fixedEst=LOC[S.loc].rent+LOAN_PAY+LEASE+50000;
-  const op=M.sales-M.food-M.waste-M.labor-M.util-M.ads;
+  const fixedEst=rentOf()+loanPay()+LEASE+50000+S.branches.filter(b=>S.day>=b.openDay).reduce((a,b)=>a+rentOf(b.loc,b.size)+b.mgr.salary+50000,0);
+  const op=M.sales-M.food-M.waste-M.labor-M.util-M.ads+M.brSales-M.brCost;
   const fl=M.sales?((M.food+M.waste+M.labor)/M.sales*100):0;
   return `
    <div><h3>今月の途中経過（${M.days}営業日）</h3>
@@ -829,10 +1124,11 @@ function booksHTML(){
     <tr><td>人件費</td><td class="neg">${yen(-M.labor)}</td></tr>
     <tr><td>水道光熱費</td><td class="neg">${yen(-M.util)}</td></tr>
     <tr><td>広告・求人</td><td class="neg">${yen(-M.ads)}</td></tr>
+    ${S.branches.length?`<tr><td>支店の損益（売上${man(M.brSales)}・客${M.brCust.toLocaleString()}人）</td><td class="${M.brSales-M.brCost<0?'neg':'pos'}">${yen(M.brSales-M.brCost)}</td></tr>`:''}
     <tr class="sum"><td>月末の固定費前</td><td class="${op<0?'neg':'pos'}">${yen(op)}</td></tr>
-    <tr class="sub"><td>月末に引き落とし予定（家賃・返済・リース・雑費）</td><td>${yen(-(fixedEst+M.bowls*12))}</td></tr>
+    <tr class="sub"><td>月末に引き落とし予定（家賃・返済・リース・雑費${S.branches.length?'・支店固定費':''}）</td><td>${yen(-(fixedEst+M.bowls*12))}</td></tr>
     <tr class="sub"><td>FL比率（原価＋人件費÷売上）</td><td>${fl.toFixed(1)}%</td></tr>
-    <tr class="sub"><td>借入残高</td><td>${yen(S.debt)}</td></tr>
+    <tr class="sub"><td>借入残高</td><td>${yen(debtOf())}</td></tr>
    </tbody></table></div>
    <div><h3>直近の売上と客数</h3>${histChart()}</div>
    <div><h3>最近の口コミ</h3><div class="reviews">${S.reviews.slice(0,6).map(r=>`<div class="review"><span class="stars">${stars(r.star)}</span> ${esc(r.text)}</div>`).join('')||'<p class="hint">まだ口コミはない。</p>'}</div></div>
@@ -875,6 +1171,7 @@ function reportHTML(){
   if(R.lostQ>R.cust*.15&&R.lostQ>4)comment.push(`行列や待ち時間で${R.lostQ}人が帰った。人手か回転に課題。`);
   if(R.waitMax>30)comment.push(`最長${Math.round(R.waitMax)}分待たせた。`);
   if(S.fatigue>70)comment.push('店主の疲労が限界に近い。休むかバイトを増やしたい。');
+  if(R.criticMsg)comment.unshift(R.criticMsg);
   return `<div class="phead"><h2>日報</h2><p>${fmtDate(R.day)}　平均満足度 ${R.avgStar?R.avgStar.toFixed(2):'—'}</p></div>
    <div class="pbody">
     <div class="costbox">
@@ -890,17 +1187,18 @@ function reportHTML(){
      <tr><td>水道光熱費</td><td class="neg">${yen(-R.util)}</td></tr>
      ${R.sns?`<tr><td>SNS広告</td><td class="neg">${yen(-R.sns)}</td></tr>`:''}
      <tr class="sum"><td>本日の利益（家賃等の固定費前）</td><td class="${R.profit<0?'neg':'pos'}">${yen(R.profit)}</td></tr>
-     <tr class="sub"><td>固定費の日割り目安</td><td>${yen(-(LOC[S.loc].rent+LOAN_PAY+LEASE+50000)/30)}</td></tr>
+     <tr class="sub"><td>固定費の日割り目安</td><td>${yen(-(rentOf()+loanPay()+LEASE+50000)/30)}</td></tr>
     </tbody></table>
+    ${R.br&&R.br.length?`<div><h3>支店の今日</h3><table class="ledger"><tbody>${R.br.map(b=>`<tr><td>${esc(b.name)}　客${b.cust}人・★${b.rating.toFixed(2)}${b.lost?`・満席で${b.lost}人帰った`:''}</td><td class="${b.profit<0?'neg':'pos'}">${yen(b.profit)}</td></tr>`).join('')}</tbody></table><p class="hint">支店の家賃・店長給与は月末にまとめて引き落とし。</p></div>`:''}
     ${comment.length?`<div><h3>振り返り</h3>${comment.map(c=>`<p class="hint" style="color:var(--sumi)">・${esc(c)}</p>`).join('')}</div>`:''}
     <div><h3>今日の口コミ</h3><div class="reviews">${R.reviews.map(r=>`<div class="review"><span class="stars">${stars(r.star)}</span> ${esc(r.text)}</div>`).join('')||'<p class="hint">投稿はなかった。</p>'}</div></div>
    </div>
    <div class="pfoot"><button class="btn primary" data-act="next">翌日へ</button></div>`;
 }
 function closedHTML(){
-  return `<div class="phead"><h2>${S.sick?'臨時休業':'定休日'}</h2><p>${fmtDate(S.day)}</p></div>
+  return `<div class="phead"><h2>${esc(S.closedTitle||'定休日')}</h2><p>${fmtDate(S.day)}</p></div>
    <div class="pbody"><p style="margin:0">${esc(S.closedReason||'')}</p><p class="hint">店主の疲労 ${Math.round(S.fatigue)} → 休むと大きく回復する。</p>${booksHTML()}</div>
-   <div class="pfoot"><button class="btn primary" data-act="rest">翌日へ</button>${S.sick?'':'<button class="btn ghost" data-act="forceopen">休まず営業する</button>'}</div>`;
+   <div class="pfoot"><button class="btn primary" data-act="rest">翌日へ</button>${S.closedTitle==='定休日'?'<button class="btn ghost" data-act="forceopen">休まず営業する</button>':''}</div>`;
 }
 function overHTML(){
   const clear=S.phase==='clear';
@@ -911,7 +1209,9 @@ function overHTML(){
 
 // ───────── モーダル ─────────
 function openModal(html){const m=$('#modal');m.innerHTML=html;m.hidden=false;const b=m.querySelector('button');if(b)b.focus()}
-function closeModal(){const m=$('#modal');m.hidden=true;m.innerHTML=''}
+const MQ=[];
+function closeModal(){const m=$('#modal');m.hidden=true;m.innerHTML='';if(MQ.length)openModal(MQ.shift())}
+function queueModal(h){if($('#modal').hidden)openModal(h);else MQ.push(h)}
 let setup={name:'麺屋 灯',loc:'shotengai',style:'shoyu'};
 function showSetup(){
   openModal(`<div class="card" role="dialog" aria-modal="true" aria-labelledby="suh">
@@ -920,13 +1220,13 @@ function showSetup(){
     <div><h3>屋号</h3><input class="textin" id="shopname" maxlength="12" value="${esc(setup.name)}"></div>
     <div><h3>物件（立地）</h3><div class="opt">${Object.entries(LOC).map(([k,l])=>`<button data-act="su" data-k="loc" data-v="${k}" aria-pressed="${setup.loc===k}"><b>${l.name}</b><span>家賃 月${man(l.rent)}・${l.seats}席<br>${l.desc}</span></button>`).join('')}</div></div>
     <div><h3>看板の一杯</h3><div class="opt">${Object.entries(STYLES).map(([k,s])=>`<button data-act="su" data-k="style" data-v="${k}" aria-pressed="${setup.style===k}"><b>${s.name}</b><span>${s.desc}</span></button>`).join('')}</div></div>
-    <p class="hint">毎月末に家賃・借入返済${man(LOAN_PAY)}・券売機リースなどが引き落とされる。月末に資金がマイナスなら閉店。1年間（365日）店を続けられたら一周年。</p>
+    <p class="hint">毎月末に家賃・借入返済${man(LOAN_PAY)}・券売機リースなどが引き落とされる。月末に資金がマイナスなら閉店。最終目標は「伝説のラーメン屋」。1周年・行列店・一国一城・名店と段階を踏み、移転や支店展開もできる。</p>
    </div>
    <div class="cfoot"><button class="btn primary" data-act="begin">この条件で開業する</button></div></div>`);
 }
-function showMonth(M){
+function monthHTML(M){
   const fl=M.sales?((M.food+M.waste+M.labor)/M.sales*100):0;
-  openModal(`<div class="card" role="dialog" aria-modal="true" aria-labelledby="mh">
+  return(`<div class="card" role="dialog" aria-modal="true" aria-labelledby="mh">
    <div class="chead"><p>月次決算　${M.days}営業日・来客${M.cust.toLocaleString()}人・機会損失${M.lost.toLocaleString()}人</p><h2 id="mh">${M.label}の損益計算書</h2></div>
    <div class="cbody"><table class="ledger"><tbody>
     <tr><td>売上高</td><td>${yen(M.sales)}</td></tr>
@@ -937,21 +1237,16 @@ function showMonth(M){
     <tr><td>家賃</td><td class="neg">${yen(-M.rent)}</td></tr>
     <tr><td>広告・求人</td><td class="neg">${yen(-M.ads)}</td></tr>
     <tr><td>消耗品・リース・雑費</td><td class="neg">${yen(-M.misc)}</td></tr>
-    <tr class="sum"><td>営業利益</td><td class="${M.profit<0?'neg':'pos'}">${yen(M.profit)}</td></tr>
+    ${M.brs&&M.brs.length?`<tr class="sum"><td>本店の営業利益</td><td class="${M.mainProfit<0?'neg':'pos'}">${yen(M.mainProfit)}</td></tr>${M.brs.map(b=>`<tr><td>${esc(b.name)}（客${b.cust.toLocaleString()}人・★${b.rating.toFixed(2)}）</td><td class="${b.profit<0?'neg':'pos'}">${yen(b.profit)}</td></tr>`).join('')}`:''}
+    <tr class="sum"><td>営業利益${M.brs&&M.brs.length?'（全店）':''}</td><td class="${M.profit<0?'neg':'pos'}">${yen(M.profit)}</td></tr>
     <tr class="sub"><td>借入返済（元利）</td><td>${yen(-M.loan)}</td></tr>
     <tr class="sub"><td>FL比率</td><td>${fl.toFixed(1)}%　<span class="pill ${fl<60?'good':fl<68?'warn':'bad'}">${fl<60?'優良':fl<68?'要注意':'危険'}</span></td></tr>
     <tr class="sub"><td>月末の手元資金</td><td>${yen(S.cash)}</td></tr>
    </tbody></table>
-   <p class="hint">FL比率は飲食店の健康診断。60%以下が目安。設備投資（${yen(M.invest)}）は営業利益の外で支払い済み。</p></div>
+   <p class="hint">FL比率は飲食店の健康診断。60%以下が目安。設備投資・出店費用（${yen(M.invest)}）は営業利益の外で支払い済み。</p>${diagMini()}</div>
    <div class="cfoot"><button class="btn primary" data-act="closemodal">${S.cash<0?'結果を見る':'来月も頑張る'}</button></div></div>`);
 }
 function gameOver(reason){S.phase='over';S.overReason=reason;save();render()}
-function finale(){
-  const r=rating();
-  const rank=S.cash>START_CASH*2&&r>=3.8?'地域の名店':S.cash>START_CASH&&r>=3.5?'繁盛店':S.cash>0?'なんとか続く店':'崖っぷち';
-  S.phase='clear';S.overReason=`1年間、暖簾を守り抜いた。評価★${r.toFixed(2)}、手元資金${yen(S.cash)}、通算営業利益${yen(S.totalProfit)}。称号「${rank}」。`;
-  save();render();
-}
 
 // ───────── 入力 ─────────
 document.addEventListener('click',e=>{
@@ -980,6 +1275,16 @@ document.addEventListener('click',e=>{
   if(a==='next'){nextDay();return}
   if(a==='ev'){const ev=EVENTS.find(x=>x.id===S.event);const msg=ev.choices[+b.dataset.i].f();S.event=null;closeModal();log('朝',msg,'info');save();render();return}
   if(a==='closemodal'){closeModal();render();return}
+  if(a==='modalcancel'){BF=null;RL=null;closeModal();render();return}
+  if(a==='bfopen'){BF=null;openModal(branchModal());return}
+  if(a==='bf'){const k=b.dataset.k;BF[k]=k==='loc'?b.dataset.v:+b.dataset.v;openModal(branchModal());return}
+  if(a==='bfgo'){doBranch();closeModal();checkStages();save();render();return}
+  if(a==='rlopen'){RL=null;openModal(relocModal());return}
+  if(a==='rl'){const k=b.dataset.k;RL[k]=k==='loc'?b.dataset.v:+b.dataset.v;openModal(relocModal());return}
+  if(a==='rlgo'){doRelocate();closeModal();checkStages();save();render();return}
+  if(a==='prepay'){const l=S.loans[+b.dataset.i];if(!l)return;const amt=Math.min(1000000,l.left);if(S.cash<amt)return;S.cash-=amt;l.left-=amt;log('朝',`${l.name}を${yen(amt)}繰上げ返済した`,'info');S.loans=S.loans.filter(x=>x.left>0);checkStages();save();render();return}
+  if(a==='brclose'){pendingClose=+b.dataset.id;render();return}
+  if(a==='brclose2'){const i=S.branches.findIndex(x=>x.id===+b.dataset.id);if(i>=0){const br=S.branches[i];const ref=S.day<br.openDay?rentOf(br.loc,br.size)*6:rentOf(br.loc,br.size)*6*.8;S.cash+=ref;S.branches.splice(i,1);log('朝',`「${br.name}」を閉店した。保証金${yen(ref)}が戻った`,'bad')}pendingClose=null;save();render();return}
   if(a==='restart'){try{localStorage.removeItem(SAVE_KEY)}catch(_){};S=null;D=null;logEl.innerHTML='';render();showSetup();return}
   if(a==='su'){setup[b.dataset.k]=b.dataset.v;setup.name=$('#shopname').value||setup.name;showSetup();return}
   if(a==='begin'){
@@ -1002,6 +1307,8 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const t=e.target;if(!S)return;
   if(t.dataset.act==='side'){S.menu[t.dataset.k]=t.checked;save();render()}
+  if(t.dataset.act==='bfloan'&&BF){BF.loan=t.checked;openModal(branchModal())}
+  if(t.dataset.act==='rlloan'&&RL){RL.loan=t.checked;openModal(relocModal())}
   if(t.id==='price'){render()}
 });
 function buy(k){
@@ -1020,11 +1327,25 @@ function save(){
   if(!S)return;
   try{const copy={...S};if(copy.phase==='open'){copy.phase='morning'}localStorage.setItem(SAVE_KEY,JSON.stringify(copy))}catch(_){}
 }
-function load(){try{const s=localStorage.getItem(SAVE_KEY);if(s){const o=JSON.parse(s);if(o&&o.v===1)return o}}catch(_){}return null}
+function migrate(o){
+  if(o.v===1){
+    const avg=o.rCnt?o.rSum/o.rCnt:3;
+    o.stars=Array(Math.min(o.rCnt||0,150)).fill(avg);o.rTotal=o.rCnt||0;
+    o.loans=o.debt>0?[{name:'開業資金',left:o.debt,pay:LOAN_PAY}]:[];
+    o.v=2;
+  }
+  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0};
+  for(const k in def)if(o[k]===undefined)o[k]=def[k];
+  if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
+  for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
+  if(o.phase==='clear')o.phase='morning';
+  return o;
+}
+function load(){try{const s=localStorage.getItem(SAVE_KEY);if(s){const o=JSON.parse(s);if(o&&(o.v===1||o.v===2))return migrate(o)}}catch(_){}return null}
 window.claude?.hot?.snapshot?.(()=>({S:S&&S.phase==='open'?{...S,phase:'morning'}:S}));
 
 function boot(data){
-  S=(data&&data.S)||load();
+  S=(data&&data.S)?migrate(data.S):load();
   if(S&&S.phase==='open'){S.phase='morning'}
   render();
   if(!S){showSetup()}
