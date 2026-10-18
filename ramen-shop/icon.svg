@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#18223a"/>
+  <!-- 湯気 -->
+  <g fill="none" stroke="#f4efe4" stroke-width="22" stroke-linecap="round" opacity=".85">
+    <path d="M196 156c-22-26 22-44 0-72"/>
+    <path d="M256 146c-22-26 22-44 0-72"/>
+    <path d="M316 156c-22-26 22-44 0-72"/>
+  </g>
+  <!-- 丼の縁とスープ -->
+  <ellipse cx="256" cy="246" rx="190" ry="44" fill="#e9b25a"/>
+  <!-- 麺 -->
+  <g fill="none" stroke="#f6e6b8" stroke-width="12" stroke-linecap="round">
+    <path d="M118 250c30-14 60 10 92-2s56-14 86 0 58 10 90-4"/>
+    <path d="M140 266c28-10 56 8 86-2s58-10 88 2 50 6 74-4"/>
+  </g>
+  <!-- チャーシュー -->
+  <ellipse cx="190" cy="236" rx="40" ry="17" fill="#c98a5a"/>
+  <ellipse cx="190" cy="236" rx="25" ry="9" fill="#e3b38a"/>
+  <!-- 海苔 -->
+  <path d="M332 196h44v52h-44z" fill="#1f3a2a"/>
+  <!-- 味玉 -->
+  <ellipse cx="292" cy="240" rx="30" ry="18" fill="#fffaf0"/>
+  <ellipse cx="292" cy="240" rx="15" ry="10" fill="#f0a93a"/>
+  <!-- 丼 -->
+  <path d="M66 246h380c0 108-82 176-190 176S66 354 66 246z" fill="#b23a2e"/>
+  <!-- 雷紋の帯 -->
+  <path d="M96 302h320" stroke="#f4efe4" stroke-width="10"/>
+  <g fill="none" stroke="#f4efe4" stroke-width="8" stroke-linejoin="miter">
+    <path d="M122 318v22h22v-14h-10"/><path d="M172 318v22h22v-14h-10"/><path d="M222 318v22h22v-14h-10"/><path d="M272 318v22h22v-14h-10"/><path d="M322 318v22h22v-14h-10"/><path d="M372 318v22h22v-14h-10"/>
+  </g>
+  <path d="M190 422h132l-12 26H202z" fill="#8a2a21"/>
+</svg>
