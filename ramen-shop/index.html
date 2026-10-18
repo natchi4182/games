@@ -1005,100 +1005,135 @@ function tutorialHTML(){
 }
 
 // ───────── 修行 ─────────
-const TRAIN_MAX=24, TRAIN_MIN=8;
-const TRAIN_ACTS=[
-  {id:'prep',name:'仕込みと洗い場',desc:'下積みの基本。腕前と師匠の信頼が少しずつ上がる',fx:{skill:.38,trust:3,fat:12}},
-  {id:'soup',name:'夜にスープの研究',desc:'自腹で材料を買って試作。腕前が大きく伸び、まれに秘伝の技を掴む',fx:{skill:.62,fat:18,cost:15000}},
-  {id:'books',name:'帳簿と発注を任される',desc:'原価・仕入れ・シフトを学ぶ。経営手腕が上がる（師匠の信頼55以上）',fx:{mgmt:.62,trust:2,fat:8},need:t=>t.trust>=55},
-  {id:'tour',name:'休みの日に食べ歩き',desc:'他店の味と客層を研究する。人脈と腕前が少し上がる',fx:{skill:.15,conn:.32,fat:5,cost:12000}},
-  {id:'net',name:'業者や常連と付き合う',desc:'飲みに行き、顔を覚えてもらう。人脈が上がる',fx:{conn:.55,fat:10,cost:20000}},
-  {id:'side',name:'夜に別のバイト',desc:'開業資金を貯める。体はきつく、師匠はいい顔をしない',fx:{save:60000,fat:22,trust:-2}},
-  {id:'rest',name:'しっかり休む',desc:'疲れを抜く。何もしない週は師匠の信頼が少し下がる',fx:{fat:-40,trust:-1}},
+const TRAIN_MIN=12, TRAIN_MAX=60; // 1ターン＝1か月。最低1年、最長5年
+const ROLES=[
+  {name:'洗い場・掃除',skill:.08,mgmt:0,conn:0,req:()=>true,reqText:''},
+  {name:'仕込み',skill:.14,mgmt:0,conn:.02,req:t=>t.trust>=55&&t.m>=3,reqText:'師匠の信頼55・修行3か月'},
+  {name:'麺上げ・盛り付け',skill:.2,mgmt:.03,conn:.08,req:t=>t.trust>=62&&t.skill>=1.5,reqText:'師匠の信頼62・腕前1.5'},
+  {name:'スープ番',skill:.26,mgmt:.03,conn:.03,req:t=>t.trust>=72&&t.skill>=3.5,reqText:'師匠の信頼72・腕前3.5'},
+  {name:'店長代理',skill:.18,mgmt:.3,conn:.12,req:t=>t.trust>=82&&t.skill>=5.5&&t.mgmt>=2,reqText:'師匠の信頼82・腕前5.5・経営手腕2.0'},
+];
+const DAY_ACTS=[
+  {id:'obey',name:'言われた仕事を黙々と',desc:'師匠の信頼が着実に上がる。身につくのは役割どおり',mul:1,trust:2,motiv:-1},
+  {id:'steal',name:'師匠の技を盗む',desc:'腕前の伸びが1.6倍。ただし手を止めて見ていると怒鳴られることがある',mul:1.6,trust:0,motiv:0,risk:.22},
+  {id:'watch',name:'客と店の回し方を観察',desc:'腕前の伸びは鈍いが、経営手腕と人脈が育つ',mul:.6,trust:1,motiv:0,mgmt:.15,conn:.1},
+];
+const NIGHT_ACTS=[
+  {id:'soup',name:'自腹でスープ研究',desc:'腕前が伸び、まれに秘伝の技を掴む',skill:.18,fat:15,cost:30000,motiv:0},
+  {id:'study',name:'帳簿と経営の勉強',desc:'原価計算や資金繰りを学ぶ',mgmt:.2,fat:8,cost:5000,motiv:-1},
+  {id:'tour',name:'休日に食べ歩き',desc:'他店の味と客層を知る。気分転換にもなる',skill:.08,conn:.15,fat:5,cost:25000,motiv:5},
+  {id:'net',name:'業者や常連と飲む',desc:'顔を覚えてもらう。開業後の人脈になる',conn:.25,fat:8,cost:40000,motiv:3},
+  {id:'side',name:'夜に別のバイト',desc:'開業資金が貯まる。体と心がすり減る',save:120000,fat:22,motiv:-6,trust:-1},
+  {id:'rest',name:'しっかり休む',desc:'疲れを抜き、心を立て直す',fat:-35,motiv:6},
 ];
 const TRAIN_EVENTS=[
-  {p:t=>.06,f:t=>{t.skill+=.3;return '師匠「スープは毎日違う。毎日飲め」。言われた通りにしたら、少し分かってきた。'}},
-  {p:t=>.05,f:t=>{t.conn+=.4;return '兄弟子が独立した。開店を手伝いに行き、業者を紹介してもらった。'}},
-  {p:t=>t.fat>60?.12:.03,f:t=>{t.fat+=15;return '疲れで手元が狂い、包丁で指を切った。'}},
-  {p:t=>t.fat>70?.15:.02,f:t=>{t.trust-=5;return '味がブレて師匠に怒鳴られた。「客は毎日同じ一杯を食いに来るんだ」'}},
-  {p:t=>.05,f:t=>{t.trust+=5;return '作ったまかないが常連に好評だった。師匠が黙って頷いた。'}},
-  {p:t=>.04,f:t=>{t.mgmt+=.3;return '出入りの業者から、仕入れ値を下げるコツを教わった。'}},
+  {p:t=>.05+t.skill*.006,f:t=>{t.motiv+=8;t.trust+=2;return '師匠がスープを味見して、ひとこと「悪くない」。その夜は眠れなかった。'}},
+  {p:t=>t.m>12?.05:.01,f:t=>{t.conn+=.3;t.motiv-=4;return '兄弟子が独立した。開店を手伝いながら「自分はいつになるのか」と思った。'}},
+  {p:t=>.04,f:t=>{t.motiv-=8;return '一緒に入った同期が辞めていった。'}},
+  {p:t=>t.fat>65?.1:.03,f:t=>{t.fat+=10;t.motiv-=3;return '寸胴を運んでいて腕を火傷した。'}},
+  {p:t=>t.m>24?.08:.02,f:t=>{t.motiv-=6;return '実家から電話。「いつまで修行するんだ。ちゃんと食べていけるのか」'}},
+  {p:t=>t.role>=2?.06:.02,f:t=>{t.motiv+=6;t.conn+=.1;return '常連に名前を覚えられた。「今日のは兄ちゃんが作ったのか」'}},
+  {p:t=>.04,f:t=>{t.mgmt+=.2;return '出入りの業者から、仕入れ値を下げるコツを教わった。'}},
+  {p:t=>t.m>24&&t.role>=3?.03:0,f:t=>{t.mgmt+=.5;t.trust+=6;t.fat+=10;return '師匠が腰を痛めて一週間休んだ。その間、店を任された。'}},
+  {p:t=>.04,f:t=>{t.motiv+=10;return '家族から差し入れと手紙が届いた。もう少し頑張れる。'}},
 ];
 function startTraining(){
   S.phase='train';
-  S.train={week:0,skill:0,mgmt:0,conn:0,trust:50,fat:10,save:0,secret:0,last:null};
+  S.train={m:0,role:0,roleM:0,skill:0,mgmt:0,conn:0,trust:50,fat:10,motiv:70,save:0,secret:0,day:'obey',night:'rest',last:null,crisis:null,held:false};
 }
+const trainAge=m=>`${Math.floor(m/12)+1}年目 ${m%12+1}か月`;
 function trainRank(t){
   const sc=t.skill+t.mgmt+t.conn+t.trust/25;
   return sc>=16?'師範代':sc>=11?'一人前':sc>=6?'半人前':'見習い';
 }
-function trainAct(id){
-  const t=S.train,a=TRAIN_ACTS.find(x=>x.id===id);if(!a||t.week>=TRAIN_MAX)return;
-  if(a.need&&!a.need(t))return;
+function trainMonth(){
+  const t=S.train;if(t.crisis||t.m>=TRAIN_MAX)return;
+  const d=DAY_ACTS.find(x=>x.id===t.day),n=NIGHT_ACTS.find(x=>x.id===t.night),r=ROLES[t.role];
   const msgs=[];
-  t.week++;
-  if(t.fat>=100){t.fat=45;t.trust-=2;t.last={act:'体調不良',msgs:['無理がたたって寝込んだ。この週は何もできなかった。']};return}
+  t.m++;t.roleM++;
   const eff=t.fat>85?.5:1;
-  const fx=a.fx;
-  if(fx.skill)t.skill+=fx.skill*eff*(1-t.skill/13);
-  if(fx.mgmt)t.mgmt+=fx.mgmt*eff*(1-t.mgmt/13);
-  if(fx.conn)t.conn+=fx.conn*eff*(1-t.conn/13);
-  if(fx.trust)t.trust+=fx.trust;
-  t.fat=clamp(t.fat+(fx.fat||0),0,110);
-  t.save+=5000-(fx.cost||0)+(fx.save||0); // 見習いの給料5万−生活費4.5万
-  if(eff<1)msgs.push('疲れが溜まっていて、身につき方が半分だった。');
-  if(id==='soup'&&t.secret<6&&Math.random()<.15){t.secret+=2;msgs.push('閃いた。スープの火入れに自分だけのコツを見つけた（秘伝の技 +2）。')}
-  for(const e of TRAIN_EVENTS){if(Math.random()<e.p(t)){msgs.push(e.f(t));break}}
-  t.skill=clamp(t.skill,0,10);t.mgmt=clamp(t.mgmt,0,10);t.conn=clamp(t.conn,0,10);t.trust=clamp(t.trust,0,100);
-  t.last={act:a.name,msgs};
+  if(eff<1)msgs.push('疲れが抜けず、何をやっても身につき方が半分だった。');
+  const dim=v=>1-v/12; // 上達するほど伸びにくい
+  t.skill+=(r.skill*d.mul+(n.skill||0))*eff*dim(t.skill);
+  t.mgmt+=(r.mgmt+(d.mgmt||0)+(n.mgmt||0))*eff*dim(t.mgmt);
+  t.conn+=(r.conn+(d.conn||0)+(n.conn||0))*eff*dim(t.conn);
+  t.trust+=d.trust+(n.trust||0);
+  if(d.risk&&Math.random()<d.risk){t.trust-=4;t.motiv-=5;msgs.push('手を止めて師匠の手元を見ていたら「見てる暇があったら手を動かせ」と怒鳴られた。')}
+  t.fat=clamp(t.fat+10+(n.fat||0)-12,0,110);
+  t.save+=10000-(n.cost||0)+(n.save||0); // 見習いの給料18万−生活費17万
+  t.motiv+=-3+(d.motiv||0)+(n.motiv||0)+(t.fat>60?-6:0)+(t.role===0&&t.roleM>6?-3:0);
+  if(t.night==='soup'&&t.secret<6&&Math.random()<.035){t.secret+=2;msgs.push('閃いた。スープの火入れに自分だけのコツを見つけた（秘伝の技 +2）。')}
+  if(t.fat>=100){t.fat=50;t.motiv-=8;t.trust-=2;msgs.push('無理がたたって寝込み、半月店に出られなかった。')}
+  if(Math.random()<.35){for(const e of TRAIN_EVENTS){if(Math.random()<e.p(t)*2.5){msgs.push(e.f(t));break}}}
+  // 昇格
+  const nx=ROLES[t.role+1];
+  if(nx&&nx.req(t)){t.role++;t.roleM=0;t.motiv+=10;msgs.push(`師匠「明日から${nx.name}をやれ」。認められた。`)}
+  t.skill=clamp(t.skill,0,10);t.mgmt=clamp(t.mgmt,0,10);t.conn=clamp(t.conn,0,10);t.trust=clamp(t.trust,0,100);t.motiv=clamp(t.motiv,0,100);
+  t.last={title:`${trainAge(t.m-1)}：昼は${d.name}、夜は${n.name}`,msgs};
+  // 挫折
+  if(t.motiv<=0){
+    if(!t.held&&t.trust>=70){t.held=true;t.motiv=35;msgs.push('辞めようと荷物をまとめていたら、師匠に呼び止められた。「お前の一杯を、まだ食ってない」。もう一度だけ頑張ることにした。')}
+    else t.crisis='forced';
+  }else if(t.motiv<25&&Math.random()<.3)t.crisis='ask';
+  if(!t.crisis&&t.m>=TRAIN_MAX)t.last.msgs.push('師匠「もう教えることはない。行け」。5年の修行が終わった。');
+}
+function quitTraining(){
+  const t=S.train;
+  S.phase='quit';
+  S.overReason=`${trainAge(Math.max(0,t.m-1))}で修行を辞めた。腕前${t.skill.toFixed(1)}・師匠の信頼${Math.round(t.trust)}。店を持つ夢は、ここで終わった。修行は誰にでも続けられるものではない。`;
+  log('—','修行を辞めた','bad');
 }
 function finishTraining(){
   const t=S.train;
   S.skill=Math.round(t.skill*10)/10;S.mgmt=Math.round(t.mgmt*10)/10;S.conn=Math.round(t.conn*10)/10;S.secret=t.secret;
   S.cash+=t.save;
   S.awareness=Math.min(1,S.awareness+S.conn*.025);
-  S.noren=t.trust>=80;
+  S.noren=t.trust>=80&&t.m>=24;
   if(S.noren){for(let i=0;i<8;i++)S.stars.push(3.6);S.buzz.push({mult:.3,days:20,label:'暖簾分け'})}
-  S.trainSummary={weeks:t.week,rank:trainRank(t),skill:S.skill,mgmt:S.mgmt,conn:S.conn,trust:Math.round(t.trust),save:t.save,secret:t.secret,noren:S.noren};
+  S.trainSummary={months:t.m,rank:trainRank(t),role:ROLES[t.role].name,skill:S.skill,mgmt:S.mgmt,conn:S.conn,trust:Math.round(t.trust),save:t.save,secret:t.secret,noren:S.noren};
   S.train=null;S.phase='morning';
-  log('—',`${S.trainSummary.weeks}週の修行を終え、独立した（${S.trainSummary.rank}）。「${S.name}」開業。${LOC[S.loc].name}、${STYLES[S.style].name}ラーメンで勝負する`,'info');
+  log('—',`${Math.floor(S.trainSummary.months/12)}年${S.trainSummary.months%12}か月の修行を終えて独立（${S.trainSummary.rank}）。「${S.name}」開業。${LOC[S.loc].name}、${STYLES[S.style].name}ラーメンで勝負する`,'info');
 }
 function trainHTML(){
   const t=S.train;
   const bar=(lbl,v,max,cls='')=>`<div class="ax"><span>${lbl}</span><span class="axbar"><i class="${cls}" style="width:${clamp(v/max*100,0,100).toFixed(0)}%"></i></span><span class="axv">${max===10?v.toFixed(1):Math.round(v)}</span></div>`;
-  const acts=TRAIN_ACTS.map(a=>{
-    const ok=!a.need||a.need(t);
-    const f=a.fx,parts=[];
-    if(f.skill)parts.push(`腕前+${f.skill}`);if(f.mgmt)parts.push(`経営+${f.mgmt}`);if(f.conn)parts.push(`人脈+${f.conn}`);
-    if(f.trust)parts.push(`信頼${f.trust>0?'+':''}${f.trust}`);if(f.fat)parts.push(`疲労${f.fat>0?'+':''}${f.fat}`);
-    if(f.cost)parts.push(`−${man(f.cost)}`);if(f.save)parts.push(`+${man(f.save)}`);
-    return `<button data-act="tr" data-k="${a.id}" ${ok&&t.week<TRAIN_MAX?'':'disabled'}><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${parts.join('・')}</span></button>`;
-  }).join('');
-  const canGo=t.week>=TRAIN_MIN;
-  return `<div class="phead"><h2>修行中　第${t.week+1}週</h2><p>最長${TRAIN_MAX}週。${TRAIN_MIN}週目から独立できる。いまの評価は「${trainRank(t)}」</p></div>
+  const fx=a=>{const p=[];if(a.skill)p.push(`腕前+${a.skill}`);if(a.mgmt)p.push(`経営+${a.mgmt}`);if(a.conn)p.push(`人脈+${a.conn}`);if(a.trust)p.push(`信頼${a.trust>0?'+':''}${a.trust}`);if(a.motiv)p.push(`心${a.motiv>0?'+':''}${a.motiv}`);if(a.fat)p.push(`疲労${a.fat>0?'+':''}${a.fat}`);if(a.cost)p.push(`−${man(a.cost)}`);if(a.save)p.push(`+${man(a.save)}`);if(a.mul&&a.mul!==1)p.push(`役割の伸び×${a.mul}`);return p.join('・')};
+  const nx=ROLES[t.role+1];
+  const done=t.m>=TRAIN_MAX;
+  if(t.crisis){
+    return `<div class="phead"><h2>${t.crisis==='forced'?'心が折れた':'辞めたい'}</h2><p>${trainAge(t.m-1)}・心 ${Math.round(t.motiv)}</p></div>
+     <div class="pbody"><div class="oyakata"><div class="oy-head"><b>${esc(t.last.title)}</b></div>${t.last.msgs.map(m=>`<p>${esc(m)}</p>`).join('')}</div>
+      <p style="margin:0">${t.crisis==='forced'?'朝、体が布団から出なかった。もう店には行けない。':'仕込みの手が止まる。「自分はラーメン屋に向いていないのかもしれない」。辞めるなら、今だ。'}</p>
+      <p class="hint">${t.crisis==='forced'?'心が0になると修行は続けられない。':'続けるなら心が少し戻る。辞めると、店を持つ夢はここで終わる。'}</p></div>
+     <div class="pfoot">${t.crisis==='ask'?'<button class="btn primary" data-act="trstay">歯を食いしばって続ける</button>':''}<button class="btn ${t.crisis==='ask'?'ghost':'primary'}" data-act="trquit">修行を辞める</button></div>`;
+  }
+  return `<div class="phead"><h2>修行 ${trainAge(t.m)}</h2><p>通算${t.m}か月・役割「${ROLES[t.role].name}」・評価「${trainRank(t)}」。${TRAIN_MIN}か月から独立でき、最長5年。</p></div>
    <div class="pbody">
-    ${t.last?`<div class="oyakata"><div class="oy-head"><b>先週：${esc(t.last.act)}</b></div>${t.last.msgs.length?t.last.msgs.map(m=>`<p>${esc(m)}</p>`).join(''):'<p>黙々と働いた。</p>'}</div>`:`<div class="oyakata"><div class="oy-head"><b>師匠のひとこと</b></div><p>「うちで学べることは全部持っていけ。ただし体を壊すな。焦って独立する奴ほど早く潰れる」</p></div>`}
+    ${t.last?`<div class="oyakata"><div class="oy-head"><b>${esc(t.last.title)}</b></div>${t.last.msgs.length?t.last.msgs.map(m=>`<p>${esc(m)}</p>`).join(''):'<p>黙々と働いた。</p>'}</div>`:`<div class="oyakata"><div class="oy-head"><b>師匠のひとこと</b></div><p>「最初の一年は洗い場だ。文句があるなら辞めろ。ラーメンの修行に終わりはない。俺もまだ修行中だ」</p></div>`}
     <div><h3>身についたもの</h3><div class="axes">
       ${bar('腕前',t.skill,10)}${bar('経営手腕',t.mgmt,10)}${bar('人脈',t.conn,10)}
-      ${bar('師匠の信頼',t.trust,100,t.trust>=80?'high':'')}${bar('疲労',t.fat,100,t.fat>70?'low':'')}
-    </div><p class="hint">貯金 ${yen(t.save)}${t.secret?`・秘伝の技 +${t.secret}`:''}${t.trust>=80?'・この信頼なら暖簾分けしてもらえる':'・師匠の信頼80以上で暖簾分け（開店直後から客が来る）'}</p></div>
-    <div><h3>今週の過ごし方</h3><div class="opt">${acts}</div></div>
-    <p class="hint">腕前は開業時の味、経営手腕は原価と疲れにくさと融資審査、人脈は開店時の知名度と店長候補の質に効く。</p>
+      ${bar('師匠の信頼',t.trust,100,t.trust>=80?'high':'')}${bar('心',t.motiv,100,t.motiv<30?'low':t.motiv>=70?'high':'')}${bar('疲労',t.fat,100,t.fat>70?'low':'')}
+    </div><p class="hint">貯金 ${yen(t.save)}${t.secret?`・秘伝の技 +${t.secret}`:''}。${nx?`次の役割「${nx.name}」：${nx.reqText}`:'最高の役割まで来た'}。暖簾分けは師匠の信頼80以上・修行2年以上。</p></div>
+    ${done?'':`<div><h3>昼：店での仕事（いまは${ROLES[t.role].name}）</h3><div class="opt">${DAY_ACTS.map(a=>`<button data-act="trday" data-k="${a.id}" aria-pressed="${t.day===a.id}"><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${fx(a)}</span></button>`).join('')}</div></div>
+    <div><h3>夜：自分の時間</h3><div class="opt">${NIGHT_ACTS.map(a=>`<button data-act="trnight" data-k="${a.id}" aria-pressed="${t.night===a.id}"><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${fx(a)}</span></button>`).join('')}</div></div>
+    <p class="hint">心は毎月少しずつすり減る。疲れ・叱責・長い下積みで大きく減り、0になると挫折する。休みと食べ歩き、昇格で戻る。</p>`}
    </div>
-   <div class="pfoot"><button class="btn primary" data-act="trend" ${canGo?'':'disabled'}>${canGo?'独立して開業する':`あと${TRAIN_MIN-t.week}週は修行が必要`}</button></div>`;
+   <div class="pfoot">${done?'':'<button class="btn primary" data-act="trgo">この1か月を過ごす</button>'}<button class="btn ${done?'primary':'ghost'}" data-act="trend" ${t.m>=TRAIN_MIN?'':'disabled'}>${t.m>=TRAIN_MIN?'独立して開業する':`独立まであと${TRAIN_MIN-t.m}か月`}</button></div>`;
 }
 function trainDoneHTML(){
   const r=S.trainSummary;
-  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="tdh"><div class="chead"><p>${r.weeks}週の修行を終えて</p><h2 id="tdh">修行の評価「${esc(r.rank)}」</h2></div>
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="tdh"><div class="chead"><p>${Math.floor(r.months/12)}年${r.months%12}か月の修行を終えて（最後の役割：${esc(r.role)}）</p><h2 id="tdh">修行の評価「${esc(r.rank)}」</h2></div>
    <div class="cbody">
     <table class="ledger"><tbody>
      <tr><td>腕前（開業時の味 +${r.skill.toFixed(1)}点）</td><td>${r.skill.toFixed(1)}</td></tr>
-     <tr><td>経営手腕（原価 −${(r.mgmt*1.2).toFixed(0)}%・疲れにくさ）</td><td>${r.mgmt.toFixed(1)}</td></tr>
-     <tr><td>人脈（開店時の知名度 +${(r.conn*2.5).toFixed(0)}%）</td><td>${r.conn.toFixed(1)}</td></tr>
+     <tr><td>経営手腕（原価 −${(r.mgmt*1.2).toFixed(0)}%・疲れにくさ・融資審査）</td><td>${r.mgmt.toFixed(1)}</td></tr>
+     <tr><td>人脈（開店時の知名度 +${(r.conn*2.5).toFixed(0)}%・店長候補の質）</td><td>${r.conn.toFixed(1)}</td></tr>
      <tr><td>貯金（開業資金に上乗せ）</td><td>${yen(r.save)}</td></tr>
      ${r.secret?`<tr><td>秘伝の技（味 +${r.secret}点）</td><td>習得</td></tr>`:''}
      <tr><td>師匠の信頼</td><td>${r.trust}</td></tr>
     </tbody></table>
-    <p style="margin:0">${r.noren?`師匠から暖簾分けを許された。「${esc(S.name)}」は開店直後から師匠の店の常連が来てくれる。`:'暖簾分けとはいかなかったが、ここからは自分の力で勝負だ。'}</p>
+    <p style="margin:0">${r.noren?`師匠から暖簾分けを許された。「${esc(S.name)}」には開店直後から師匠の店の常連が来てくれる。`:'暖簾分けとはいかなかったが、ここからは自分の力で勝負だ。'}</p>
+    <p class="hint">修行に終わりはない。店を開けてからも、一杯ごとに腕は上がっていく。</p>
    </div>
    <div class="cfoot"><button class="btn primary" data-act="closemodal">店を開ける準備をする</button></div></div>`;
 }
@@ -1280,7 +1315,8 @@ function log(time,text,cls=''){
 }
 function renderBar(){
   if(!S){$('#bar').innerHTML='<div class="brand">らーめん開業日誌</div>';return}
-  if(S.phase==='train'){const t=S.train;$('#bar').innerHTML=`<div class="brand">${esc(S.name)}<small>開業準備中・修行${t.week+1}週目</small></div><div class="stat"><span class="k">貯金</span><span class="v">${yen(t.save)}</span></div><div class="stat"><span class="k">修行の評価</span><span class="v">${trainRank(t)}</span></div><div class="stat"><span class="k">疲労</span><span class="v">${Math.round(t.fat)}</span><span class="meter"><i class="${t.fat>70?'hot':''}" style="width:${Math.min(100,t.fat)}%"></i></span></div>`;return}
+  if(S.phase==='quit'){$('#bar').innerHTML=`<div class="brand">${esc(S.name)}<small>開業の夢は叶わなかった</small></div>`;return}
+  if(S.phase==='train'){const t=S.train;$('#bar').innerHTML=`<div class="brand">${esc(S.name)}<small>開業準備中・修行${trainAge(t.m)}</small></div><div class="stat"><span class="k">貯金</span><span class="v">${yen(t.save)}</span></div><div class="stat"><span class="k">役割</span><span class="v">${ROLES[t.role].name}</span></div><div class="stat"><span class="k">修行の評価</span><span class="v">${trainRank(t)}</span></div><div class="stat"><span class="k">心</span><span class="v ${t.motiv<30?'neg':''}">${Math.round(t.motiv)}</span></div><div class="stat"><span class="k">疲労</span><span class="v">${Math.round(t.fat)}</span><span class="meter"><i class="${t.fat>70?'hot':''}" style="width:${Math.min(100,t.fat)}%"></i></span></div>`;return}
   const r=rating();
   $('#bar').innerHTML=`
    <div class="brand">${esc(S.name)}<small>${esc(LOC[S.loc].name)}・${esc(STYLES[S.style].name)}</small></div>
@@ -1312,7 +1348,7 @@ function render(){
   else if(S.phase==='open')p.innerHTML=openHTML();
   else if(S.phase==='report')p.innerHTML=reportHTML();
   else if(S.phase==='closed')p.innerHTML=closedHTML();
-  else if(S.phase==='over'||S.phase==='clear')p.innerHTML=overHTML();
+  else if(S.phase==='over'||S.phase==='clear'||S.phase==='quit')p.innerHTML=overHTML();
   else if(S.phase==='train')p.innerHTML=trainHTML();
   if(S.phase==='morning'&&S.event&&$('#modal').hidden)showEvent();
 }
@@ -1477,9 +1513,10 @@ function closedHTML(){
 }
 function overHTML(){
   const clear=S.phase==='clear';
-  return `<div class="phead"><h2>${clear?'開業一周年':'閉店'}</h2><p>${fmtDate(S.day)}</p></div>
-   <div class="pbody"><p style="margin:0">${esc(S.overReason||'')}</p>${booksHTML()}</div>
-   <div class="pfoot"><button class="btn primary" data-act="restart">新しく店を始める</button></div>`;
+  const quit=S.phase==='quit';
+  return `<div class="phead"><h2>${quit?'修行を辞めた':clear?'開業一周年':'閉店'}</h2><p>${quit?'挫折':fmtDate(S.day)}</p></div>
+   <div class="pbody"><p style="margin:0">${esc(S.overReason||'')}</p>${quit?'':booksHTML()}</div>
+   <div class="pfoot"><button class="btn primary" data-act="restart">${quit?'もう一度、人生をやり直す':'新しく店を始める'}</button></div>`;
 }
 
 // ───────── モーダル ─────────
@@ -1494,7 +1531,7 @@ function showSetup(){
    <div class="cbody">
     <div><h3>屋号</h3><input class="textin" id="shopname" maxlength="12" value="${esc(setup.name)}"></div>
     <div><h3>難易度</h3><div class="opt"><button data-act="su" data-k="diff" data-v="easy" aria-pressed="${setup.diff==='easy'}"><b>のんびり</b><span>運転資金400万円。客が少し多く、疲れにくく、悪い知らせが半分になる。初めての人向け</span></button><button data-act="su" data-k="diff" data-v="real" aria-pressed="${setup.diff==='real'}"><b>リアル</b><span>運転資金250万円。実際の個人店に近い厳しさ。数字を読み切れる人向け</span></button></div></div>
-    <div><h3>開業までの道</h3><div class="opt"><button data-act="su" data-k="train" data-v="yes" aria-pressed="${setup.train==='yes'}"><b>修行から始める</b><span>名店で8〜24週修行してから独立する。腕前・経営手腕・人脈・貯金が開業時のスタート地点になる</span></button><button data-act="su" data-k="train" data-v="no" aria-pressed="${setup.train==='no'}"><b>すぐに開業する</b><span>経験ゼロで店を開ける。腕前は営業しながら身につける</span></button></div></div>
+    <div><h3>開業までの道</h3><div class="opt"><button data-act="su" data-k="train" data-v="yes" aria-pressed="${setup.train==='yes'}"><b>修行から始める</b><span>名店で1〜5年修行してから独立する。昼は店の仕事、夜は自分の時間。心が折れれば挫折もある。腕前・経営手腕・人脈・貯金が開業時のスタート地点になる</span></button><button data-act="su" data-k="train" data-v="no" aria-pressed="${setup.train==='no'}"><b>すぐに開業する</b><span>経験ゼロで店を開ける。腕前は営業しながら身につける</span></button></div></div>
     <div><h3>物件（立地）</h3><div class="opt">${Object.entries(LOC).map(([k,l])=>`<button data-act="su" data-k="loc" data-v="${k}" aria-pressed="${setup.loc===k}"><b>${l.name}</b><span>家賃 月${man(l.rent)}・${l.seats}席<br>${l.desc}</span></button>`).join('')}</div></div>
     <div><h3>看板の一杯</h3><div class="opt">${Object.entries(STYLES).map(([k,s])=>`<button data-act="su" data-k="style" data-v="${k}" aria-pressed="${setup.style===k}"><b>${s.name}</b><span>${s.desc}</span></button>`).join('')}</div></div>
     <p class="hint">毎月末に家賃・借入返済${man(LOAN_PAY)}・券売機リース・店主の生活費${man(OWNER)}などが引き落とされる。月末に資金がマイナスなら閉店。最終目標は「伝説のラーメン屋」。1周年・行列店・一国一城・名店と段階を踏み、移転や支店展開もできる。</p>
@@ -1553,7 +1590,11 @@ document.addEventListener('click',e=>{
   if(a==='next'){nextDay();return}
   if(a==='ev'){const ev=EVENTS.find(x=>x.id===S.event);const msg=ev.choices[+b.dataset.i].f();S.event=null;closeModal();log('朝',msg,'info');save();render();return}
   if(a==='closemodal'){closeModal();render();return}
-  if(a==='tr'){trainAct(b.dataset.k);save();render();return}
+  if(a==='trday'){S.train.day=b.dataset.k;save();render();return}
+  if(a==='trnight'){S.train.night=b.dataset.k;save();render();return}
+  if(a==='trgo'){trainMonth();save();render();return}
+  if(a==='trstay'){const t=S.train;t.crisis=null;t.motiv=clamp(t.motiv+15,0,100);t.fat=Math.max(0,t.fat-10);t.last={title:'踏みとどまった',msgs:['もう少しだけ、続けてみることにした。']};save();render();return}
+  if(a==='trquit'){quitTraining();save();render();return}
   if(a==='trend'){finishTraining();queueModal(trainDoneHTML());queueModal(tutorialHTML());save();render();return}
   if(a==='guide'){S.guide=!S.guide;save();render();return}
   if(a==='useprep'){S.prep=+b.dataset.v;log('朝',`仕込みを親方の目安の${S.prep}杯にした`,'info');save();render();return}
@@ -1626,6 +1667,7 @@ function migrate(o){
   if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
   for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
   if(o.phase==='clear')o.phase='morning';
+  if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={m:Math.floor((t.week||0)/4),role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
   return o;
 }
 function load(){try{const s=localStorage.getItem(SAVE_KEY);if(s){const o=JSON.parse(s);if(o&&(o.v===1||o.v===2))return migrate(o)}}catch(_){}return null}
