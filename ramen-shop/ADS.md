@@ -52,5 +52,6 @@
 | 4 | Web ゲーム向け広告（H5 Games Ads）の申し込み | 3 と並行可。ベータで承認は保証されない |
 | 5 | パブリッシャーIDを `ADS_CONFIG` に入れ、`ads.txt` を置いてデプロイ | 3・4 のあと（こちらで対応） |
 
-- 審査用の AdSense アカウントは、MAWARU で使うものと同じアカウントに「サイトを追加」する形でよい（1つの人に1アカウントが原則）
+- AdSense の「サイト」には air-io.com だけを登録する。ramen.air-io.com と mawaru.air-io.com はその一部として扱われる
+- MAWARU 側は fly.io の環境変数 ADSENSE_CLIENT にパブリッシャーIDを入れると、所有確認のタグと広告コードが入る作り（MAWARU の server/index.ts）
 - H5 Games Ads が通らなかった場合の代わり：ゲーム画面の外（下）に通常のディスプレイ広告を1枠だけ置く案。見返り広告は使えなくなる
