@@ -263,7 +263,7 @@ function newGame(name,loc,style,diff='real'){
     hours:'split',closedDow:3,staff:{kitchen:0,hall:1},prep:80,
     sns:false,inv:{pot:false,cashless:false,sign:false,machine:false,deodor:false},
     month:blankMonth(),months:[],hist:[],
-    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null};
+    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false};
   S.weather=genWeather(0);S.tomorrow=genWeather(1);
   S.buzz.push({mult:.6,days:10,label:'開店景気'});
 }
@@ -298,7 +298,9 @@ function tasteCore(){
   const st=STYLES[S.style],m=S.menu;
   return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill+(S.secret||0);
 }
-function tasteBase(){return tasteCore()-Math.max(0,S.fatigue-60)*.28}
+// 経験ゼロで開業した素人の不利。腕前が上がるほど薄れ、腕前5で消える
+const nov=()=>S.novice?Math.max(0,1-S.skill/5):0;
+function tasteBase(){return tasteCore()-Math.max(0,S.fatigue-60)*.28-5*nov()}
 function maxPrep(){return S.inv.pot?400:250}
 function openMinutes(){return HOURS[S.hours].iv.reduce((a,[s,e])=>a+(e-s)*60,0)}
 function laborCost(){
@@ -343,7 +345,7 @@ function startDay(){
     queue:[],orders:[],cust:[],nextId:1,
     slots:(S.staff.hall>0?3:2)+kitchen*2,
     cleanT:S.staff.hall>0?1:3,
-    cook:st.cook*(1+Math.max(0,S.fatigue-60)/70)+menuCount()*.3,
+    cook:st.cook*(1+Math.max(0,S.fatigue-60)/70+.3*nov())+menuCount()*.3,
     taste:tasteBase(),
     sold:0,sales:0,food:0,lost:0,lostQueue:0,lostSold:0,customers:0,served:0,
     soldOut:false,closedNow:false,done:false,newReviews:[],starSum:0,starN:0,
@@ -443,7 +445,7 @@ function stepMinute(){
 function leave(c){
   const st=STYLES[S.style],m=S.menu;
   const qWait=c.seatAt-c.arr, cWait=c.servedAt-c.seatAt;
-  const taste=(c.q!=null?c.q-Math.max(0,S.fatigue-60)*.28:D.taste)+gauss()*(4+Math.max(0,S.fatigue-60)*.08);
+  const taste=(c.q!=null?c.q-Math.max(0,S.fatigue-60)*.28-5*nov():D.taste)+gauss()*(4+Math.max(0,S.fatigue-60)*.08+4*nov());
   const exp=st.exp+S.expBoost;
   const pricePen=(m.price-exp)/12;
   const qPen=Math.max(0,qWait-12)*.7*(rating()>3.8?.5:1);
@@ -497,7 +499,7 @@ function finishDay(){
   S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003,.2,Math.max(S.awareness,1.0));
   // 熟練・疲労
   S.skill=Math.min(15,S.skill+.008+D.served*.0001);
-  const load=(S.diff==='easy'?.7:1)*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
+  const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
   S.fatigue=clamp(S.fatigue+load-38,0,100);
   // 月次集計
   const M=S.month;
@@ -725,7 +727,7 @@ const openCost=(loc,size)=>rentOf(loc,size)*6+3000000+(size?1500000:0);
 const relocCost=(loc,size)=>Math.max(0,2800000+(size?1500000:0)+rentOf(loc,size)*6-rentOf()*6*.8);
 function loanState(){
   const last=S.months[S.months.length-1];
-  const thr=3.6-(S.mgmt||0)*.04;if(rating()<thr)return {ok:false,why:`本店の評価が★${thr.toFixed(2)}未満のため、銀行の審査に通らない`};
+  const thr=3.6-(S.mgmt||0)*.04+(S.novice?.2:0);if(rating()<thr)return {ok:false,why:`本店の評価が★${thr.toFixed(2)}未満のため、銀行の審査に通らない`};
   if(!last||last.profit<=0)return {ok:false,why:'前月が赤字（または決算前）のため、銀行の審査に通らない'};
   return {ok:true};
 }
@@ -967,6 +969,7 @@ function prepEstimate(){
 function oyakataLines(){
   const L=[],R=S.lastReport,st=STYLES[S.style],bc=bowlCost();
   const costR=bc.total/S.menu.price,gap=S.menu.price-(st.exp+S.expBoost);
+  if(S.novice&&nov()>0&&S.day<60&&S.day%5===0)L.push('素人の味は日によってブレる。焦らず、毎日同じ一杯を出すことだけ考えろ。腕が上がれば落ち着く。');
   if(S.day===0)L.push('最初は欲張るな。スープは目安の杯数だけ炊け。足りなければ売切、余れば捨てる。それが毎日の勝負だ。');
   if(R&&R.day===S.day-1){
     if(R.soldOut&&R.lostS>0)L.push(`昨日は売り切れで${R.lostS}人を帰した。仕込みを増やせ。`);
@@ -1542,11 +1545,11 @@ function queueModal(h){if($('#modal').hidden)openModal(h);else MQ.push(h)}
 let setup={name:'麺屋 灯',loc:'shotengai',style:'shoyu',diff:'easy',train:'yes'};
 function showSetup(){
   openModal(`<div class="card" role="dialog" aria-modal="true" aria-labelledby="suh">
-   <div class="chead"><p>自己資金と借入で${man(LOAN+START_CASH+1500000)}を用意。内装と厨房設備に使い、運転資金は${man(START_CASH)}。</p><h2 id="suh">ラーメン屋を開業する</h2></div>
+   <div class="chead"><p>自己資金と借入で${man(LOAN+START_CASH+1500000)}を用意。内装と厨房設備に使い、運転資金は${man(setup.diff==='easy'?4000000:START_CASH)}。</p><h2 id="suh">ラーメン屋を開業する</h2></div>
    <div class="cbody">
     <div><h3>屋号</h3><input class="textin" id="shopname" maxlength="12" value="${esc(setup.name)}"></div>
     <div><h3>難易度</h3><div class="opt"><button data-act="su" data-k="diff" data-v="easy" aria-pressed="${setup.diff==='easy'}"><b>のんびり</b><span>運転資金400万円。客が少し多く、疲れにくく、悪い知らせが半分になる。初めての人向け</span></button><button data-act="su" data-k="diff" data-v="real" aria-pressed="${setup.diff==='real'}"><b>リアル</b><span>運転資金250万円。実際の個人店に近い厳しさ。数字を読み切れる人向け</span></button></div></div>
-    <div><h3>開業までの道</h3><div class="opt"><button data-act="su" data-k="train" data-v="yes" aria-pressed="${setup.train==='yes'}"><b>修行から始める</b><span>名店で1〜5年修行してから独立する。昼は店の仕事、夜は自分の時間。心が折れれば挫折もある。腕前・経営手腕・人脈・貯金が開業時のスタート地点になる</span></button><button data-act="su" data-k="train" data-v="no" aria-pressed="${setup.train==='no'}"><b>すぐに開業する</b><span>経験ゼロで店を開ける。腕前は営業しながら身につける</span></button></div></div>
+    <div><h3>開業までの道</h3><div class="opt"><button data-act="su" data-k="train" data-v="yes" aria-pressed="${setup.train==='yes'}"><b>修行から始める</b><span>名店で1〜5年修行してから独立する。昼は店の仕事、夜は自分の時間。心が折れれば挫折もある。腕前・経営手腕・人脈・貯金が開業時のスタート地点になる</span></button><button data-act="su" data-k="train" data-v="avg" aria-pressed="${setup.train==='avg'}"><b>平均的な修行経験で開業</b><span>修行3年ほど、突出した才能はない。腕前4.0・経営手腕1.5・人脈1.5で始める</span></button><button data-act="su" data-k="train" data-v="zero" aria-pressed="${setup.train==='zero'}"><b>経験ゼロで開業（ハード）</b><span>すべて0から。素人ゆえ味が落ちてブレ、提供が遅く、疲れやすく、銀行の審査も厳しい。腕前5まで上げれば不利は消える</span></button></div></div>
     <div><h3>物件（立地）</h3><div class="opt">${Object.entries(LOC).map(([k,l])=>`<button data-act="su" data-k="loc" data-v="${k}" aria-pressed="${setup.loc===k}"><b>${l.name}</b><span>家賃 月${man(l.rent)}・${l.seats}席<br>${l.desc}</span></button>`).join('')}</div></div>
     <div><h3>看板の一杯</h3><div class="opt">${Object.entries(STYLES).map(([k,s])=>`<button data-act="su" data-k="style" data-v="${k}" aria-pressed="${setup.style===k}"><b>${s.name}</b><span>${s.desc}</span></button>`).join('')}</div></div>
     <p class="hint">毎月末に家賃・借入返済${man(LOAN_PAY)}・券売機リース・店主の生活費${man(OWNER)}などが引き落とされる。月末に資金がマイナスなら閉店。最終目標は「伝説のラーメン屋」。1周年・行列店・一国一城・名店と段階を踏み、移転や支店展開もできる。</p>
@@ -1632,8 +1635,12 @@ document.addEventListener('click',e=>{
     const nm=($('#shopname').value||'').trim()||'麺屋 灯';
     newGame(nm,setup.loc,setup.style,setup.diff);closeModal();D=null;logEl.innerHTML='';
     if(setup.train==='yes'){startTraining();log('—','名店に弟子入りした。修行の始まりだ','info')}
-    else queueModal(tutorialHTML());
-    if(setup.train!=='yes')log('—',`「${nm}」開業。${LOC[setup.loc].name}、${STYLES[setup.style].name}ラーメンで勝負する`,'info');
+    else{
+      if(setup.train==='avg'){S.skill=4;S.mgmt=1.5;S.conn=1.5;S.awareness=Math.min(1,S.awareness+S.conn*.025);S.trainSummary={weeks:156,rank:'一人前',preset:true}}
+      else S.novice=true;
+      queueModal(tutorialHTML());
+      log('—',`「${nm}」開業。${setup.train==='avg'?'修行3年の腕で':'経験ゼロから'}、${LOC[setup.loc].name}の${STYLES[setup.style].name}ラーメンで勝負する`,'info');
+    }
     tab='prep';save();render();return;
   }
 });
@@ -1677,7 +1684,7 @@ function migrate(o){
     o.loans=o.debt>0?[{name:'開業資金',left:o.debt,pay:LOAN_PAY}]:[];
     o.v=2;
   }
-  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0,diff:'real',guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null};
+  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0,diff:'real',guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false};
   for(const k in def)if(o[k]===undefined)o[k]=def[k];
   if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
   for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
