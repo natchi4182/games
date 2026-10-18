@@ -1,0 +1,30 @@
+# らーめん開業日誌：ramen-shop/ を更新して push したら fly.io へ自動デプロイする
+# リポジトリの Secrets に FLY_API_TOKEN が登録されるまでは、デプロイを飛ばすだけで何もしない
+name: Deploy ramen-shop to Fly.io
+
+on:
+  push:
+    branches: [claude/ramen-shop]
+    paths: ['ramen-shop/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ramen-shop-fly
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip when FLY_API_TOKEN is not set
+        if: env.FLY_API_TOKEN == ''
+        run: echo "FLY_API_TOKEN が未登録のため、デプロイを飛ばしました"
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: env.FLY_API_TOKEN != ''
+      - name: Deploy
+        if: env.FLY_API_TOKEN != ''
+        working-directory: ramen-shop
+        run: flyctl deploy --remote-only
