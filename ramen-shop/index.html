@@ -183,6 +183,12 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .invest .item.on{border-color:var(--good)}
 .btns{display:flex;flex-direction:column;gap:4px;flex:none}
 .trfoot .btn{flex:1 1 auto}
+.talents{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+@media (max-width:480px){.talents{grid-template-columns:minmax(0,1fr)}}
+.tal{background:#f7edd4;border:1px dashed #c9b385;border-radius:5px;padding:6px 8px;display:flex;flex-direction:column;min-width:0;opacity:.75}
+.tal.ok{border:1px solid var(--good);background:#eef6ea;opacity:1}
+.tal b{font-size:13px}.tal span{font-size:11.5px;color:var(--sumi-soft)}.tal .cond{font-size:11px}
+
 .tut{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:8px}
 .tut li b{display:block}.tut li span{font-size:13px;color:var(--sumi-soft)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -263,7 +269,7 @@ function newGame(name,loc,style,diff='real'){
     hours:'split',closedDow:3,staff:{kitchen:0,hall:1},prep:80,
     sns:false,inv:{pot:false,cashless:false,sign:false,machine:false,deodor:false},
     month:blankMonth(),months:[],hist:[],
-    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false};
+    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[]};
   S.weather=genWeather(0);S.tomorrow=genWeather(1);
   S.buzz.push({mult:.6,days:10,label:'開店景気'});
 }
@@ -291,12 +297,12 @@ function bowlCost(){
   const soup=st.soup*GRADES[m.grade].mult*(1+(mk.pork-1)*st.pork);
   const noodle=NOODLES[m.noodle].cost*mk.wheat*(st.noodleMult||1);
   const chashu=CHASHU[m.chashu].cost*mk.pork;
-  const k=1-(S.mgmt||0)*.012; // 経営手腕：仕入れ交渉
+  const k=1-(S.mgmt||0)*.012-(hasT('mekiki')?.05:0); // 経営手腕：仕入れ交渉。才能「目利き」
   return {soup:soup*k,noodle:noodle*k,chashu:chashu*k,top:TOPPING*k,total:(soup+noodle+chashu+TOPPING)*k};
 }
 function tasteCore(){
   const st=STYLES[S.style],m=S.menu;
-  return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill+(S.secret||0);
+  return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill+(S.secret||0)+(hasT('zettai')?2:0);
 }
 // 経験ゼロで開業した素人の不利。腕前が上がるほど薄れ、腕前5で消える
 const nov=()=>S.novice?Math.max(0,1-S.skill/5):0;
@@ -345,7 +351,7 @@ function startDay(){
     queue:[],orders:[],cust:[],nextId:1,
     slots:(S.staff.hall>0?3:2)+kitchen*2,
     cleanT:S.staff.hall>0?1:3,
-    cook:st.cook*(1+Math.max(0,S.fatigue-60)/70+.3*nov())+menuCount()*.3,
+    cook:st.cook*(1+Math.max(0,S.fatigue-60)/70+.3*nov())*(hasT('yugiri')?.85:1)+menuCount()*.3,
     taste:tasteBase(),
     sold:0,sales:0,food:0,lost:0,lostQueue:0,lostSold:0,customers:0,served:0,
     soldOut:false,closedNow:false,done:false,newReviews:[],starSum:0,starN:0,
@@ -376,7 +382,7 @@ function stepMinute(){
       const tol=2+Math.random()*6+(r-3)*7-(wet?2:0)+D.seats.length*.15;
       const freeSeat=D.seats.some(s=>!s.c&&s.dirty<=0);
       if(!freeSeat&&D.queue.length>=tol){D.lost++;D.lostQueue++;if(Math.random()<.25)log(hm(D.min),`行列${D.queue.length}人を見て帰ったお客がいた`,'bad');continue}
-      const c={id:D.nextId++,arr:D.min,pat:15+Math.random()*25+(r-3)*20,state:'q',col:pick(['#c6573f','#3f6fa0','#6b8f4e','#8d5a9e','#c9a227','#4a4a4a','#2f7f7a','#b0763c','#d8d2c4']),hair:pick(['#1c1612','#2d241b','#5a4430','#777']),seat:-1};
+      const c={id:D.nextId++,arr:D.min,pat:(15+Math.random()*25+(r-3)*20)*(hasT('aiso')?1.2:1),state:'q',col:pick(['#c6573f','#3f6fa0','#6b8f4e','#8d5a9e','#c9a227','#4a4a4a','#2f7f7a','#b0763c','#d8d2c4']),hair:pick(['#1c1612','#2d241b','#5a4430','#777']),seat:-1};
       D.queue.push(c);D.cust.push(c);
     }
   }
@@ -445,7 +451,7 @@ function stepMinute(){
 function leave(c){
   const st=STYLES[S.style],m=S.menu;
   const qWait=c.seatAt-c.arr, cWait=c.servedAt-c.seatAt;
-  const taste=(c.q!=null?c.q-Math.max(0,S.fatigue-60)*.28-5*nov():D.taste)+gauss()*(4+Math.max(0,S.fatigue-60)*.08+4*nov());
+  const taste=(c.q!=null?c.q-Math.max(0,S.fatigue-60)*.28-5*nov():D.taste)+gauss()*(4+Math.max(0,S.fatigue-60)*.08+4*nov()-(hasT('zettai')?1.5:0));
   const exp=st.exp+S.expBoost;
   const pricePen=(m.price-exp)/12;
   const qPen=Math.max(0,qWait-12)*.7*(rating()>3.8?.5:1);
@@ -453,7 +459,7 @@ function leave(c){
   const hall=S.staff.hall>0?2:-1.5;
   const bonus=(st.riceFree?1.5:0)+(m.ajitama?.5:0);
   const hype=Math.max(0,rating()-3.6)*7; // 評判が上がるほど客の期待も上がる
-  const val=taste-pricePen-qPen-cPen+hall+bonus-hype+focusAdj()+(S.diff==='easy'?1.5:0);
+  const val=taste-pricePen-qPen-cPen+hall+bonus-hype+focusAdj()+(S.diff==='easy'?1.5:0)+(hasT('aiso')?1.5:0);
   const star=clamp(1+(val-36)/12+gauss()*.5,1,5);
   D.sales+=c.bill;D.customers++;D.starSum+=star;D.starN++;
   c.state='gone';
@@ -486,7 +492,8 @@ function finishDay(){
   const st=STYLES[S.style];
   const labor=laborCost()+S.tempStaff*2000*(openMinutes()/60+1);
   const util=3200+D.gas+openMinutes()*10+(S.inv.deodor?400:0);
-  const waste=Math.max(0,D.soupLeft)*D.soupCost;
+  let waste=Math.max(0,D.soupLeft)*D.soupCost;
+  if(hasT('kenyaku')){const rf=waste*.4;waste-=rf;D.soupTotal-=rf}
   const sns=S.sns?3000:0;
   S.cash+=D.sales-D.food-D.soupTotal-labor-util-sns;
   const profit=D.sales-D.food-D.soupTotal-labor-util-sns;
@@ -496,10 +503,10 @@ function finishDay(){
   S.reviews=S.reviews.slice(0,40);
   // 認知度
   const avg=D.starN?D.starSum/D.starN:3;
-  S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003,.2,Math.max(S.awareness,1.0));
+  S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003*(hasT('hitotarashi')?1.3:1),.2,Math.max(S.awareness,1.0));
   // 熟練・疲労
   S.skill=Math.min(15,S.skill+.008+D.served*.0001);
-  const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
+  const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(hasT('dandori')?.85:1)*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
   S.fatigue=clamp(S.fatigue+load-38,0,100);
   // 月次集計
   const M=S.month;
@@ -532,7 +539,7 @@ function nextDay(){
   if(mo!==prevMonth){monthEnd();if(S.phase==='over')return}
   if(S.cash<-500000){gameOver('運転資金が50万円以上マイナスになり、仕入先が取引を止めた。');return}
   S.event=null;S.phase='morning';pendingClose=null;
-  if(S.fatigue>=90&&Math.random()<.35){S.sick=true}
+  if(S.fatigue>=90&&Math.random()<(hasT('fukutsu')?.12:.35)){S.sick=true}
   if(S.day<=S.closedUntil){S.phase='closed';S.closedTitle='移転工事中';S.closedReason=`${LOC[S.loc].name}の新店舗で内装工事中。${fmtDate(S.closedUntil+1)}に新装開店。`;}
   else if(S.sick){S.phase='closed';S.closedTitle='臨時休業';S.closedReason='店主が体調を崩し、臨時休業。';}
   else if(dateOf(S.day).getDay()===S.closedDow){S.phase='closed';S.closedTitle='定休日';S.closedReason='定休日。';}
@@ -710,6 +717,7 @@ function diagHTML(){
   const AX=[['taste','味'],['value','お値打ち感'],['turn','回転・接客'],['profit','収益性'],['stamina','店主の余力'],['future','将来性']];
   return `<div class="diag"><div class="diag-head"><p class="lead">あなたの経営は<b>『${esc(dg.t.name)}』</b>です。</p><div class="grade" aria-label="総合評価">${dg.grade}</div></div>
     <p style="margin:0">${esc(dg.t.desc)}</p>
+    ${(S.talents||[]).length?`<p style="margin:0;font-size:12.5px;color:#cfd8ec">才能：${S.talents.map(id=>esc(TALENTS.find(x=>x.id===id).name)).join('・')}</p>`:''}
     <p class="q">${esc(dg.t.q)}<br><strong>このままで本当に満足ですか？</strong></p></div>
    <div><h3>経営の6軸（直近30営業日）</h3><div class="axes">${AX.map(([k,nm])=>`<div class="ax"><span>${nm}</span><span class="axbar"><i style="width:${dg.ax[k].toFixed(0)}%" class="${dg.ax[k]<40?'low':dg.ax[k]>=75?'high':''}"></i></span><span class="axv">${dg.ax[k].toFixed(0)}</span></div>`).join('')}</div></div>
    <div><h3>次の一手</h3>${dg.weak.map(w=>`<p class="hint" style="color:var(--sumi)">・${esc(w)}</p>`).join('')}</div>
@@ -719,7 +727,7 @@ function diagHTML(){
 // ───────── 店舗展開：移転・支店 ─────────
 const MGR_NAMES=['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤','吉田','山田','松本','井上','木村'];
 function genMgr(){
-  const sk=Math.round(Math.min(10,rnd(2,9)+(S.conn||0)*.25)*10)/10;
+  const sk=Math.round(Math.min(10,rnd(2,9)+(S.conn||0)*.25+(hasT('hitotarashi')?.5:0))*10)/10;
   return {name:pick(MGR_NAMES)+'さん',skill:sk,salary:Math.round((260000+sk*22000)/10000)*10000,
     note:sk>=7?'有名店で10年修業。味は任せられる':sk>=4.5?'チェーン店で店長経験あり':'飲食は未経験。やる気はある'};
 }
@@ -898,7 +906,7 @@ function pickDish(){
 function devStart(id){
   const d=devOf(id);if(!d||S.cash<d.dev||S.menuOn.includes(id)||(S.dev[id]&&S.dev[id].st==='dev'))return;
   S.cash-=d.dev;S.month.misc+=d.dev;
-  S.dev[id]={st:'dev',left:d.days};
+  S.dev[id]={st:'dev',left:Math.max(1,d.days-(hasT('kenkyu')?1:0))};
   log('朝',`「${d.name()}」の試作を始めた（${d.days}日・${yen(d.dev)}）`,'info');
 }
 function devProgress(){
@@ -907,7 +915,7 @@ function devProgress(){
     v.left--;
     if(v.left<=0){
       const d=devOf(id);
-      v.st='ready';v.q=Math.round((tasteCore()+d.qOff+gauss()*4)*10)/10;
+      v.st='ready';v.q=Math.round((tasteCore()+d.qOff+(hasT('kenkyu')?4:0)+gauss()*4)*10)/10;
       log('朝',`試作完成：「${d.name()}」 出来は${v.q.toFixed(1)}点（看板は${tasteCore().toFixed(1)}点）`,'good');
     }
   }
@@ -1008,6 +1016,34 @@ function tutorialHTML(){
    <div class="cfoot"><button class="btn primary" data-act="closemodal">分かった</button></div></div>`;
 }
 
+// ───────── 才能（修行で芽生える突出した力） ─────────
+const TALENTS=[
+  {id:'zettai',name:'絶対味覚',fx:'味 +2・味のブレが小さい',cond:t=>[[`スープ研究 ${t.cnt.soup||0}/40週（秘伝の技でも可）`,(t.cnt.soup||0)>=40||t.secret>=2]]},
+  {id:'yugiri',name:'湯切りの名手',fx:'提供が15%速い',cond:t=>[[`師匠の技を盗む ${t.cnt.steal||0}/40週`,(t.cnt.steal||0)>=40],[`麺上げまで昇格`,t.role>=2]]},
+  {id:'dandori',name:'段取り上手',fx:'毎日の疲れが15%少ない',cond:t=>[[`言われた仕事を黙々と ${t.cnt.obey||0}/80週`,(t.cnt.obey||0)>=80]]},
+  {id:'mekiki',name:'目利き',fx:'原価 −5%',cond:t=>[[`経営の勉強 ${t.cnt.study||0}/30週 または 観察 ${t.cnt.watch||0}/50週`,(t.cnt.study||0)>=30||(t.cnt.watch||0)>=50]]},
+  {id:'aiso',name:'愛想のよさ',fx:'客の満足 +1.5・行列で待ってもらえる時間 +20%',cond:t=>[[`客と店を観察 ${t.cnt.watch||0}/40週`,(t.cnt.watch||0)>=40]]},
+  {id:'hitotarashi',name:'人たらし',fx:'口コミで知名度が広がる速さ +30%・店長候補の腕前 +0.5',cond:t=>[[`業者や常連と飲む ${t.cnt.net||0}/30週 または 食べ歩きと合わせて ${(t.cnt.net||0)+(t.cnt.tour||0)}/50週`,(t.cnt.net||0)>=30||(t.cnt.net||0)+(t.cnt.tour||0)>=50]]},
+  {id:'kenkyu',name:'研究家',fx:'メニュー試作の出来 +4・試作が1日早い',cond:t=>[[`スープ研究 ${t.cnt.soup||0}/25週`,(t.cnt.soup||0)>=25],[`食べ歩き ${t.cnt.tour||0}/20週`,(t.cnt.tour||0)>=20]]},
+  {id:'kenyaku',name:'倹約家',fx:'余ったスープの損が4割減る（まかないに回す）',cond:t=>[[`夜に別のバイト ${t.cnt.side||0}/30週 または 貯金${man(t.save)}/30万円`,(t.cnt.side||0)>=30||t.save>=300000]]},
+  {id:'fukutsu',name:'不屈の心',fx:'疲れ切っても倒れにくい',cond:t=>[[`心が折れかけて、踏みとどまった`,!!t.survived]]},
+];
+const hasT=id=>(S.talents||[]).includes(id);
+const talentSlots=t=>t.m>=208?2:t.m>=104?1:0;
+function talentCands(t){return TALENTS.filter(x=>x.cond(t).every(c=>c[1]))}
+function talentsTrainHTML(t){
+  const slots=talentSlots(t);
+  return `<div><h3>芽生えつつある才能</h3><p class="hint">独立するとき、条件を満たした才能から${slots?`${slots}つ選んで身につけられる`:'選べる（修行2年以上で1つ、4年以上で2つ）'}。</p>
+   <div class="talents">${TALENTS.map(x=>{const cs=x.cond(t),ok=cs.every(c=>c[1]);return `<div class="tal${ok?' ok':''}"><b>${ok?'✓ ':''}${esc(x.name)}</b><span>${esc(x.fx)}</span><span class="cond">${cs.map(c=>esc(c[0])).join('／')}</span></div>`}).join('')}</div></div>`;
+}
+let talentPick=null;
+function talentPickHTML(){
+  const p=talentPick;
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="tph"><div class="chead"><p>修行で芽生えた才能から、あと${p.slots-p.chosen.length}つ選ぶ</p><h2 id="tph">身につける才能を選ぶ</h2></div>
+   <div class="cbody"><div class="opt">${p.cands.map(x=>`<button data-act="talent" data-k="${x.id}" ${p.chosen.includes(x.id)?'aria-pressed="true" disabled':''}><b>${esc(x.name)}</b><span>${esc(x.fx)}</span></button>`).join('')}</div>
+   <p class="hint">才能は一生もの。開業後ずっと効き続ける。</p></div></div>`;
+}
+
 // ───────── 修行 ─────────
 const TRAIN_MIN=52, TRAIN_MAX=260, WK=12/52; // 1ターン＝1週間。最低1年、最長5年。効果の数値は4週あたりで定義し、1週ではWK倍
 const ROLES=[
@@ -1043,7 +1079,7 @@ const TRAIN_EVENTS=[
 ];
 function startTraining(){
   S.phase='train';
-  S.train={unit:'w',m:0,role:0,roleM:0,skill:0,mgmt:0,conn:0,trust:50,fat:10,motiv:70,save:0,secret:0,day:'obey',night:'rest',last:null,crisis:null,held:false};
+  S.train={unit:'w',cnt:{},survived:false,m:0,role:0,roleM:0,skill:0,mgmt:0,conn:0,trust:50,fat:10,motiv:70,save:0,secret:0,day:'obey',night:'rest',last:null,crisis:null,held:false};
 }
 const trainAge=w=>`${Math.floor(w/52)+1}年目 第${w%52+1}週`;
 const trainSpan=w=>{const y=Math.floor(w/52),mo=Math.floor((w%52)/4.34);return `${y?y+'年':''}${mo?mo+'か月':y?'':w+'週'}`};
@@ -1068,6 +1104,7 @@ function trainWeek(){
   const d=DAY_ACTS.find(x=>x.id===t.day),n=NIGHT_ACTS.find(x=>x.id===t.night),r=ROLES[t.role];
   const msgs=[];
   t.m++;t.roleM++;
+  t.cnt=t.cnt||{};t.cnt[d.id]=(t.cnt[d.id]||0)+1;t.cnt[n.id]=(t.cnt[n.id]||0)+1;
   const eff=t.fat>85?.5:1;
   if(eff<1)msgs.push('疲れが抜けず、何をやっても身につき方が半分だった。');
   const dim=v=>1-v/12; // 上達するほど伸びにくい
@@ -1089,7 +1126,7 @@ function trainWeek(){
   t.last={title:`${trainAge(t.m-1)}：昼は${d.name}、夜は${n.name}`,msgs};
   // 挫折
   if(t.motiv<=0){
-    if(!t.held&&t.trust>=70){t.held=true;t.motiv=35;msgs.push('辞めようと荷物をまとめていたら、師匠に呼び止められた。「お前の一杯を、まだ食ってない」。もう一度だけ頑張ることにした。')}
+    if(!t.held&&t.trust>=70){t.held=true;t.survived=true;t.motiv=35;msgs.push('辞めようと荷物をまとめていたら、師匠に呼び止められた。「お前の一杯を、まだ食ってない」。もう一度だけ頑張ることにした。')}
     else t.crisis='forced';
   }else if(t.motiv<25&&Math.random()<.3*WK)t.crisis='ask';
   if(!t.crisis&&t.m>=TRAIN_MAX)t.last.msgs.push('師匠「もう教えることはない。行け」。5年の修行が終わった。');
@@ -1131,6 +1168,7 @@ function trainHTML(){
       ${bar('腕前',t.skill,10)}${bar('経営手腕',t.mgmt,10)}${bar('人脈',t.conn,10)}
       ${bar('師匠の信頼',t.trust,100,t.trust>=80?'high':'')}${bar('心',t.motiv,100,t.motiv<30?'low':t.motiv>=70?'high':'')}${bar('疲労',t.fat,100,t.fat>70?'low':'')}
     </div><p class="hint">貯金 ${yen(t.save)}${t.secret?`・秘伝の技 +${t.secret}`:''}。${nx?`次の役割「${nx.name}」：${nx.reqText}`:'最高の役割まで来た'}。暖簾分けは師匠の信頼80以上・修行2年以上。</p></div>
+    ${talentsTrainHTML(t)}
     ${done?'':`<div><h3>昼：店での仕事（いまは${ROLES[t.role].name}）</h3><div class="opt">${DAY_ACTS.map(a=>`<button data-act="trday" data-k="${a.id}" aria-pressed="${t.day===a.id}"><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${fx(a)}</span></button>`).join('')}</div></div>
     <div><h3>夜：自分の時間</h3><div class="opt">${NIGHT_ACTS.map(a=>`<button data-act="trnight" data-k="${a.id}" aria-pressed="${t.night===a.id}"><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${fx(a)}</span></button>`).join('')}</div></div>
     <p class="hint">心は毎週少しずつすり減る。疲れ・叱責・長い下積みで大きく減り、0になると挫折する。休みと食べ歩き、昇格で戻る。</p>`}
@@ -1611,9 +1649,10 @@ document.addEventListener('click',e=>{
   if(a==='trday'){S.train.day=b.dataset.k;save();render();return}
   if(a==='trnight'){S.train.night=b.dataset.k;save();render();return}
   if(a==='trgo'){trainWeeks(+b.dataset.n||1);save();render();return}
-  if(a==='trstay'){const t=S.train;t.crisis=null;t.motiv=clamp(t.motiv+15,0,100);t.fat=Math.max(0,t.fat-10);t.last={title:'踏みとどまった',msgs:['もう少しだけ、続けてみることにした。']};save();render();return}
+  if(a==='trstay'){const t=S.train;t.crisis=null;t.survived=true;t.motiv=clamp(t.motiv+15,0,100);t.fat=Math.max(0,t.fat-10);t.last={title:'踏みとどまった',msgs:['もう少しだけ、続けてみることにした。']};save();render();return}
   if(a==='trquit'){quitTraining();save();render();return}
-  if(a==='trend'){finishTraining();queueModal(trainDoneHTML());queueModal(tutorialHTML());save();render();return}
+  if(a==='trend'){const t=S.train,cands=talentCands(t),slots=Math.min(talentSlots(t),cands.length);finishTraining();queueModal(trainDoneHTML());if(slots>0){talentPick={cands,slots,chosen:[]};queueModal(talentPickHTML())}queueModal(tutorialHTML());save();render();return}
+  if(a==='talent'&&talentPick){const id=b.dataset.k;if(!talentPick.chosen.includes(id)){talentPick.chosen.push(id);S.talents=(S.talents||[]).concat(id);log('—',`才能「${TALENTS.find(x=>x.id===id).name}」を身につけた`,'good')}if(talentPick.chosen.length>=talentPick.slots){talentPick=null;closeModal()}else openModal(talentPickHTML());save();render();return}
   if(a==='guide'){S.guide=!S.guide;save();render();return}
   if(a==='useprep'){S.prep=+b.dataset.v;log('朝',`仕込みを親方の目安の${S.prep}杯にした`,'info');save();render();return}
   if(a==='devstart'){devStart(b.dataset.k);save();render();return}
@@ -1684,11 +1723,12 @@ function migrate(o){
     o.loans=o.debt>0?[{name:'開業資金',left:o.debt,pay:LOAN_PAY}]:[];
     o.v=2;
   }
-  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0,diff:'real',guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false};
+  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0,diff:'real',guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[]};
   for(const k in def)if(o[k]===undefined)o[k]=def[k];
   if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
   for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
   if(o.phase==='clear')o.phase='morning';
+  if(o.train&&!o.train.cnt)o.train.cnt={};
   if(o.phase==='train'&&o.train&&o.train.m!==undefined&&o.train.unit!=='w'){o.train.m=Math.round(o.train.m*4.34);o.train.roleM=Math.round((o.train.roleM||0)*4.34);o.train.unit='w'}
   if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={unit:'w',m:t.week||0,role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
   return o;
