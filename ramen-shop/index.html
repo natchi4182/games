@@ -279,6 +279,9 @@ const ratingOf=a=>(3.0*10+a.reduce((x,y)=>x+y,0))/(10+a.length);
 const rating=()=>ratingOf(S.stars);
 const seatsOf=(loc=S.loc,size=S.size)=>LOC[loc].seats+(size?8:0);
 const rentOf=(loc=S.loc,size=S.size)=>LOC[loc].rent*(size?1.7:1);
+// 雇える人数の上限：厨房とホールの広さ（席数）で決まる
+const staffMax=k=>k==='kitchen'?Math.max(3,Math.ceil(seatsOf()/4)):Math.max(2,Math.ceil(seatsOf()/7));
+const hallOK=()=>S.staff.hall*8>=seatsOf();
 const loanPay=()=>S.loans.reduce((a,l)=>a+l.pay,0);
 const debtOf=()=>S.loans.reduce((a,l)=>a+l.left,0);
 
@@ -353,7 +356,7 @@ function startDay(){
     seats:Array.from({length:seatsOf()},()=>({c:null,dirty:0})),
     queue:[],orders:[],cust:[],nextId:1,
     slots:(S.staff.hall>0?3:2)+kitchen*2,
-    cleanT:S.staff.hall>0?1:3,
+    cleanT:S.staff.hall===0?3:hallOK()?1:2,
     cook:st.cook*(1+Math.max(0,S.fatigue-60)/70+.3*nov())*(hasT('yugiri')?.85:1)+menuCount()*.3,
     taste:tasteBase(),
     sold:0,sales:0,food:0,lost:0,lostQueue:0,lostSold:0,customers:0,served:0,
@@ -459,7 +462,7 @@ function leave(c){
   const pricePen=(m.price-exp)/12;
   const qPen=Math.max(0,qWait-12)*.7*(rating()>3.8?.5:1);
   const cPen=Math.max(0,cWait-8)*1.6;
-  const hall=S.staff.hall>0?2:-1.5;
+  const hall=S.staff.hall===0?-1.5:hallOK()?2:.5;
   const bonus=(st.riceFree?1.5:0)+(m.ajitama?.5:0);
   const hype=Math.max(0,rating()-3.6)*7; // 評判が上がるほど客の期待も上がる
   const val=taste-pricePen-qPen-cPen+hall+bonus-hype+focusAdj()+(S.diff==='easy'?1.5:0)+(hasT('aiso')?1.5:0);
@@ -809,6 +812,7 @@ function doRelocate(){
   S.cash-=need;S.month.invest+=cost;
   if(fin.loan)S.loans.push({name:'移転融資',left:fin.t.amt,pay:fin.t.pay});
   S.loc=RL.loc;S.size=RL.size;S.awareness=Math.max(.2,S.awareness*.65);S.competitor=0;S.relocated=true;
+  S.staff.kitchen=Math.min(S.staff.kitchen,staffMax('kitchen'));S.staff.hall=Math.min(S.staff.hall,staffMax('hall'));
   S.closedUntil=S.day+4;S.phase='closed';S.closedTitle='移転工事中';S.closedReason=`${LOC[S.loc].name}の新店舗で内装工事中。${fmtDate(S.closedUntil+1)}に新装開店。`;
   S.prep=Math.min(S.prep,maxPrep());
   log('朝',`本店を${LOC[S.loc].name}へ移転すると決めた`,'info');
@@ -987,7 +991,7 @@ function oyakataLines(){
   if(R&&R.day===S.day-1){
     if(R.soldOut&&R.lostS>0)L.push(`昨日は売り切れで${R.lostS}人を帰した。仕込みを増やせ。`);
     else if(R.wasteN>R.prep*.25)L.push(`昨日はスープを${R.wasteN}杯捨てた。炊きすぎだ。`);
-    if(R.lostQ>Math.max(5,R.cust*.15))L.push(`行列で${R.lostQ}人逃した。人を入れるか、回転を上げろ。`);
+    if(R.lostQ>Math.max(5,R.cust*.15))L.push(S.staff.kitchen>=staffMax('kitchen')&&S.staff.hall>=staffMax('hall')?`行列で${R.lostQ}人逃した。この広さの店では、もう人を増やせない。大箱へ移るか、支店を出す時期だ。値段を上げて客を絞る手もある。`:`行列で${R.lostQ}人逃した。人を入れるか、回転を上げろ。`);
   }
   if(['雨','雪','台風'].includes(S.weather.w))L.push(`今日は${S.weather.w}だ。客足は落ちる。仕込みは控えめに。`);
   if(S.fatigue>65)L.push('顔色が悪いぞ。休むか、人に任せろ。倒れたら店は開かない。');
@@ -1534,7 +1538,7 @@ function morningHTML(){
      <div><h3>今日のシフト（時給${S.wage.toLocaleString()}円）</h3>
       <div class="row"><span class="lbl">厨房バイト</span>${stepper('kitchen',S.staff.kitchen,'人')}</div>
       <div class="row"><span class="lbl">ホールバイト</span>${stepper('hall',S.staff.hall,'人')}</div>
-      <p class="hint">厨房1人で同時調理+2杯、餃子が出せる。ホールがいると片付けが速く、卓がきれいで評価が上がる。本日の人件費見込み ${yen(lab)}${S.tempStaff?' ＋派遣':''}</p></div>
+      <p class="hint">厨房1人で同時調理+2杯、餃子が出せる。ホールは${seatsOf()}席なら${Math.ceil(seatsOf()/8)}人いると片付けが追いつき、卓がきれいで評価が上がる。雇えるのは厨房${staffMax('kitchen')}人・ホール${staffMax('hall')}人まで（店の広さで決まる。大箱や広い店に移ると増やせる）。本日の人件費見込み ${yen(lab)}${S.tempStaff?' ＋派遣':''}</p></div>
      <div><h3>定休日</h3>${seg('closed',['なし',...DOW.split('')],S.closedDow+1)}
       <p class="hint">休むと疲労が大きく回復。休んでも家賃は変わらない。</p></div>`;
   }else if(tab==='menu'){
@@ -1735,7 +1739,7 @@ document.addEventListener('click',e=>{
   }
   if(a==='step'){
     const k=b.dataset.k,d=+b.dataset.d;
-    S.staff[k]=clamp(S.staff[k]+d,0,k==='kitchen'?3:2);save();render();return;
+    S.staff[k]=clamp(S.staff[k]+d,0,staffMax(k));save();render();return;
   }
   if(a==='buy'){buy(b.dataset.k);return}
   if(a==='open'){closeModal();startDay();return}
