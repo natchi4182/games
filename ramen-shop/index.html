@@ -123,6 +123,7 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .invest .item div{min-width:0}
 .invest .item b{display:block}
 .invest .item span{font-size:12px;color:var(--sumi-soft)}
+.invest .item>.btn,.btns .btn{white-space:nowrap;flex:none}
 
 .speed{display:flex;gap:4px}
 .speed button{flex:1}
@@ -228,8 +229,9 @@ const STYLES={
   iekei:{name:'家系',soup:100,gas:28,exp:950,cook:4.5,eat:13,base:57,temp:.012,pork:.9,riceFree:true,extra:{name:'大盛り',price:150,cost:32,rate:.22},desc:'豚骨醤油に太麺。ライス無料は客を呼ぶが原価に効く。'},
   tsukemen:{name:'つけ麺',soup:105,gas:20,exp:1050,cook:7.0,eat:15,base:57,temp:-.014,pork:.7,noodleMult:1.7,extra:{name:'麺増し',price:0,cost:40,rate:.4},desc:'夏に強い。麺量が多く、麺原価と茹で時間がかさむ。麺増し無料が定番。'},
 };
-const GRADES=[{name:'標準',mult:1,taste:0},{name:'こだわり',mult:1.7,taste:9},{name:'極み',mult:2.6,taste:16}];
-const NOODLES=[{name:'製麺所・標準',cost:38,taste:0},{name:'製麺所・特注',cost:58,taste:5},{name:'自家製麺',cost:22,taste:7,needs:'machine'}];
+const GRADES=[{name:'標準',mult:1,taste:0,prem:0},{name:'一工夫',mult:1.35,taste:5,prem:40},{name:'こだわり',mult:1.7,taste:9,prem:80},{name:'極上',mult:2.15,taste:13,prem:140},{name:'極み',mult:2.6,taste:16,prem:200}];
+const NOODLES=[{name:'製麺所・標準',cost:38,taste:0,prem:0},{name:'製麺所・中級',cost:48,taste:3,prem:20},{name:'製麺所・特注',cost:58,taste:5,prem:40},{name:'自家製麺',cost:22,taste:7,prem:60,needs:'machine'},{name:'自家製・国産小麦',cost:40,taste:10,prem:90,needs:'machine'}];
+const isHomeNoodle=i=>!!(NOODLES[i]&&NOODLES[i].needs);
 const CHASHU=[{name:'バラ巻き2枚',cost:62,taste:0},{name:'肩ロース厚切り3枚',cost:125,taste:5}];
 const TOPPING=34; // ネギ・メンマ・海苔
 const SIDES={ajitama:{name:'味玉',price:120,cost:35,rate:.34},rice:{name:'ライス',price:150,cost:24,rate:.28},gyoza:{name:'餃子',price:350,cost:88,rate:.24}};
@@ -270,7 +272,7 @@ function newGame(name,loc,style,diff='real'){
     hours:'split',closedDow:3,staff:{kitchen:0,hall:1},prep:80,
     sns:false,inv:{pot:false,cashless:false,sign:false,machine:false,deodor:false},
     month:blankMonth(),months:[],hist:[],
-    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[],vision:null};
+    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,menuV:2,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[],vision:null};
   S.weather=genWeather(0);S.tomorrow=genWeather(1);
   S.buzz.push({mult:.6,days:10,label:'開店景気'});
 }
@@ -305,7 +307,7 @@ function bowlCost(){
   return {soup:soup*k,noodle:noodle*k,chashu:chashu*k,top:TOPPING*k,total:(soup+noodle+chashu+TOPPING)*k};
 }
 // 客が納得する価格：素材のこだわりと店の評判の分だけ上がる
-function expPrice(r=rating()){const st=STYLES[S.style],m=S.menu;return st.exp+S.expBoost+[0,80,200][m.grade]+[0,60][m.chashu]+[0,40,60][m.noodle]+Math.max(0,r-3.5)*120}
+function expPrice(r=rating()){const st=STYLES[S.style],m=S.menu;return st.exp+S.expBoost+GRADES[m.grade].prem+[0,60][m.chashu]+NOODLES[m.noodle].prem+Math.max(0,r-3.5)*120}
 function tasteCore(){
   const st=STYLES[S.style],m=S.menu;
   return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill+(S.secret||0)+(hasT('zettai')?2:0);
@@ -518,7 +520,7 @@ function finishDay(){
   S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003*(hasT('hitotarashi')?1.3:1)*(S.vision&&S.vision.shop==='local'?1.1:1),.2,Math.max(S.awareness,1.0));
   // 熟練・疲労
   S.skill=Math.min(15,S.skill+(.008+D.served*.00005)*Math.max(.1,1-S.skill/16)); // 上達するほど伸びは緩やか
-  const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(hasT('dandori')?.85:1)*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
+  const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(hasT('dandori')?.85:1)*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(isHomeNoodle(S.menu.noodle)?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
   S.fatigue=clamp(S.fatigue+load-38,0,100);
   // 月次集計
   const M=S.month;
@@ -601,7 +603,7 @@ const EVENTS=[
     choices:[{t:'受ける',d:'7日間 客足+45%／お客の期待価格+60円',f:()=>{S.buzz.push({mult:.45,days:7,label:'雑誌掲載',exp:true});S.expBoost=60;S.media=true;return '掲載号が店頭に並んだ。'}},{t:'断る',d:'いつも通り営業',f:()=>'丁重にお断りした。'}]},
   {id:'pork',w:1,ok:()=>true,title:'豚肉・豚骨の相場が高騰',body:'輸入飼料の値上がりで、精肉店から値上げの連絡。しばらく続きそうだ。',
     choices:[{t:'了解',d:'豚の相場 +22%（徐々に戻る）',f:()=>{S.market.pork*=1.22;return '仕入れ値が上がった。原価率に注意。'}}]},
-  {id:'wheat',w:.6,ok:()=>S.menu.noodle!==2,title:'製麺所から値上げのお知らせ',body:'小麦粉と物流費の上昇を理由に、来月から麺の卸値を上げたいとのこと。',
+  {id:'wheat',w:.6,ok:()=>!isHomeNoodle(S.menu.noodle),title:'製麺所から値上げのお知らせ',body:'小麦粉と物流費の上昇を理由に、来月から麺の卸値を上げたいとのこと。',
     choices:[{t:'受け入れる',d:'麺の仕入れ値 +10%',f:()=>{S.market.wheat*=1.1;return '麺の単価が上がった。'}}]},
   {id:'absent',w:1,ok:()=>S.staff.kitchen+S.staff.hall>0,title:'バイトが当日欠勤',body:'朝、熱が出たと連絡があった。今日のシフトに穴が空く。',
     choices:[{t:'自分で回す',d:'今日はスタッフ1人減',f:()=>{S._restoreStaff={...S.staff};if(S.staff.hall>0)S.staff.hall--;else S.staff.kitchen--;return '今日は人手が足りない。'}},{t:'派遣を呼ぶ',d:'時給2,000円で厨房1人',f:()=>{S._restoreStaff={...S.staff};if(S.staff.hall>0)S.staff.hall--;else S.staff.kitchen--;S.tempStaff=1;return '派遣スタッフが来てくれた。'}}]},
@@ -1563,7 +1565,7 @@ function morningHTML(){
      </div>
      <p class="hint">内訳：スープ${yen(bc.soup)}・麺${yen(bc.noodle)}・チャーシュー${yen(bc.chashu)}・薬味海苔${yen(bc.top)}　相場：豚${(S.market.pork*100).toFixed(0)}／小麦${(S.market.wheat*100).toFixed(0)}</p>
      <div><h3>スープ</h3>${seg('grade',GRADES.map(g=>g.name),m.grade)}</div>
-     <div><h3>麺</h3>${seg('noodle',NOODLES.map(n=>n.name),m.noodle,i=>i===2&&!S.inv.machine)}</div>
+     <div><h3>麺</h3>${seg('noodle',NOODLES.map(n=>n.name),m.noodle,i=>isHomeNoodle(i)&&!S.inv.machine)}</div>
      <div><h3>チャーシュー</h3>${seg('chashu',CHASHU.map(n=>n.name),m.chashu)}</div>
      <div><h3>サイドメニュー</h3>
       <label class="chk"><input type="checkbox" data-act="side" data-k="ajitama" ${m.ajitama?'checked':''}> 味玉 120円（原価35円）</label>
@@ -1579,7 +1581,7 @@ function morningHTML(){
       ['sign','看板と提灯を新調','120,000円。認知度+0.08（一度きり）',S.inv.sign?'済':'購入',S.inv.sign||S.cash<120000],
       ['pot','寸胴を1本増設','180,000円。仕込み上限 250→400杯',S.inv.pot?'済':'購入',S.inv.pot||S.cash<180000],
       ['cashless','券売機をキャッシュレス対応に','250,000円。客足+4%（駅前は+8%）',S.inv.cashless?'済':'購入',S.inv.cashless||S.cash<250000],
-      ['machine','製麺機を導入して自家製麺','1,200,000円。麺原価38→22円、旨さ+7。ただし毎日の疲労+6',S.inv.machine?'済':'購入',S.inv.machine||S.cash<1200000],
+      ['machine','製麺機を導入して自家製麺','1,200,000円。麺の段階「自家製麺」（原価22円・旨さ+7）と「自家製・国産小麦」（原価40円・旨さ+10）が選べるようになる。ただし毎日の疲労+6',S.inv.machine?'済':'購入',S.inv.machine||S.cash<1200000],
     ];
     body=`<div class="invest">${items.map(([k,t,d,b,dis])=>`<div class="item"><div><b>${t}</b><span>${d}</span></div><button class="btn ${k==='sns'&&S.sns?'ghost':'accent'}" data-act="buy" data-k="${k}" ${dis?'disabled':''}>${b}</button></div>`).join('')}</div>
      <p class="hint">認知度 ${(S.awareness*100).toFixed(0)}%。良い一杯を出すほど口コミで自然に広がり、悪い一杯は客を減らす。</p>`;
@@ -1821,7 +1823,7 @@ function buy(k){
   if(k==='sign'&&!S.inv.sign){pay(120000,'看板と提灯を新調');S.inv.sign=true;S.awareness=Math.min(1.25,S.awareness+.08)}
   if(k==='pot'&&!S.inv.pot){pay(180000,'寸胴を増設');S.inv.pot=true}
   if(k==='cashless'&&!S.inv.cashless){pay(250000,'券売機をキャッシュレス対応に');S.inv.cashless=true}
-  if(k==='machine'&&!S.inv.machine){pay(1200000,'製麺機を導入');S.inv.machine=true;S.menu.noodle=2}
+  if(k==='machine'&&!S.inv.machine){pay(1200000,'製麺機を導入');S.inv.machine=true;S.menu.noodle=3}
   save();render();
 }
 
@@ -1842,6 +1844,7 @@ function migrate(o){
   if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
   for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
   if(o.phase==='clear')o.phase='morning';
+  if(!o.menuV){o.menu.grade=[0,2,4][o.menu.grade]??0;o.menu.noodle=[0,2,3][o.menu.noodle]??0;o.menuV=2} // スープ・麺を5段階にした版への引き継ぎ
   if(o.train&&!o.train.cnt)o.train.cnt={};
   if(o.phase==='train'&&o.train&&o.train.m!==undefined&&o.train.unit!=='w'){o.train.m=Math.round(o.train.m*4.34);o.train.roleM=Math.round((o.train.roleM||0)*4.34);o.train.unit='w'}
   if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={unit:'w',m:t.week||0,role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
