@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>引っ越しました｜らーめん開業日誌</title>
+<link rel="canonical" href="https://ramen.air-io.com/">
+<noscript><meta http-equiv="refresh" content="0;url=https://ramen.air-io.com/"></noscript>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main>
+<h1>らーめん開業日誌は引っ越しました</h1>
+<p>新しいアドレスは <a id="go" href="https://ramen.air-io.com/">https://ramen.air-io.com/</a> です。セーブを引き継いで移動しています…</p>
+<p class="sub">自動で移動しないときは、上のリンクを押してください。</p>
+</main>
+<script>
+// 旧アドレス（ramen-kaigyo.fly.dev）のブラウザに残ったセーブを、URL の # に載せて新しいアドレスへ渡す。
+// # 以降はサーバーに送られないので、セーブがどこかに保存されることはない
+(async()=>{
+  const NEW='https://ramen.air-io.com/';
+  let data={};
+  try{for(const k of ['ramen-kaigyo-v1','ramen-adfree']){const v=localStorage.getItem(k);if(v!=null)data[k]=v}}catch(_){}
+  let url=NEW;
+  if(Object.keys(data).length){
+    let bytes=new TextEncoder().encode(JSON.stringify(data)),mode='j';
+    if(window.CompressionStream){
+      try{bytes=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());mode='z'}catch(_){}
+    }
+    let bin='';for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));
+    url=NEW+'#transfer='+mode+btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  document.getElementById('go').href=url;
+  location.replace(url);
+})();
+</script>
+</body>
+</html>

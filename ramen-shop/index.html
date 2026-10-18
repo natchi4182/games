@@ -1994,7 +1994,24 @@ function migrate(o){
 function load(){try{const s=localStorage.getItem(SAVE_KEY);if(s){const o=JSON.parse(s);if(o&&(o.v===1||o.v===2))return migrate(o)}}catch(_){}return null}
 window.claude?.hot?.snapshot?.(()=>({S:S&&S.phase==='open'?{...S,phase:'morning'}:S}));
 
-function boot(data){
+// 旧アドレス（ramen-kaigyo.fly.dev）から #transfer= でセーブを受け取る（move.html が付ける）
+async function importTransfer(){
+  const m=location.hash.match(/^#transfer=([jz])([A-Za-z0-9_-]+)$/);if(!m)return null;
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(_){}
+  try{
+    let bytes=Uint8Array.from(atob(m[2].replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+    if(m[1]==='z')bytes=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    const d=JSON.parse(new TextDecoder().decode(bytes));
+    if(d['ramen-adfree']==='1')localStorage.setItem('ramen-adfree','1');
+    const inc=d[SAVE_KEY];if(!inc)return null;
+    const cur=localStorage.getItem(SAVE_KEY);
+    if(cur===inc)return null;
+    if(cur&&!confirm('以前のアドレスで遊んでいたセーブが見つかりました。こちらに引き継ぎますか？\n（いまこのアドレスにあるセーブは上書きされます）'))return null;
+    localStorage.setItem(SAVE_KEY,inc);return 'moved';
+  }catch(_){return null}
+}
+function boot(data){importTransfer().then(r=>bootMain(data,r),()=>bootMain(data,null))}
+function bootMain(data,moved){
   loadAds();
   if(!/claude/.test(location.hostname)&&/^https?:/.test(location.protocol)){const f=document.createElement('footer');f.className='site-foot';f.innerHTML='<a href="terms.html">利用規約</a><a href="privacy.html">プライバシーポリシー</a><a href="mailto:airio.creative@gmail.com">お問い合わせ</a><span>運営：AirIo Creative</span>';document.querySelector('.app').appendChild(f)}
   S=(data&&data.S)?migrate(data.S):load();
@@ -2002,6 +2019,7 @@ function boot(data){
   render();
   if(!S){showSetup()}
   else log('—',`${fmtDate(S.day)} から再開`,'info');
+  if(moved&&S)log('—','以前のアドレス（ramen-kaigyo.fly.dev）からセーブを引き継ぎました','info');
   requestAnimationFrame(loop);
 }
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
