@@ -28,7 +28,7 @@ AdSense は、自分が持っているドメインでないとサイトを登録
    - まず `test:true` のまま `fly deploy` し、テスト広告が出る場所を確認する
    - 問題なければ `test:false` にして `fly deploy`
    - `ads.txt.example` を参考に `ads.txt` を作って同じフォルダに置き、`fly deploy`
-4. `privacy.html` の［運営者名］［連絡先］［公開日］を書き換える
+4. ~~`privacy.html` の運営者名・連絡先・公開日~~ → 記入済み（AirIo Creative）
 
 ## 4. 更新のしかた
 ゲームを直したら `index.html` を差し替えて `fly deploy` するだけ。進み具合は各プレイヤーのブラウザに保存されているので、更新で消えることはない（旧バージョンのセーブも引き継げる）。

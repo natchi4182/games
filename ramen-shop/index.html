@@ -197,7 +197,7 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .hints p{margin:4px 0 0;font-size:12.5px;color:var(--ai);font-style:italic}
 .tal b{font-size:13px}.tal span{font-size:11.5px;color:var(--sumi-soft)}.tal .cond{font-size:11px}
 
-.site-foot{text-align:center;font-size:12px;padding:8px 0}.site-foot a{color:#9aa7c4}
+.site-foot{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;font-size:12px;padding:8px 0;color:#9aa7c4}.site-foot a{color:#9aa7c4}
 .adcard .adbox{border:2px dashed #b9a271;border-radius:6px;padding:28px 16px;text-align:center;display:flex;flex-direction:column;gap:6px;background:#f7edd4}
 .adcard .adbox span{font-size:12px;color:var(--sumi-soft)}
 .tut{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:8px}
@@ -1996,7 +1996,7 @@ window.claude?.hot?.snapshot?.(()=>({S:S&&S.phase==='open'?{...S,phase:'morning'
 
 function boot(data){
   loadAds();
-  if(!/claude/.test(location.hostname)&&/^https?:/.test(location.protocol)){const f=document.createElement('footer');f.className='site-foot';f.innerHTML='<a href="privacy.html">プライバシーポリシー</a>';document.querySelector('.app').appendChild(f)}
+  if(!/claude/.test(location.hostname)&&/^https?:/.test(location.protocol)){const f=document.createElement('footer');f.className='site-foot';f.innerHTML='<a href="terms.html">利用規約</a><a href="privacy.html">プライバシーポリシー</a><a href="mailto:airio.creative@gmail.com">お問い合わせ</a><span>運営：AirIo Creative</span>';document.querySelector('.app').appendChild(f)}
   S=(data&&data.S)?migrate(data.S):load();
   if(S&&S.phase==='open'){S.phase='morning'}
   render();

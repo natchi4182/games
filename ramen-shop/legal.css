@@ -1,0 +1,7 @@
+:root{color-scheme:dark}
+body{margin:0;background:#18223a;color:#f4efe4;font-family:"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;line-height:1.8;padding:24px 16px}
+main{max-width:720px;margin:0 auto;background:#efe1bf;color:#2b2118;border-radius:8px;padding:24px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:24px 0 6px}
+a{color:#6d3a0a}p,li{font-size:14px}ul{padding-left:1.4em}
+.back{margin:0 0 12px}.sub{color:#6b5a45;font-size:12px}
+.links{display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid #c9b48a;margin-top:20px;padding-top:12px;font-size:13px}
