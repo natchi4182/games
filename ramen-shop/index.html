@@ -1449,7 +1449,8 @@ function drawShop(t){
     cx.fillStyle='#efe3c6';cx.fillRect(x,y,26,112);
     cx.fillStyle='#2b2118';cx.font='600 13px "Zen Kaku Gothic New",sans-serif';cx.textAlign='center';
     const chars=[...String(n)].slice(0,6);
-    chars.forEach((ch,j)=>cx.fillText(ch,x+13,y+16+j*14));
+    // 長音記号などは縦書きの向きに回して描く
+    chars.forEach((ch,j)=>{const cy=y+16+j*14;if('ー－～〜'.includes(ch)){cx.save();cx.translate(x+13,cy-5);cx.rotate(Math.PI/2);cx.textBaseline='middle';cx.fillText(ch,0,0);cx.restore()}else cx.fillText(ch,x+13,cy)});
     cx.fillStyle='#9b2b22';cx.font='11px "DotGothic16",monospace';
     const ps=typeof p==='number'?String(p):p;
     cx.save();cx.translate(x+13,y+106);cx.fillText(ps,0,0);cx.restore();
