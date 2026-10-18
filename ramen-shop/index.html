@@ -301,6 +301,8 @@ function bowlCost(){
   const k=1-(S.mgmt||0)*.012-(hasT('mekiki')?.05:0); // 経営手腕：仕入れ交渉。才能「目利き」
   return {soup:soup*k,noodle:noodle*k,chashu:chashu*k,top:TOPPING*k,total:(soup+noodle+chashu+TOPPING)*k};
 }
+// 客が納得する価格：素材のこだわりと店の評判の分だけ上がる
+function expPrice(r=rating()){const st=STYLES[S.style],m=S.menu;return st.exp+S.expBoost+[0,80,200][m.grade]+[0,60][m.chashu]+[0,40,60][m.noodle]+Math.max(0,r-3.5)*120}
 function tasteCore(){
   const st=STYLES[S.style],m=S.menu;
   return st.base+GRADES[m.grade].taste+NOODLES[m.noodle].taste+CHASHU[m.chashu].taste+S.skill+(S.secret||0)+(hasT('zettai')?2:0);
@@ -326,7 +328,7 @@ function demandFactors(){
   const L=LOC[S.loc],st=STYLES[S.style],m=S.menu,x=dateOf(S.day),w=S.weather;
   const r=rating();
   const fR=Math.min(3.6,Math.exp((r-3.2)*1.5));
-  const exp=st.exp+S.expBoost;
+  const exp=expPrice();
   let fP=priceFactor(m.price,exp,L.priceTol);
   let fW=weatherF(S.loc,w);
   let fT=clamp(1+(18-w.t)*st.temp,.7,1.35);
@@ -399,7 +401,7 @@ function stepMinute(){
     if(!s.c&&D.queue.length&&!D.soldOut){
       const c=D.queue.shift();
       c.state='s';c.seat=i;c.seatAt=D.min;s.c=c;
-      D.waitMax=Math.max(D.waitMax,D.min-c.arr);
+      D.waitMax=Math.max(D.waitMax,D.min-c.arr);D.waitSum=(D.waitSum||0)+(D.min-c.arr);D.seatN=(D.seatN||0)+1;
       const dish=pickDish();
       c.q=dish?dish.q:null;
       if(!dish||dish.soup)D.soupLeft--;
@@ -453,7 +455,7 @@ function leave(c){
   const st=STYLES[S.style],m=S.menu;
   const qWait=c.seatAt-c.arr, cWait=c.servedAt-c.seatAt;
   const taste=(c.q!=null?c.q-Math.max(0,S.fatigue-60)*.28-5*nov():D.taste)+gauss()*(4+Math.max(0,S.fatigue-60)*.08+4*nov()-(hasT('zettai')?1.5:0));
-  const exp=st.exp+S.expBoost;
+  const exp=expPrice();
   const pricePen=(m.price-exp)/12;
   const qPen=Math.max(0,qWait-12)*.7*(rating()>3.8?.5:1);
   const cPen=Math.max(0,cWait-8)*1.6;
@@ -506,7 +508,7 @@ function finishDay(){
   const avg=D.starN?D.starSum/D.starN:3;
   S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003*(hasT('hitotarashi')?1.3:1)*(S.vision&&S.vision.shop==='local'?1.1:1),.2,Math.max(S.awareness,1.0));
   // 熟練・疲労
-  S.skill=Math.min(15,S.skill+.008+D.served*.0001);
+  S.skill=Math.min(15,S.skill+(.008+D.served*.00005)*Math.max(.1,1-S.skill/16)); // 上達するほど伸びは緩やか
   const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(hasT('dandori')?.85:1)*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
   S.fatigue=clamp(S.fatigue+load-38,0,100);
   // 月次集計
@@ -628,11 +630,11 @@ const STAGES=[
   {name:'行列店',desc:'本店の評価★3.8以上、本店の月間来客3,000人',conds:()=>[[`本店の評価 ★${rating().toFixed(2)} / 3.80`,rating()>=3.8],[`月間来客の最高 ${S.bestMonthCust.toLocaleString()} / 3,000人（月末に集計）`,S.bestMonthCust>=3000]]},
   {name:'一国一城',desc:'移転か支店出店をして、借入をすべて返す',conds:()=>[[`移転・出店 ${S.relocated||S.branches.length?'済':'まだ'}`,S.relocated||S.branches.length>0],[`借入残高 ${yen(debtOf())}`,debtOf()<=0]]},
   {name:'名店',desc:'評価★4.2以上を6か月連続で保ち、雑誌かテレビに取り上げられる',conds:()=>[[`月末に★4.2以上の連続 ${S.streak42}/6か月`,S.streak42>=6],[`メディア掲載 ${S.media?'済':'まだ'}`,S.media]]},
-  {name:'伝説のラーメン屋',desc:'本店の評価★4.5、3店舗以上、伝説の評論家の審査に合格',conds:()=>[[`本店の評価 ★${rating().toFixed(2)} / 4.50`,rating()>=4.5],[`店舗数 ${1+S.branches.length}/3`,S.branches.length>=2],[`評論家の審査 ${S.legend?'合格':S.critic?fmtDate(S.critic.day)+'に来店予定':'条件を満たすと予告状が届く'}`,S.legend]]},
+  {name:'伝説のラーメン屋',desc:'開業から3年以上、本店の評価★4.5、3店舗以上、伝説の評論家の審査に合格',conds:()=>[[`暖簾を守った年月 ${Math.min(3,Math.floor(S.day/365))}/3年`,S.day>=1095],[`本店の評価 ★${rating().toFixed(2)} / 4.50`,rating()>=4.5],[`店舗数 ${1+S.branches.length}/3`,S.branches.length>=2],[`評論家の審査 ${S.legend?'合格':S.critic?fmtDate(S.critic.day)+'に来店予定':'条件を満たすと予告状が届く'}`,S.legend]]},
 ];
 function checkStages(){
   if(!S||S.phase==='over')return;
-  if(S.stage===4&&!S.critic&&!S.legend&&S.day>=S.criticNext&&rating()>=4.5&&S.branches.length>=2){
+  if(S.stage===4&&!S.critic&&!S.legend&&S.day>=S.criticNext&&S.day>=1095&&rating()>=4.5&&S.branches.length>=2){
     S.critic={day:S.day+3};
     queueModal(noticeHTML('伝説の評論家から予告状',`「三日後、貴店の一杯を頂きに伺う」。${fmtDate(S.critic.day)}の営業で、味・待ち時間・お客の満足度を審査される。疲労を抜き、仕込みを万全に。`));
     log('—','伝説の評論家から予告状が届いた','info');
@@ -644,12 +646,13 @@ function checkStages(){
   }
 }
 function judgeCritic(avg){
-  const ok=D.taste>=82&&avg>=4.2&&D.waitMax<=30;
+  const avgW=D.seatN?D.waitSum/D.seatN:0;
+  const ok=D.taste>=82&&avg>=4.2&&avgW<=25;
   S.critic=null;
   if(ok){S.legend=true;S.lastReport.criticMsg='伝説の評論家「……この一杯は、時代に残る」。審査に合格した。'}
   else{
     S.criticNext=S.day+30;
-    const why=D.taste<82?`味の点数が足りない（${D.taste.toFixed(1)}点／82点）`:avg<4.2?`お客の満足度が足りない（平均${avg.toFixed(2)}／4.2）`:`待ち時間が長すぎる（最長${Math.round(D.waitMax)}分）`;
+    const why=D.taste<82?`味の点数が足りない（${D.taste.toFixed(1)}点／82点）`:avg<4.2?`お客の満足度が足りない（平均${avg.toFixed(2)}／4.2）`:`待たせすぎた（平均${Math.round(avgW)}分。25分以内が条件）`;
     S.lastReport.criticMsg=`伝説の評論家は無言で店を出た。不合格：${why}。30日後にまた予告状が届く。`;
   }
 }
@@ -674,7 +677,7 @@ function diagnose(){
   const avg=k=>n?rec.reduce((a,h)=>a+(h[k]||0),0)/n:0;
   const cust=avg('cust'),profit=avg('profit'),lost=avg('lost'),waste=avg('waste'),sales=avg('sales');
   const fixedDaily=(rentOf()+loanPay()+LEASE+50000+OWNER)/30;
-  const costR=bc.total/m.price, gap=m.price-(st.exp+S.expBoost);
+  const costR=bc.total/m.price, gap=Math.round(m.price-expPrice());
   const lostR=cust+lost>0?lost/(cust+lost):0;
   const staff=S.staff.kitchen+S.staff.hall;
   const ax={
@@ -828,7 +831,7 @@ function simBranch(b){
   const L=LOC[b.loc],st=STYLES[S.style],m=S.menu,w=S.weather,x=dateOf(S.day);
   const r=ratingOf(b.stars);
   const fR=Math.min(3.6,Math.exp((r-3.2)*1.5));
-  const fP=priceFactor(m.price,st.exp,L.priceTol);
+  const fP=priceFactor(m.price,expPrice(r),L.priceTol);
   const fT=clamp(1+(18-w.t)*st.temp,.7,1.35);
   const brand=1+S.buzz.reduce((a,z)=>a+z.mult,0)*.5+Math.max(0,rating()-3.5)*.3;
   const wsum=Object.values(L.curve).reduce((a,c)=>a+c,0);
@@ -845,7 +848,7 @@ function simBranch(b){
   const util=3500+cust*1.1*st.gas+660*10;
   const cost=food+labor+util;
   const taste=tasteCore()-(10-b.mgr.skill)*1.1;
-  const val=taste-(m.price-st.exp)/12+2+(lost>cust*.2?-2:0)+(st.riceFree?1.5:0)+(m.ajitama?.5:0)-Math.max(0,r-3.6)*7+focusAdj()+(S.diff==='easy'?1.5:0);
+  const val=taste-(m.price-expPrice(r))/12+2+(lost>cust*.2?-2:0)+(st.riceFree?1.5:0)+(m.ajitama?.5:0)-Math.max(0,r-3.6)*7+focusAdj()+(S.diff==='easy'?1.5:0);
   const avg=clamp(1+(val-36)/12,1,5);
   const nr=poisson(cust*.06);
   for(let i=0;i<nr;i++){b.stars.push(Math.round(clamp(avg+gauss()*.55,1,5)*2)/2);b.total++}
@@ -977,8 +980,9 @@ function prepEstimate(){
 }
 function oyakataLines(){
   const L=[],R=S.lastReport,st=STYLES[S.style],bc=bowlCost();
-  const costR=bc.total/S.menu.price,gap=S.menu.price-(st.exp+S.expBoost);
+  const costR=bc.total/S.menu.price,gap=Math.round(S.menu.price-expPrice());
   if(S.novice&&nov()>0&&S.day<60&&S.day%5===0)L.push('素人の味は日によってブレる。焦らず、毎日同じ一杯を出すことだけ考えろ。腕が上がれば落ち着く。');
+  if(S.critic&&S.critic.day-S.day<=3&&S.critic.day>=S.day)L.unshift(`${S.critic.day===S.day?'今日':fmtDate(S.critic.day)+'に'}伝説の評論家が来る。味は落とすな、客は待たせるな（平均25分以内）。人を入れるか、値段を上げて客を絞れ。`);
   if(S.day===0)L.push('最初は欲張るな。スープは目安の杯数だけ炊け。足りなければ売切、余れば捨てる。それが毎日の勝負だ。');
   if(R&&R.day===S.day-1){
     if(R.soldOut&&R.lostS>0)L.push(`昨日は売り切れで${R.lostS}人を帰した。仕込みを増やせ。`);
@@ -1540,7 +1544,7 @@ function morningHTML(){
     body=`
      <div><div class="row"><span class="lbl">${esc(st.name)}らーめん 一杯の価格</span><span class="price-big">${m.price.toLocaleString()}円</span></div>
       <input id="price" type="range" min="600" max="1600" step="10" value="${m.price}" data-act="price">
-      <p class="hint">${esc(LOC[S.loc].name)}の相場感はおよそ${(st.exp+S.expBoost).toLocaleString()}円。1,000円を超えると来店をためらう人が増える。</p></div>
+      <p class="hint">${esc(LOC[S.loc].name)}でお客が納得する値段はおよそ${(Math.round(expPrice()/10)*10).toLocaleString()}円（素材のこだわりと店の評判で上がる）。1,000円を超えると来店をためらう人が増える。</p></div>
      <div class="costbox">
       <div><span class="k">一杯の原価</span><span class="v">${yen(bc.total)}</span></div>
       <div><span class="k">原価率</span><span class="v">${ratio.toFixed(1)}%</span> <span class="pill ${pill}">${ratio<30?'健全':ratio<38?'やや高い':'危険'}</span></div>
