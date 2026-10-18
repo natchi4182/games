@@ -733,6 +733,7 @@ const AD_SLOTS={
   menuDev:{name:'新メニューの試作を始める',kind:'reward'},
   relocate:{name:'移転を契約する',kind:'reward'},
   branch:{name:'新店舗を契約する',kind:'reward'},
+  equip:{name:'設備に投資する',kind:'reward'},
   monthEnd:{name:'月次決算のあと',kind:'break'},
 };
 const adFree=()=>{try{return localStorage.getItem('ramen-adfree')==='1'}catch(_){return false}};
@@ -1874,7 +1875,10 @@ document.addEventListener('click',e=>{
     const k=b.dataset.k,d=+b.dataset.d;
     S.staff[k]=clamp(S.staff[k]+d,0,staffMax(k));save();render();return;
   }
-  if(a==='buy'){buy(b.dataset.k);return}
+  if(a==='buy'){const k=b.dataset.k;
+    // 一度きりの設備投資の前だけ広告（会食・チラシなど繰り返す投資には出さない）
+    if(['sign','pot','cashless','machine'].includes(k)&&!S.inv[k]){adGate('equip',()=>buy(k));return}
+    buy(k);return}
   if(a==='open'){closeModal();startDay();return}
   if(a==='rest'){if(S.phase==='closed'||S.phase==='morning'){S.sick=false;restDay()}return}
   if(a==='forceopen'){S.phase='morning';render();return}
