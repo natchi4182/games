@@ -182,6 +182,7 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .focusbar i{position:absolute;top:-4px;width:4px;height:16px;margin-left:-2px;background:var(--sumi);border-radius:2px}
 .invest .item.on{border-color:var(--good)}
 .btns{display:flex;flex-direction:column;gap:4px;flex:none}
+.trfoot .btn{flex:1 1 auto}
 .tut{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:8px}
 .tut li b{display:block}.tut li span{font-size:13px;color:var(--sumi-soft)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -1005,10 +1006,10 @@ function tutorialHTML(){
 }
 
 // ───────── 修行 ─────────
-const TRAIN_MIN=12, TRAIN_MAX=60; // 1ターン＝1か月。最低1年、最長5年
+const TRAIN_MIN=52, TRAIN_MAX=260, WK=12/52; // 1ターン＝1週間。最低1年、最長5年。効果の数値は4週あたりで定義し、1週ではWK倍
 const ROLES=[
   {name:'洗い場・掃除',skill:.08,mgmt:0,conn:0,req:()=>true,reqText:''},
-  {name:'仕込み',skill:.14,mgmt:0,conn:.02,req:t=>t.trust>=55&&t.m>=3,reqText:'師匠の信頼55・修行3か月'},
+  {name:'仕込み',skill:.14,mgmt:0,conn:.02,req:t=>t.trust>=55&&t.m>=13,reqText:'師匠の信頼55・修行13週'},
   {name:'麺上げ・盛り付け',skill:.2,mgmt:.03,conn:.08,req:t=>t.trust>=62&&t.skill>=1.5,reqText:'師匠の信頼62・腕前1.5'},
   {name:'スープ番',skill:.26,mgmt:.03,conn:.03,req:t=>t.trust>=72&&t.skill>=3.5,reqText:'師匠の信頼72・腕前3.5'},
   {name:'店長代理',skill:.18,mgmt:.3,conn:.12,req:t=>t.trust>=82&&t.skill>=5.5&&t.mgmt>=2,reqText:'師匠の信頼82・腕前5.5・経営手腕2.0'},
@@ -1028,25 +1029,38 @@ const NIGHT_ACTS=[
 ];
 const TRAIN_EVENTS=[
   {p:t=>.05+t.skill*.006,f:t=>{t.motiv+=8;t.trust+=2;return '師匠がスープを味見して、ひとこと「悪くない」。その夜は眠れなかった。'}},
-  {p:t=>t.m>12?.05:.01,f:t=>{t.conn+=.3;t.motiv-=4;return '兄弟子が独立した。開店を手伝いながら「自分はいつになるのか」と思った。'}},
+  {p:t=>t.m>52?.05:.01,f:t=>{t.conn+=.3;t.motiv-=4;return '兄弟子が独立した。開店を手伝いながら「自分はいつになるのか」と思った。'}},
   {p:t=>.04,f:t=>{t.motiv-=8;return '一緒に入った同期が辞めていった。'}},
   {p:t=>t.fat>65?.1:.03,f:t=>{t.fat+=10;t.motiv-=3;return '寸胴を運んでいて腕を火傷した。'}},
-  {p:t=>t.m>24?.08:.02,f:t=>{t.motiv-=6;return '実家から電話。「いつまで修行するんだ。ちゃんと食べていけるのか」'}},
+  {p:t=>t.m>104?.08:.02,f:t=>{t.motiv-=6;return '実家から電話。「いつまで修行するんだ。ちゃんと食べていけるのか」'}},
   {p:t=>t.role>=2?.06:.02,f:t=>{t.motiv+=6;t.conn+=.1;return '常連に名前を覚えられた。「今日のは兄ちゃんが作ったのか」'}},
   {p:t=>.04,f:t=>{t.mgmt+=.2;return '出入りの業者から、仕入れ値を下げるコツを教わった。'}},
-  {p:t=>t.m>24&&t.role>=3?.03:0,f:t=>{t.mgmt+=.5;t.trust+=6;t.fat+=10;return '師匠が腰を痛めて一週間休んだ。その間、店を任された。'}},
+  {p:t=>t.m>104&&t.role>=3?.03:0,f:t=>{t.mgmt+=.5;t.trust+=6;t.fat+=10;return '師匠が腰を痛めて一週間休んだ。その間、店を任された。'}},
   {p:t=>.04,f:t=>{t.motiv+=10;return '家族から差し入れと手紙が届いた。もう少し頑張れる。'}},
 ];
 function startTraining(){
   S.phase='train';
-  S.train={m:0,role:0,roleM:0,skill:0,mgmt:0,conn:0,trust:50,fat:10,motiv:70,save:0,secret:0,day:'obey',night:'rest',last:null,crisis:null,held:false};
+  S.train={unit:'w',m:0,role:0,roleM:0,skill:0,mgmt:0,conn:0,trust:50,fat:10,motiv:70,save:0,secret:0,day:'obey',night:'rest',last:null,crisis:null,held:false};
 }
-const trainAge=m=>`${Math.floor(m/12)+1}年目 ${m%12+1}か月`;
+const trainAge=w=>`${Math.floor(w/52)+1}年目 第${w%52+1}週`;
+const trainSpan=w=>{const y=Math.floor(w/52),mo=Math.floor((w%52)/4.34);return `${y?y+'年':''}${mo?mo+'か月':y?'':w+'週'}`};
 function trainRank(t){
   const sc=t.skill+t.mgmt+t.conn+t.trust/25;
   return sc>=16?'師範代':sc>=11?'一人前':sc>=6?'半人前':'見習い';
 }
-function trainMonth(){
+function trainWeeks(n){
+  const t=S.train,all=[];let title='';
+  for(let i=0;i<n;i++){
+    if(t.crisis||t.m>=TRAIN_MAX)break;
+    const role0=t.role;
+    trainWeek();
+    if(!title)title=t.last.title;
+    all.push(...t.last.msgs.map(m=>`第${(t.m-1)%52+1}週：${m}`));
+    if(t.crisis||t.role!==role0||t.last.msgs.length)break;
+  }
+  if(n>1&&t.last){const [a,b]=title.split('：');t.last={title:`${a}〜第${(t.m-1)%52+1}週：${b||''}`,msgs:all}}
+}
+function trainWeek(){
   const t=S.train;if(t.crisis||t.m>=TRAIN_MAX)return;
   const d=DAY_ACTS.find(x=>x.id===t.day),n=NIGHT_ACTS.find(x=>x.id===t.night),r=ROLES[t.role];
   const msgs=[];
@@ -1054,17 +1068,17 @@ function trainMonth(){
   const eff=t.fat>85?.5:1;
   if(eff<1)msgs.push('疲れが抜けず、何をやっても身につき方が半分だった。');
   const dim=v=>1-v/12; // 上達するほど伸びにくい
-  t.skill+=(r.skill*d.mul+(n.skill||0))*eff*dim(t.skill);
-  t.mgmt+=(r.mgmt+(d.mgmt||0)+(n.mgmt||0))*eff*dim(t.mgmt);
-  t.conn+=(r.conn+(d.conn||0)+(n.conn||0))*eff*dim(t.conn);
-  t.trust+=d.trust+(n.trust||0);
-  if(d.risk&&Math.random()<d.risk){t.trust-=4;t.motiv-=5;msgs.push('手を止めて師匠の手元を見ていたら「見てる暇があったら手を動かせ」と怒鳴られた。')}
-  t.fat=clamp(t.fat+10+(n.fat||0)-12,0,110);
-  t.save+=10000-(n.cost||0)+(n.save||0); // 見習いの給料18万−生活費17万
-  t.motiv+=-3+(d.motiv||0)+(n.motiv||0)+(t.fat>60?-6:0)+(t.role===0&&t.roleM>6?-3:0);
-  if(t.night==='soup'&&t.secret<6&&Math.random()<.035){t.secret+=2;msgs.push('閃いた。スープの火入れに自分だけのコツを見つけた（秘伝の技 +2）。')}
-  if(t.fat>=100){t.fat=50;t.motiv-=8;t.trust-=2;msgs.push('無理がたたって寝込み、半月店に出られなかった。')}
-  if(Math.random()<.35){for(const e of TRAIN_EVENTS){if(Math.random()<e.p(t)*2.5){msgs.push(e.f(t));break}}}
+  t.skill+=(r.skill*d.mul+(n.skill||0))*eff*dim(t.skill)*WK;
+  t.mgmt+=(r.mgmt+(d.mgmt||0)+(n.mgmt||0))*eff*dim(t.mgmt)*WK;
+  t.conn+=(r.conn+(d.conn||0)+(n.conn||0))*eff*dim(t.conn)*WK;
+  t.trust+=(d.trust+(n.trust||0))*WK;
+  if(d.risk&&Math.random()<d.risk*WK){t.trust-=4;t.motiv-=5;msgs.push('手を止めて師匠の手元を見ていたら「見てる暇があったら手を動かせ」と怒鳴られた。')}
+  t.fat=clamp(t.fat+(10+(n.fat||0)-12)*WK,0,110);
+  t.save+=Math.round((10000-(n.cost||0)+(n.save||0))*WK); // 見習いの給料18万−生活費17万（月）
+  t.motiv+=(-3+(d.motiv||0)+(n.motiv||0)+(t.fat>60?-6:0)+(t.role===0&&t.roleM>26?-3:0))*WK;
+  if(t.night==='soup'&&t.secret<6&&Math.random()<.035*WK){t.secret+=2;msgs.push('閃いた。スープの火入れに自分だけのコツを見つけた（秘伝の技 +2）。')}
+  if(t.fat>=100){t.fat=50;t.motiv-=8;t.trust-=2;msgs.push('無理がたたって寝込み、一週間店に出られなかった。')}
+  if(Math.random()<.35*WK){for(const e of TRAIN_EVENTS){if(Math.random()<e.p(t)*2.5){msgs.push(e.f(t));break}}}
   // 昇格
   const nx=ROLES[t.role+1];
   if(nx&&nx.req(t)){t.role++;t.roleM=0;t.motiv+=10;msgs.push(`師匠「明日から${nx.name}をやれ」。認められた。`)}
@@ -1074,13 +1088,13 @@ function trainMonth(){
   if(t.motiv<=0){
     if(!t.held&&t.trust>=70){t.held=true;t.motiv=35;msgs.push('辞めようと荷物をまとめていたら、師匠に呼び止められた。「お前の一杯を、まだ食ってない」。もう一度だけ頑張ることにした。')}
     else t.crisis='forced';
-  }else if(t.motiv<25&&Math.random()<.3)t.crisis='ask';
+  }else if(t.motiv<25&&Math.random()<.3*WK)t.crisis='ask';
   if(!t.crisis&&t.m>=TRAIN_MAX)t.last.msgs.push('師匠「もう教えることはない。行け」。5年の修行が終わった。');
 }
 function quitTraining(){
   const t=S.train;
   S.phase='quit';
-  S.overReason=`${trainAge(Math.max(0,t.m-1))}で修行を辞めた。腕前${t.skill.toFixed(1)}・師匠の信頼${Math.round(t.trust)}。店を持つ夢は、ここで終わった。修行は誰にでも続けられるものではない。`;
+  S.overReason=`修行${trainSpan(t.m)||t.m+'週'}（${trainAge(Math.max(0,t.m-1))}）で辞めた。腕前${t.skill.toFixed(1)}・師匠の信頼${Math.round(t.trust)}。店を持つ夢は、ここで終わった。修行は誰にでも続けられるものではない。`;
   log('—','修行を辞めた','bad');
 }
 function finishTraining(){
@@ -1088,16 +1102,16 @@ function finishTraining(){
   S.skill=Math.round(t.skill*10)/10;S.mgmt=Math.round(t.mgmt*10)/10;S.conn=Math.round(t.conn*10)/10;S.secret=t.secret;
   S.cash+=t.save;
   S.awareness=Math.min(1,S.awareness+S.conn*.025);
-  S.noren=t.trust>=80&&t.m>=24;
+  S.noren=t.trust>=80&&t.m>=104;
   if(S.noren){for(let i=0;i<8;i++)S.stars.push(3.6);S.buzz.push({mult:.3,days:20,label:'暖簾分け'})}
-  S.trainSummary={months:t.m,rank:trainRank(t),role:ROLES[t.role].name,skill:S.skill,mgmt:S.mgmt,conn:S.conn,trust:Math.round(t.trust),save:t.save,secret:t.secret,noren:S.noren};
+  S.trainSummary={weeks:t.m,rank:trainRank(t),role:ROLES[t.role].name,skill:S.skill,mgmt:S.mgmt,conn:S.conn,trust:Math.round(t.trust),save:t.save,secret:t.secret,noren:S.noren};
   S.train=null;S.phase='morning';
-  log('—',`${Math.floor(S.trainSummary.months/12)}年${S.trainSummary.months%12}か月の修行を終えて独立（${S.trainSummary.rank}）。「${S.name}」開業。${LOC[S.loc].name}、${STYLES[S.style].name}ラーメンで勝負する`,'info');
+  log('—',`${trainSpan(S.trainSummary.weeks)}の修行を終えて独立（${S.trainSummary.rank}）。「${S.name}」開業。${LOC[S.loc].name}、${STYLES[S.style].name}ラーメンで勝負する`,'info');
 }
 function trainHTML(){
   const t=S.train;
   const bar=(lbl,v,max,cls='')=>`<div class="ax"><span>${lbl}</span><span class="axbar"><i class="${cls}" style="width:${clamp(v/max*100,0,100).toFixed(0)}%"></i></span><span class="axv">${max===10?v.toFixed(1):Math.round(v)}</span></div>`;
-  const fx=a=>{const p=[];if(a.skill)p.push(`腕前+${a.skill}`);if(a.mgmt)p.push(`経営+${a.mgmt}`);if(a.conn)p.push(`人脈+${a.conn}`);if(a.trust)p.push(`信頼${a.trust>0?'+':''}${a.trust}`);if(a.motiv)p.push(`心${a.motiv>0?'+':''}${a.motiv}`);if(a.fat)p.push(`疲労${a.fat>0?'+':''}${a.fat}`);if(a.cost)p.push(`−${man(a.cost)}`);if(a.save)p.push(`+${man(a.save)}`);if(a.mul&&a.mul!==1)p.push(`役割の伸び×${a.mul}`);return p.join('・')};
+  const fx=a=>{const p=['4週で'];if(a.skill)p.push(`腕前+${a.skill}`);if(a.mgmt)p.push(`経営+${a.mgmt}`);if(a.conn)p.push(`人脈+${a.conn}`);if(a.trust)p.push(`信頼${a.trust>0?'+':''}${a.trust}`);if(a.motiv)p.push(`心${a.motiv>0?'+':''}${a.motiv}`);if(a.fat)p.push(`疲労${a.fat>0?'+':''}${a.fat}`);if(a.cost)p.push(`−${man(a.cost)}`);if(a.save)p.push(`+${man(a.save)}`);if(a.mul&&a.mul!==1)p.push(`役割の伸び×${a.mul}`);return p.length>1?p[0]+' '+p.slice(1).join('・'):''};
   const nx=ROLES[t.role+1];
   const done=t.m>=TRAIN_MAX;
   if(t.crisis){
@@ -1107,7 +1121,7 @@ function trainHTML(){
       <p class="hint">${t.crisis==='forced'?'心が0になると修行は続けられない。':'続けるなら心が少し戻る。辞めると、店を持つ夢はここで終わる。'}</p></div>
      <div class="pfoot">${t.crisis==='ask'?'<button class="btn primary" data-act="trstay">歯を食いしばって続ける</button>':''}<button class="btn ${t.crisis==='ask'?'ghost':'primary'}" data-act="trquit">修行を辞める</button></div>`;
   }
-  return `<div class="phead"><h2>修行 ${trainAge(t.m)}</h2><p>通算${t.m}か月・役割「${ROLES[t.role].name}」・評価「${trainRank(t)}」。${TRAIN_MIN}か月から独立でき、最長5年。</p></div>
+  return `<div class="phead"><h2>修行 ${trainAge(t.m)}</h2><p>通算${t.m}週（${trainSpan(t.m)||'0週'}）・役割「${ROLES[t.role].name}」・評価「${trainRank(t)}」。1年（52週）から独立でき、最長5年。</p></div>
    <div class="pbody">
     ${t.last?`<div class="oyakata"><div class="oy-head"><b>${esc(t.last.title)}</b></div>${t.last.msgs.length?t.last.msgs.map(m=>`<p>${esc(m)}</p>`).join(''):'<p>黙々と働いた。</p>'}</div>`:`<div class="oyakata"><div class="oy-head"><b>師匠のひとこと</b></div><p>「最初の一年は洗い場だ。文句があるなら辞めろ。ラーメンの修行に終わりはない。俺もまだ修行中だ」</p></div>`}
     <div><h3>身についたもの</h3><div class="axes">
@@ -1116,13 +1130,14 @@ function trainHTML(){
     </div><p class="hint">貯金 ${yen(t.save)}${t.secret?`・秘伝の技 +${t.secret}`:''}。${nx?`次の役割「${nx.name}」：${nx.reqText}`:'最高の役割まで来た'}。暖簾分けは師匠の信頼80以上・修行2年以上。</p></div>
     ${done?'':`<div><h3>昼：店での仕事（いまは${ROLES[t.role].name}）</h3><div class="opt">${DAY_ACTS.map(a=>`<button data-act="trday" data-k="${a.id}" aria-pressed="${t.day===a.id}"><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${fx(a)}</span></button>`).join('')}</div></div>
     <div><h3>夜：自分の時間</h3><div class="opt">${NIGHT_ACTS.map(a=>`<button data-act="trnight" data-k="${a.id}" aria-pressed="${t.night===a.id}"><b>${esc(a.name)}</b><span>${esc(a.desc)}<br>${fx(a)}</span></button>`).join('')}</div></div>
-    <p class="hint">心は毎月少しずつすり減る。疲れ・叱責・長い下積みで大きく減り、0になると挫折する。休みと食べ歩き、昇格で戻る。</p>`}
+    <p class="hint">心は毎週少しずつすり減る。疲れ・叱責・長い下積みで大きく減り、0になると挫折する。休みと食べ歩き、昇格で戻る。</p>`}
    </div>
-   <div class="pfoot">${done?'':'<button class="btn primary" data-act="trgo">この1か月を過ごす</button>'}<button class="btn ${done?'primary':'ghost'}" data-act="trend" ${t.m>=TRAIN_MIN?'':'disabled'}>${t.m>=TRAIN_MIN?'独立して開業する':`独立まであと${TRAIN_MIN-t.m}か月`}</button></div>`;
+   <div class="pfoot trfoot">${done?'':'<button class="btn primary" data-act="trgo" data-n="1">1週間過ごす</button><button class="btn ghost" data-act="trgo" data-n="4">4週まとめて</button><button class="btn ghost" data-act="trgo" data-n="13">季節が変わるまで（13週）</button>'}<button class="btn ${done?'primary':'ghost'}" data-act="trend" ${t.m>=TRAIN_MIN?'':'disabled'}>${t.m>=TRAIN_MIN?'独立して開業する':`独立まであと${TRAIN_MIN-t.m}週`}</button></div>
+   <p class="hint" style="padding:0 16px 14px;margin:0">まとめて進めると、昇格・出来事・心の危機があった週で止まる。</p>`;
 }
 function trainDoneHTML(){
   const r=S.trainSummary;
-  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="tdh"><div class="chead"><p>${Math.floor(r.months/12)}年${r.months%12}か月の修行を終えて（最後の役割：${esc(r.role)}）</p><h2 id="tdh">修行の評価「${esc(r.rank)}」</h2></div>
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="tdh"><div class="chead"><p>${trainSpan(r.weeks)}（${r.weeks}週）の修行を終えて（最後の役割：${esc(r.role)}）</p><h2 id="tdh">修行の評価「${esc(r.rank)}」</h2></div>
    <div class="cbody">
     <table class="ledger"><tbody>
      <tr><td>腕前（開業時の味 +${r.skill.toFixed(1)}点）</td><td>${r.skill.toFixed(1)}</td></tr>
@@ -1592,7 +1607,7 @@ document.addEventListener('click',e=>{
   if(a==='closemodal'){closeModal();render();return}
   if(a==='trday'){S.train.day=b.dataset.k;save();render();return}
   if(a==='trnight'){S.train.night=b.dataset.k;save();render();return}
-  if(a==='trgo'){trainMonth();save();render();return}
+  if(a==='trgo'){trainWeeks(+b.dataset.n||1);save();render();return}
   if(a==='trstay'){const t=S.train;t.crisis=null;t.motiv=clamp(t.motiv+15,0,100);t.fat=Math.max(0,t.fat-10);t.last={title:'踏みとどまった',msgs:['もう少しだけ、続けてみることにした。']};save();render();return}
   if(a==='trquit'){quitTraining();save();render();return}
   if(a==='trend'){finishTraining();queueModal(trainDoneHTML());queueModal(tutorialHTML());save();render();return}
@@ -1667,7 +1682,8 @@ function migrate(o){
   if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
   for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
   if(o.phase==='clear')o.phase='morning';
-  if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={m:Math.floor((t.week||0)/4),role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
+  if(o.phase==='train'&&o.train&&o.train.m!==undefined&&o.train.unit!=='w'){o.train.m=Math.round(o.train.m*4.34);o.train.roleM=Math.round((o.train.roleM||0)*4.34);o.train.unit='w'}
+  if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={unit:'w',m:t.week||0,role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
   return o;
 }
 function load(){try{const s=localStorage.getItem(SAVE_KEY);if(s){const o=JSON.parse(s);if(o&&(o.v===1||o.v===2))return migrate(o)}}catch(_){}return null}
