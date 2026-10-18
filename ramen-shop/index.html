@@ -187,6 +187,7 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 @media (max-width:480px){.talents{grid-template-columns:minmax(0,1fr)}}
 .tal{background:#f7edd4;border:1px dashed #c9b385;border-radius:5px;padding:6px 8px;display:flex;flex-direction:column;min-width:0;opacity:.75}
 .tal.ok{border:1px solid var(--good);background:#eef6ea;opacity:1}
+.hints p{margin:4px 0 0;font-size:12.5px;color:var(--ai);font-style:italic}
 .tal b{font-size:13px}.tal span{font-size:11.5px;color:var(--sumi-soft)}.tal .cond{font-size:11px}
 
 .tut{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:8px}
@@ -269,7 +270,7 @@ function newGame(name,loc,style,diff='real'){
     hours:'split',closedDow:3,staff:{kitchen:0,hall:1},prep:80,
     sns:false,inv:{pot:false,cashless:false,sign:false,machine:false,deodor:false},
     month:blankMonth(),months:[],hist:[],
-    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[]};
+    weather:null,tomorrow:null,event:null,phase:'morning',lastReport:null,totalProfit:0,expBoost:0,tempStaff:0,potHalf:false,sick:false,size:0,loans:[{name:'開業資金',left:LOAN,pay:LOAN_PAY}],branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[],vision:null};
   S.weather=genWeather(0);S.tomorrow=genWeather(1);
   S.buzz.push({mult:.6,days:10,label:'開店景気'});
 }
@@ -503,7 +504,7 @@ function finishDay(){
   S.reviews=S.reviews.slice(0,40);
   // 認知度
   const avg=D.starN?D.starSum/D.starN:3;
-  S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003*(hasT('hitotarashi')?1.3:1),.2,Math.max(S.awareness,1.0));
+  S.awareness=clamp(S.awareness+.0015+D.customers*(avg-2.7)*.00003*(hasT('hitotarashi')?1.3:1)*(S.vision&&S.vision.shop==='local'?1.1:1),.2,Math.max(S.awareness,1.0));
   // 熟練・疲労
   S.skill=Math.min(15,S.skill+.008+D.served*.0001);
   const load=(S.diff==='easy'?.7:1)*(1+.25*nov())*(hasT('dandori')?.85:1)*(activeDev().reduce((a,d)=>a+d.fat,0)+openMinutes()/60*3.2+D.served*.085+D.prep*.02+(S.menu.noodle===2?6:0)-S.staff.kitchen*10-S.staff.hall*5-S.tempStaff*8-(S.mgmt||0)*.6);
@@ -710,7 +711,7 @@ function diagnose(){
   return {t:T[0],ax,score,grade,weak};
 }
 function diagMini(dg=diagnose()){
-  return `<div class="diag-mini"><p class="lead">あなたの経営は<b>『${esc(dg.t.name)}』</b>です。<span class="gr">総合評価 ${dg.grade}</span></p><p>${esc(dg.t.q)}<br><strong>このままで本当に満足ですか？</strong></p></div>`;
+  return `<div class="diag-mini"><p class="lead">あなたの経営は<b>『${esc(dg.t.name)}』</b>です。<span class="gr">総合評価 ${dg.grade}</span></p><p>${esc(dg.t.q)}${visionLine()?'<br>'+esc(visionLine()):''}<br><strong>このままで本当に満足ですか？</strong></p></div>`;
 }
 function diagHTML(){
   const dg=diagnose();
@@ -718,7 +719,7 @@ function diagHTML(){
   return `<div class="diag"><div class="diag-head"><p class="lead">あなたの経営は<b>『${esc(dg.t.name)}』</b>です。</p><div class="grade" aria-label="総合評価">${dg.grade}</div></div>
     <p style="margin:0">${esc(dg.t.desc)}</p>
     ${(S.talents||[]).length?`<p style="margin:0;font-size:12.5px;color:#cfd8ec">才能：${S.talents.map(id=>esc(TALENTS.find(x=>x.id===id).name)).join('・')}</p>`:''}
-    <p class="q">${esc(dg.t.q)}<br><strong>このままで本当に満足ですか？</strong></p></div>
+    <p class="q">${esc(dg.t.q)}${visionLine()?'<br>'+esc(visionLine()):''}<br><strong>このままで本当に満足ですか？</strong></p></div>
    <div><h3>経営の6軸（直近30営業日）</h3><div class="axes">${AX.map(([k,nm])=>`<div class="ax"><span>${nm}</span><span class="axbar"><i style="width:${dg.ax[k].toFixed(0)}%" class="${dg.ax[k]<40?'low':dg.ax[k]>=75?'high':''}"></i></span><span class="axv">${dg.ax[k].toFixed(0)}</span></div>`).join('')}</div></div>
    <div><h3>次の一手</h3>${dg.weak.map(w=>`<p class="hint" style="color:var(--sumi)">・${esc(w)}</p>`).join('')}</div>
    <p class="hint">総合評価は6軸の平均（${dg.score.toFixed(0)}点）。S 85点以上・A 72・B 58・C 45。</p>`;
@@ -727,7 +728,7 @@ function diagHTML(){
 // ───────── 店舗展開：移転・支店 ─────────
 const MGR_NAMES=['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤','吉田','山田','松本','井上','木村'];
 function genMgr(){
-  const sk=Math.round(Math.min(10,rnd(2,9)+(S.conn||0)*.25+(hasT('hitotarashi')?.5:0))*10)/10;
+  const sk=Math.round(Math.min(10,rnd(2,9)+(S.conn||0)*.25+(hasT('hitotarashi')?.5:0)+(S.vision&&S.vision.shop==='chain'?.3:0))*10)/10;
   return {name:pick(MGR_NAMES)+'さん',skill:sk,salary:Math.round((260000+sk*22000)/10000)*10000,
     note:sk>=7?'有名店で10年修業。味は任せられる':sk>=4.5?'チェーン店で店長経験あり':'飲食は未経験。やる気はある'};
 }
@@ -888,7 +889,7 @@ const devOf=id=>DEV.find(d=>d.id===id);
 const activeDev=()=>S.menuOn.map(devOf).filter(Boolean);
 // 品数（サイドは0.5品）。専門店ほど0に近い
 const menuCount=()=>activeDev().reduce((a,d)=>a+(d.side?.5:1),0);
-function focusAdj(){const n=menuCount();return n===0?1.5:n<=1?.5:.5-1.2*(n-1)}
+function focusAdj(){const n=menuCount();return n===0?1.5+(S.vision&&S.vision.shop==='senmon'?.5:0):n<=1?.5:.5-1.2*(n-1)}
 function menuDemand(loc,temp){
   let f=1;
   for(const d of activeDev()){f+=(d.draw.all||0)+(d.draw[loc]||0)+(temp>=24?(d.draw.hot||0):0)}
@@ -1030,12 +1031,102 @@ const TALENTS=[
 ];
 const hasT=id=>(S.talents||[]).includes(id);
 const talentSlots=t=>t.m>=208?2:t.m>=104?1:0;
-function talentCands(t){return TALENTS.filter(x=>x.cond(t).every(c=>c[1]))}
-function talentsTrainHTML(t){
-  const slots=talentSlots(t);
-  return `<div><h3>芽生えつつある才能</h3><p class="hint">独立するとき、条件を満たした才能から${slots?`${slots}つ選んで身につけられる`:'選べる（修行2年以上で1つ、4年以上で2つ）'}。</p>
-   <div class="talents">${TALENTS.map(x=>{const cs=x.cond(t),ok=cs.every(c=>c[1]);return `<div class="tal${ok?' ok':''}"><b>${ok?'✓ ':''}${esc(x.name)}</b><span>${esc(x.fx)}</span><span class="cond">${cs.map(c=>esc(c[0])).join('／')}</span></div>`}).join('')}</div></div>`;
+// 才能の進み具合（0〜1）と、6割を超えたときの予感
+const TAL_PROG={
+  zettai:t=>Math.max((t.cnt.soup||0)/40,t.secret>=2?1:0),
+  yugiri:t=>Math.min((t.cnt.steal||0)/40,1)*(t.role>=2?1:.8),
+  dandori:t=>(t.cnt.obey||0)/80,
+  mekiki:t=>Math.max((t.cnt.study||0)/30,(t.cnt.watch||0)/50),
+  aiso:t=>(t.cnt.watch||0)/40,
+  hitotarashi:t=>Math.max((t.cnt.net||0)/30,((t.cnt.net||0)+(t.cnt.tour||0))/50),
+  kenkyu:t=>Math.min((t.cnt.soup||0)/25,(t.cnt.tour||0)/20),
+  kenyaku:t=>Math.max((t.cnt.side||0)/30,t.save/300000),
+  fukutsu:t=>t.survived?1:0,
+};
+const TAL_HINT={
+  zettai:'スープを口に含むと、昨日との違いが前より分かる気がする。',
+  yugiri:'麺を上げる手首の返しが、少しだけ師匠に似てきた。',
+  dandori:'考える前に、体が次の仕事へ動くようになってきた。',
+  mekiki:'業者が持ってくる豚骨の良し悪しが、見ただけで気になる。',
+  aiso:'常連の好みが、顔を見ただけで浮かぶようになった。',
+  hitotarashi:'最近、知らない人から声をかけられることが増えた。',
+  kenkyu:'食べ歩いた店の一杯の、何が旨いのか言葉にできる気がしてきた。',
+  kenyaku:'材料を無駄にすると、胸がちくりと痛むようになった。',
+};
+function talentTick(t,msgs){
+  t.revealed=t.revealed||[];t.hinted=t.hinted||[];
+  for(const x of TALENTS){
+    if(t.revealed.includes(x.id))continue;
+    const p=TAL_PROG[x.id](t);
+    if(p>=1&&x.cond(t).every(c=>c[1])){t.revealed.push(x.id);t.motiv+=6;msgs.push(`ふと、何かを掴んだ。才能「${x.name}」が芽生えた（${x.fx}）。`)}
+    else if(p>=.6&&TAL_HINT[x.id]&&!t.hinted.includes(x.id)){t.hinted.push(x.id);msgs.push(`予感：${TAL_HINT[x.id]}`)}
+  }
 }
+function talentCands(t){return TALENTS.filter(x=>(t.revealed||[]).includes(x.id))}
+function talentsTrainHTML(t){
+  const slots=talentSlots(t),rev=t.revealed||[],hin=(t.hinted||[]).filter(id=>!rev.includes(id));
+  return `<div><h3>才能</h3>
+   ${rev.length?`<div class="talents">${rev.map(id=>{const x=TALENTS.find(z=>z.id===id);return `<div class="tal ok"><b>✓ ${esc(x.name)}</b><span>${esc(x.fx)}</span></div>`}).join('')}</div>`:'<p class="hint">まだ何も芽生えていない。</p>'}
+   ${hin.length?`<div class="hints">${hin.map(id=>`<p>予感：${esc(TAL_HINT[id])}</p>`).join('')}</div>`:''}
+   <p class="hint">どんな才能が眠っているかは分からない。日々の積み重ねで、ある日ふと芽生える。独立するとき、芽生えた才能から${slots?`${slots}つ`:'修行2年以上で1つ、4年以上で2つ'}選んで身につけられる。</p></div>`;
+}
+
+// ───────── ビジョンと葛藤 ─────────
+const VISION_CRAFT={taste:'味を極める職人',manage:'店を回せる経営者',people:'人に愛される店主'};
+const VISION_SHOP={senmon:'行列の絶えない専門店',local:'地元に愛される店',chain:'何店舗も構える店'};
+const TRAIN_STORY=[
+  {id:'craft',when:t=>t.m>=26,title:'どんな職人になりたいか',
+   body:t=>'閉店後、洗い場で師匠の背中を見ながら考えた。自分は、どんなラーメン屋になりたいのだろう。',
+   choices:[
+    {t:'味を極める職人',d:'腕前が少し伸びやすくなる。技を盗む・スープ研究の週は心が保てる',f:t=>{t.vCraft='taste';return '一杯の味で勝負する。そう決めた。'}},
+    {t:'店を回せる経営者',d:'経営手腕が少し伸びやすくなる。観察・勉強の週は心が保てる',f:t=>{t.vCraft='manage';return '旨いだけでは店は続かない。店を回せる人間になる。'}},
+    {t:'人に愛される店主',d:'人脈が少し伸びやすくなる。観察・付き合い・食べ歩きの週は心が保てる',f:t=>{t.vCraft='people';return '客の顔を覚えて、名前で呼べる店主になる。'}},
+   ]},
+  {id:'doubt',when:t=>t.m>=40&&!(t.revealed||[]).length&&Math.random()<.06,title:'自分には才能がないのかもしれない',
+   body:t=>`同じ時期に入った後輩が、師匠に味を褒められていた。自分はもう${trainSpan(t.m)}もいるのに、何ひとつ掴めた気がしない。`,
+   choices:[
+    {t:'才能がなくても、続ける',d:'心 −5。ただ、この悩みを越えれば何かが変わるかもしれない',f:t=>{t.motiv-=5;t.grit=(t.grit||0)+1;if(t.grit>=1)t.survived=true;return '才能は、続けた先にしかない。そう言い聞かせた。'}},
+    {t:'兄弟子に相談する',d:'心 +8・師匠の信頼 +2',f:t=>{t.motiv+=8;t.trust+=2;return '兄弟子「俺も三年目までは何も分からなかった。お前は焦りすぎだ」'}},
+    {t:'しばらく実家に帰る',d:'2週間休む。疲れが抜け心 +15、師匠の信頼 −5',f:t=>{t.m+=2;t.fat=0;t.motiv+=15;t.trust-=5;return '久しぶりに母の作る飯を食べた。もう一度、やってみようと思えた。'}},
+   ]},
+  {id:'shop',when:t=>t.m>=78,title:'どんな店を持ちたいか',
+   body:t=>'休みの日、空き物件の前で足が止まった。いつか自分の店を持つなら、どんな店にしたいだろう。',
+   choices:[
+    {t:VISION_SHOP.senmon,d:'開業後、看板一本の専門店でいると評価が少し上がる',f:t=>{t.vShop='senmon';return '一杯だけで客が並ぶ店。それが夢だ。'}},
+    {t:VISION_SHOP.local,d:'開業後、口コミで知名度が少し広がりやすい',f:t=>{t.vShop='local';return '毎日来てくれる常連がいる店。それで十分だ。'}},
+    {t:VISION_SHOP.chain,d:'開業後、支店の店長候補の腕前が少し上がる',f:t=>{t.vShop='chain';return '自分の味を、もっと多くの人に届けたい。'}},
+   ]},
+  {id:'conflict',when:t=>t.vCraft==='taste'&&(t.cnt.side||0)>=8&&t.m>=30,title:'本当にやりたいことは何だ',
+   body:t=>'夜のバイト帰り、ふと思った。味を極めると決めたはずなのに、最近はスープを研究する時間がない。',
+   choices:[
+    {t:'金より腕だ。夜はスープに戻る',d:'心 +6。夜の過ごし方をスープ研究に切り替える',f:t=>{t.motiv+=6;t.night='soup';return '貯金は減ってもいい。今しかできない修行がある。'}},
+    {t:'店を持つには金がいる',d:'心 −4。いまの過ごし方を続ける',f:t=>{t.motiv-=4;return '夢だけでは店は開けない。割り切ることにした。'}},
+   ]},
+  {id:'taste',when:t=>t.m>=130&&t.role>=3,title:'師匠の味か、自分の味か',
+   body:t=>'スープ番を任されて、気づいた。自分が作りたい味は、師匠の味と少し違う。',
+   choices:[
+    {t:'師匠の味を守る',d:'師匠の信頼 +8',f:t=>{t.trust+=8;return '師匠の味を受け継ぐことも、立派な修行だ。'}},
+    {t:'自分の味を作る',d:'師匠の信頼 −5・腕前 +0.3。秘伝の技を掴みやすくなる',f:t=>{t.trust-=5;t.skill+=.3;t.ownTaste=true;return '師匠は何も言わなかった。ただ、次の日から少しだけ厳しくなった。'}},
+   ]},
+];
+function storyTick(t){
+  t.story=t.story||[];
+  for(const e of TRAIN_STORY){if(!t.story.includes(e.id)&&e.when(t)){t.story.push(e.id);t.pending=e.id;return}}
+}
+function storyHTML(t){
+  const e=TRAIN_STORY.find(x=>x.id===t.pending);
+  return `<div class="phead"><h2>${esc(e.title)}</h2><p>${trainAge(t.m-1)}・心 ${Math.round(t.motiv)}</p></div>
+   <div class="pbody">${t.last&&t.last.msgs.length?`<div class="oyakata"><div class="oy-head"><b>${esc(t.last.title)}</b></div>${t.last.msgs.map(m=>`<p>${esc(m)}</p>`).join('')}</div>`:''}
+    <p style="margin:0">${esc(e.body(t))}</p>
+    <div class="opt">${e.choices.map((c,i)=>`<button data-act="trv" data-i="${i}"><b>${esc(c.t)}</b><span>${esc(c.d)}</span></button>`).join('')}</div></div>`;
+}
+const visionLine=()=>{
+  if(!S.vision||!S.vision.shop)return '';
+  const v=S.vision.shop;
+  const near=v==='senmon'?menuCount()===0&&rating()>=4:v==='local'?S.awareness>=.9&&rating()>=3.6:S.branches.length>=2;
+  return `修行中に描いた夢は「${VISION_SHOP[v]}」。${near?'いまの店は、その夢に近づいている。':'いまの店は、その夢からまだ遠い。'}`;
+};
+
 let talentPick=null;
 function talentPickHTML(){
   const p=talentPick;
@@ -1090,17 +1181,17 @@ function trainRank(t){
 function trainWeeks(n){
   const t=S.train,all=[];let title='';
   for(let i=0;i<n;i++){
-    if(t.crisis||t.m>=TRAIN_MAX)break;
+    if(t.crisis||t.pending||t.m>=TRAIN_MAX)break;
     const role0=t.role;
     trainWeek();
     if(!title)title=t.last.title;
     all.push(...t.last.msgs.map(m=>`第${(t.m-1)%52+1}週：${m}`));
-    if(t.crisis||t.role!==role0||t.last.msgs.length)break;
+    if(t.crisis||t.pending||t.role!==role0||t.last.msgs.length)break;
   }
   if(n>1&&t.last){const [a,b]=title.split('：');t.last={title:`${a}〜第${(t.m-1)%52+1}週：${b||''}`,msgs:all}}
 }
 function trainWeek(){
-  const t=S.train;if(t.crisis||t.m>=TRAIN_MAX)return;
+  const t=S.train;if(t.crisis||t.pending||t.m>=TRAIN_MAX)return;
   const d=DAY_ACTS.find(x=>x.id===t.day),n=NIGHT_ACTS.find(x=>x.id===t.night),r=ROLES[t.role];
   const msgs=[];
   t.m++;t.roleM++;
@@ -1108,17 +1199,19 @@ function trainWeek(){
   const eff=t.fat>85?.5:1;
   if(eff<1)msgs.push('疲れが抜けず、何をやっても身につき方が半分だった。');
   const dim=v=>1-v/12; // 上達するほど伸びにくい
-  t.skill+=(r.skill*d.mul+(n.skill||0))*eff*dim(t.skill)*WK;
-  t.mgmt+=(r.mgmt+(d.mgmt||0)+(n.mgmt||0))*eff*dim(t.mgmt)*WK;
-  t.conn+=(r.conn+(d.conn||0)+(n.conn||0))*eff*dim(t.conn)*WK;
+  t.skill+=(r.skill*d.mul+(n.skill||0))*eff*dim(t.skill)*WK*(t.vCraft==='taste'?1.15:1);
+  t.mgmt+=(r.mgmt+(d.mgmt||0)+(n.mgmt||0))*eff*dim(t.mgmt)*WK*(t.vCraft==='manage'?1.15:1);
+  t.conn+=(r.conn+(d.conn||0)+(n.conn||0))*eff*dim(t.conn)*WK*(t.vCraft==='people'?1.15:1);
   t.trust+=(d.trust+(n.trust||0))*WK;
   if(d.risk&&Math.random()<d.risk*WK){t.trust-=4;t.motiv-=5;msgs.push('手を止めて師匠の手元を見ていたら「見てる暇があったら手を動かせ」と怒鳴られた。')}
   t.fat=clamp(t.fat+(10+(n.fat||0)-12)*WK,0,110);
   t.save+=Math.round((10000-(n.cost||0)+(n.save||0))*WK); // 見習いの給料18万−生活費17万（月）
-  t.motiv+=(-3+(d.motiv||0)+(n.motiv||0)+(t.fat>60?-6:0)+(t.role===0&&t.roleM>26?-3:0))*WK;
-  if(t.night==='soup'&&t.secret<6&&Math.random()<.035*WK){t.secret+=2;msgs.push('閃いた。スープの火入れに自分だけのコツを見つけた（秘伝の技 +2）。')}
+  const al=t.vCraft==='taste'?d.id==='steal'||n.id==='soup':t.vCraft==='manage'?d.id==='watch'||n.id==='study':t.vCraft==='people'?d.id==='watch'||n.id==='net'||n.id==='tour':false; // ビジョンに沿った週は心が保てる
+  t.motiv+=(-3+(al?2:0)+(d.motiv||0)+(n.motiv||0)+(t.fat>60?-6:0)+(t.role===0&&t.roleM>26?-3:0))*WK;
+  if(t.night==='soup'&&t.secret<6&&Math.random()<.035*WK*(t.ownTaste?2:1)){t.secret+=2;msgs.push('閃いた。スープの火入れに自分だけのコツを見つけた（秘伝の技 +2）。')}
   if(t.fat>=100){t.fat=50;t.motiv-=8;t.trust-=2;msgs.push('無理がたたって寝込み、一週間店に出られなかった。')}
   if(Math.random()<.35*WK){for(const e of TRAIN_EVENTS){if(Math.random()<e.p(t)*2.5){msgs.push(e.f(t));break}}}
+  talentTick(t,msgs);
   // 昇格
   const nx=ROLES[t.role+1];
   if(nx&&nx.req(t)){t.role++;t.roleM=0;t.motiv+=10;msgs.push(`師匠「明日から${nx.name}をやれ」。認められた。`)}
@@ -1130,6 +1223,7 @@ function trainWeek(){
     else t.crisis='forced';
   }else if(t.motiv<25&&Math.random()<.3*WK)t.crisis='ask';
   if(!t.crisis&&t.m>=TRAIN_MAX)t.last.msgs.push('師匠「もう教えることはない。行け」。5年の修行が終わった。');
+  if(!t.crisis&&!t.pending&&t.m<TRAIN_MAX)storyTick(t);
 }
 function quitTraining(){
   const t=S.train;
@@ -1144,6 +1238,7 @@ function finishTraining(){
   S.awareness=Math.min(1,S.awareness+S.conn*.025);
   S.noren=t.trust>=80&&t.m>=104;
   if(S.noren){for(let i=0;i<8;i++)S.stars.push(3.6);S.buzz.push({mult:.3,days:20,label:'暖簾分け'})}
+  S.vision={craft:t.vCraft||null,shop:t.vShop||null};
   S.trainSummary={weeks:t.m,rank:trainRank(t),role:ROLES[t.role].name,skill:S.skill,mgmt:S.mgmt,conn:S.conn,trust:Math.round(t.trust),save:t.save,secret:t.secret,noren:S.noren};
   S.train=null;S.phase='morning';
   log('—',`${trainSpan(S.trainSummary.weeks)}の修行を終えて独立（${S.trainSummary.rank}）。「${S.name}」開業。${LOC[S.loc].name}、${STYLES[S.style].name}ラーメンで勝負する`,'info');
@@ -1154,6 +1249,7 @@ function trainHTML(){
   const fx=a=>{const p=['4週で'];if(a.skill)p.push(`腕前+${a.skill}`);if(a.mgmt)p.push(`経営+${a.mgmt}`);if(a.conn)p.push(`人脈+${a.conn}`);if(a.trust)p.push(`信頼${a.trust>0?'+':''}${a.trust}`);if(a.motiv)p.push(`心${a.motiv>0?'+':''}${a.motiv}`);if(a.fat)p.push(`疲労${a.fat>0?'+':''}${a.fat}`);if(a.cost)p.push(`−${man(a.cost)}`);if(a.save)p.push(`+${man(a.save)}`);if(a.mul&&a.mul!==1)p.push(`役割の伸び×${a.mul}`);return p.length>1?p[0]+' '+p.slice(1).join('・'):''};
   const nx=ROLES[t.role+1];
   const done=t.m>=TRAIN_MAX;
+  if(t.pending)return storyHTML(t);
   if(t.crisis){
     return `<div class="phead"><h2>${t.crisis==='forced'?'心が折れた':'辞めたい'}</h2><p>${trainAge(t.m-1)}・心 ${Math.round(t.motiv)}</p></div>
      <div class="pbody"><div class="oyakata"><div class="oy-head"><b>${esc(t.last.title)}</b></div>${t.last.msgs.map(m=>`<p>${esc(m)}</p>`).join('')}</div>
@@ -1186,6 +1282,8 @@ function trainDoneHTML(){
      <tr><td>人脈（開店時の知名度 +${(r.conn*2.5).toFixed(0)}%・店長候補の質）</td><td>${r.conn.toFixed(1)}</td></tr>
      <tr><td>貯金（開業資金に上乗せ）</td><td>${yen(r.save)}</td></tr>
      ${r.secret?`<tr><td>秘伝の技（味 +${r.secret}点）</td><td>習得</td></tr>`:''}
+     ${S.vision&&S.vision.craft?`<tr><td>なりたい職人像</td><td>${VISION_CRAFT[S.vision.craft]}</td></tr>`:''}
+     ${S.vision&&S.vision.shop?`<tr><td>持ちたい店</td><td>${VISION_SHOP[S.vision.shop]}</td></tr>`:''}
      <tr><td>師匠の信頼</td><td>${r.trust}</td></tr>
     </tbody></table>
     <p style="margin:0">${r.noren?`師匠から暖簾分けを許された。「${esc(S.name)}」には開店直後から師匠の店の常連が来てくれる。`:'暖簾分けとはいかなかったが、ここからは自分の力で勝負だ。'}</p>
@@ -1650,6 +1748,7 @@ document.addEventListener('click',e=>{
   if(a==='trnight'){S.train.night=b.dataset.k;save();render();return}
   if(a==='trgo'){trainWeeks(+b.dataset.n||1);save();render();return}
   if(a==='trstay'){const t=S.train;t.crisis=null;t.survived=true;t.motiv=clamp(t.motiv+15,0,100);t.fat=Math.max(0,t.fat-10);t.last={title:'踏みとどまった',msgs:['もう少しだけ、続けてみることにした。']};save();render();return}
+  if(a==='trv'){const t=S.train,e=TRAIN_STORY.find(x=>x.id===t.pending);if(!e)return;const msg=e.choices[+b.dataset.i].f(t);t.pending=null;t.motiv=clamp(t.motiv,0,100);t.trust=clamp(t.trust,0,100);t.skill=clamp(t.skill,0,10);t.last={title:e.title,msgs:[msg]};save();render();return}
   if(a==='trquit'){quitTraining();save();render();return}
   if(a==='trend'){const t=S.train,cands=talentCands(t),slots=Math.min(talentSlots(t),cands.length);finishTraining();queueModal(trainDoneHTML());if(slots>0){talentPick={cands,slots,chosen:[]};queueModal(talentPickHTML())}queueModal(tutorialHTML());save();render();return}
   if(a==='talent'&&talentPick){const id=b.dataset.k;if(!talentPick.chosen.includes(id)){talentPick.chosen.push(id);S.talents=(S.talents||[]).concat(id);log('—',`才能「${TALENTS.find(x=>x.id===id).name}」を身につけた`,'good')}if(talentPick.chosen.length>=talentPick.slots){talentPick=null;closeModal()}else openModal(talentPickHTML());save();render();return}
@@ -1723,7 +1822,7 @@ function migrate(o){
     o.loans=o.debt>0?[{name:'開業資金',left:o.debt,pay:LOAN_PAY}]:[];
     o.v=2;
   }
-  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0,diff:'real',guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[]};
+  const def={size:0,branches:[],nextBr:1,brToday:[],stage:0,stageDay:{},media:false,streak42:0,bestMonthCust:0,relocated:false,closedUntil:-1,critic:null,criticNext:0,legend:false,loans:[],stars:[],rTotal:0,diff:'real',guide:true,dev:{},menuOn:[],gentei:null,mgmt:0,conn:0,secret:0,noren:false,train:null,novice:false,talents:[],vision:null};
   for(const k in def)if(o[k]===undefined)o[k]=def[k];
   if(!o.bestMonthCust&&o.months&&o.months.length)o.bestMonthCust=Math.max(...o.months.map(m=>m.cust||0));
   for(const k of ['brSales','brCost','brCust'])if(o.month[k]===undefined)o.month[k]=0;
