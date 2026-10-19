@@ -81,6 +81,7 @@
 - 2026-10-18 MAWARU も mawaru.air-io.com へ移転（旧 mawaru.fly.dev は CANONICAL_HOST で転送）。入口ページに MAWARU を掲載（18歳以上の表示つき）。オーナーが3つのアドレスすべてで動作を確認
 - 2026-10-18「投資のところにも広告」→ 一度きりの設備投資（看板・寸胴・キャッシュレス券売機・製麺機）の前に見返り広告。繰り返す投資（会食・イベント・チラシ・SNS）には出さない
 - 2026-10-19「ゲームのBGM」→ オーナーが Suno で5曲作成（title・training・open・night・legend）。音量を -18 LUFS にそろえ、末尾の無音を削って m4a（112kbps）に変換して bgm/ に配置（元ファイルは bgm/original、イメージには入れない）。場面で切り替え：開業前と仕込み＝title、修行＝training、営業中＝open、日報・休業＝night、伝説になった瞬間に legend を1回。右下の「♪ 音楽」ボタンでオン・オフ（最初はオフ、設定は保存）。広告の再生中と別タブにいる間は止める
+- 2026-10-19 プロデューサー経由のオーナー依頼「air-io.com のアイコンがラーメン」→ 入口ページ専用のアイコンに分ける準備をした（portal-icon-512/192/180/32.png・portal-icon.svg・portal.webmanifest。書き出しは make_portal_icons.sh、nginx と Dockerfile も対応済み）。絵はオーナーが用意する画像を待っている。届いたら portal.html の favicon・apple-touch-icon・manifest を切り替えてデプロイする。らーめん開業日誌のアイコンは変えない
 
 ## 次にやること（3つまで）
 1. オーナーの試遊の感想をもとに難易度を調整する

@@ -6,6 +6,7 @@ COPY . /tmp/site
 # ads.txt は AdSense の審査後に置く（ads.txt.example を参照）。無ければ飛ばす
 RUN cp /tmp/site/index.html /tmp/site/privacy.html /tmp/site/terms.html /tmp/site/legal.css /tmp/site/portal.html /tmp/site/mawaru-512.png /tmp/site/move.html /tmp/site/manifest.webmanifest /tmp/site/icon.svg /tmp/site/icon-*.png /usr/share/nginx/html/ \
  && (cp /tmp/site/ads.txt /usr/share/nginx/html/ 2>/dev/null || true) \
+ && (cp /tmp/site/portal-icon* /tmp/site/portal.webmanifest /usr/share/nginx/html/ 2>/dev/null || true) \
  && mkdir -p /usr/share/nginx/html/bgm && cp /tmp/site/bgm/*.m4a /usr/share/nginx/html/bgm/ \
  && rm -rf /tmp/site
 EXPOSE 8080
