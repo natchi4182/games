@@ -45,7 +45,7 @@ body{background:var(--ai);color:var(--noren);font-family:var(--font-body);font-s
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--tamago);outline-offset:2px}
 
-.app{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.app{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:12px;padding-bottom:48px}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:10px 14px;background:var(--ai-deep);border:1px solid var(--ai-line);border-radius:6px}
 .brand{font-family:var(--font-disp);font-size:20px;letter-spacing:.04em;color:var(--noren);margin-right:auto;display:flex;align-items:baseline;gap:10px;min-width:0}
 .brand small{font-family:var(--font-body);font-size:12px;color:#9aa7c4;letter-spacing:.08em}
@@ -136,7 +136,7 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .speed button{flex:1}
 
 /* モーダル */
-.modal{position:fixed;inset:0;background:rgba(6,10,20,.72);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));z-index:10}
+.modal{position:fixed;inset:0;background:rgba(6,10,20,.72);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(56px,calc(env(safe-area-inset-bottom,0px) + 48px)) max(16px,env(safe-area-inset-left,0px));z-index:10}
 .card{background:var(--hinoki);color:var(--sumi);border-radius:8px;max-width:560px;width:100%;max-height:100%;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .card .chead{background:var(--ai-deep);color:var(--noren);padding:16px 20px;border-radius:8px 8px 0 0}
 .card .chead h2{font-family:var(--font-disp);font-weight:400;margin:0;font-size:22px;text-wrap:balance}
@@ -198,6 +198,7 @@ input[type=range]{width:100%;accent-color:var(--sumi)}
 .hints p{margin:4px 0 0;font-size:12.5px;color:var(--ai);font-style:italic}
 .tal b{font-size:13px}.tal span{font-size:11.5px;color:var(--sumi-soft)}.tal .cond{font-size:11px}
 
+.bgmbtn{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));z-index:11;background:var(--ai-deep);color:var(--noren);border:1px solid var(--ai-line);border-radius:99px;padding:6px 14px;font:inherit;font-size:13px;cursor:pointer;opacity:.9}.bgmbtn[aria-pressed="true"]{border-color:var(--tamago);color:var(--tamago)}
 .site-foot{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;font-size:12px;padding:8px 0;color:#9aa7c4}.site-foot a{color:#9aa7c4}
 .adcard .adbox{border:2px dashed #b9a271;border-radius:6px;padding:28px 16px;text-align:center;display:flex;flex-direction:column;gap:6px;background:#f7edd4}
 .adcard .adbox span{font-size:12px;color:var(--sumi-soft)}
@@ -736,6 +737,62 @@ const AD_SLOTS={
   equip:{name:'設備に投資する',kind:'reward'},
   monthEnd:{name:'月次決算のあと',kind:'break'},
 };
+// ───────── BGM ─────────
+// 場面ごとに曲を切り替える。最初は音なし。ボタンで音楽をオンにすると、次からも覚えておく
+const BGM={on:false,ctx:null,tracks:{},cur:null,jingle:false,held:false,
+  avail:!/claude/.test(location.hostname)&&/^https?:/.test(location.protocol)};
+const BGM_VOL=.5;
+try{BGM.on=localStorage.getItem('ramen-bgm')==='1'}catch(_){}
+const bgmScene=()=>{if(!S)return 'title';const p=S.phase;return p==='train'?'training':p==='open'?'open':(p==='report'||p==='closed')?'night':'title'};
+function bgmTrack(name){
+  if(BGM.tracks[name])return BGM.tracks[name];
+  const a=new Audio('bgm/'+name+'.m4a');a.preload='auto';a.loop=name!=='legend';
+  const t={a,g:null};
+  if(BGM.ctx){try{t.g=BGM.ctx.createGain();t.g.gain.value=0;BGM.ctx.createMediaElementSource(a).connect(t.g).connect(BGM.ctx.destination)}catch(_){t.g=null}}
+  if(!t.g)a.volume=0;
+  return BGM.tracks[name]=t;
+}
+function bgmFade(t,to,sec){
+  if(t.g){const g=t.g.gain,now=BGM.ctx.currentTime;g.cancelScheduledValues(now);g.setValueAtTime(g.value,now);g.linearRampToValueAtTime(to,now+sec);return}
+  const from=t.a.volume,st=performance.now();
+  const step=()=>{const k=Math.min(1,(performance.now()-st)/(sec*1000));t.a.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step)};step();
+}
+function bgmPlay(name){
+  if(!BGM.on||!BGM.avail||!BGM.ctx||BGM.held)return;
+  if(BGM.cur===name){const t=BGM.tracks[name];if(t&&t.a.paused)t.a.play().catch(()=>{});return}
+  const prev=BGM.cur;
+  if(prev){const o=BGM.tracks[prev];bgmFade(o,0,1.2);setTimeout(()=>{if(BGM.cur!==prev)o.a.pause()},1300)}
+  BGM.cur=name;const t=bgmTrack(name);
+  if(name==='legend')t.a.currentTime=0;
+  t.a.play().catch(()=>{});bgmFade(t,BGM_VOL,1.2);
+}
+function bgmUpdate(){
+  if(S&&S.legend&&!S.legendJingle){S.legendJingle=true;if(BGM.on&&BGM.ctx){BGM.jingle=true;bgmPlay('legend');BGM.tracks.legend.a.onended=()=>{BGM.jingle=false;bgmUpdate()}}return}
+  if(!BGM.jingle)bgmPlay(bgmScene());
+}
+function bgmStart(){ // 音はユーザーの操作のあとでないと鳴らせない
+  if(!BGM.ctx){const C=window.AudioContext||window.webkitAudioContext;BGM.ctx=C?new C():{currentTime:0}}
+  if(BGM.ctx.resume&&BGM.ctx.state==='suspended')BGM.ctx.resume();
+  bgmUpdate();
+}
+function bgmStopAll(){for(const k in BGM.tracks){const t=BGM.tracks[k];bgmFade(t,0,.4);setTimeout(()=>{if(!BGM.on||BGM.held)t.a.pause()},450)}BGM.cur=null;BGM.jingle=false}
+function bgmHold(h){ // 広告の再生中・別のタブにいる間は止める
+  BGM.held=h;
+  if(h){for(const k in BGM.tracks)BGM.tracks[k].a.pause()}
+  else if(BGM.on&&BGM.cur){const t=BGM.tracks[BGM.cur];t.a.play().catch(()=>{})}
+}
+function bgmButton(){const b=document.getElementById('bgmbtn');if(!b)return;b.setAttribute('aria-pressed',BGM.on);b.textContent=BGM.on?'♪ 音楽 オン':'♪ 音楽 オフ'}
+function bgmToggle(){
+  BGM.on=!BGM.on;try{localStorage.setItem('ramen-bgm',BGM.on?'1':'0')}catch(_){}
+  if(BGM.on)bgmStart();else bgmStopAll();
+  bgmButton();try{if(AD.loaded&&window.adConfig)window.adConfig({sound:BGM.on?'on':'off'})}catch(_){}
+}
+function bgmInit(){
+  if(!BGM.avail)return;
+  const b=document.createElement('button');b.id='bgmbtn';b.className='bgmbtn';b.type='button';b.onclick=bgmToggle;document.body.appendChild(b);bgmButton();
+  if(BGM.on){const unlock=()=>{document.removeEventListener('pointerdown',unlock,true);document.removeEventListener('keydown',unlock,true);if(BGM.on)bgmStart()};document.addEventListener('pointerdown',unlock,true);document.addEventListener('keydown',unlock,true)}
+  document.addEventListener('visibilitychange',()=>bgmHold(document.hidden));
+}
 const adFree=()=>{try{return localStorage.getItem('ramen-adfree')==='1'}catch(_){return false}};
 function loadAds(){
   if(!ADS_CONFIG.client||adFree()||AD.loaded)return;
@@ -748,7 +805,7 @@ function loadAds(){
   if(ADS_CONFIG.test)s.dataset.adbreakTest='on';
   s.dataset.adFrequencyHint='180s';
   document.head.appendChild(s);
-  window.adConfig({sound:'off',preloadAdBreaks:'on'}); // ゲームに音はない
+  window.adConfig({sound:BGM.on?'on':'off',preloadAdBreaks:'on'});
 }
 function adModal(sl,body,btn){
   return `<div class="card adcard" role="dialog" aria-modal="true" aria-labelledby="adh"><div class="chead"><p>${sl.kind==='reward'?'広告を見ると、この行動に進める':'ひと休み'}</p><h2 id="adh">${esc(sl.name)}</h2></div>
@@ -764,9 +821,9 @@ function adGate(slot,go){
   const now=Date.now();
   if(sl.kind==='break'&&(now-AD.start<15*60e3||now-AD.last<3*60e3)){go();return}
   if(live){
-    if(sl.kind==='break'){AD.last=now;window.adBreak({type:'next',name:slot,adBreakDone:()=>go()});return}
+    if(sl.kind==='break'){AD.last=now;window.adBreak({type:'next',name:slot,beforeAd:()=>bgmHold(true),afterAd:()=>bgmHold(false),adBreakDone:()=>go()});return}
     AD.viewed=false;AD.show=null;AD.pending=go;
-    window.adBreak({type:'reward',name:slot,
+    window.adBreak({type:'reward',name:slot,beforeAd:()=>bgmHold(true),afterAd:()=>bgmHold(false),
       beforeReward:show=>{AD.show=show;openModal(adModal(sl,'<p style="margin:0">短い動画広告を見ると、この行動に進める。</p>','<button class="btn primary" data-act="adshow">広告を見て進む</button><button class="btn ghost" data-act="adcancel">やめる</button>'))},
       adViewed:()=>{AD.viewed=true},
       adDismissed:()=>{AD.viewed=false},
@@ -1625,7 +1682,7 @@ function renderLive(){
   $('#live').innerHTML=cells.map(([k,v])=>`<div><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
 }
 function render(){
-  renderBar();renderLive();
+  renderBar();renderLive();bgmUpdate();
   const p=$('#panel');
   if(!S){p.innerHTML='';return}
   if(S.phase==='morning')p.innerHTML=morningHTML();
@@ -1992,6 +2049,7 @@ function migrate(o){
   if(!o.menuV){o.menu.grade=[0,2,4][o.menu.grade]??0;o.menu.noodle=[0,2,3][o.menu.noodle]??0;o.menuV=2} // スープ・麺を5段階にした版への引き継ぎ
   if(o.menuV===2){o.menu.chashu=[0,2][o.menu.chashu]??0;o.menuV=3} // チャーシューを5段階にした版への引き継ぎ
   if(o.train&&!o.train.cnt)o.train.cnt={};
+  if(o.legend&&o.legendJingle===undefined)o.legendJingle=true;
   if(o.phase==='train'&&o.train&&o.train.m!==undefined&&o.train.unit!=='w'){o.train.m=Math.round(o.train.m*4.34);o.train.roleM=Math.round((o.train.roleM||0)*4.34);o.train.unit='w'}
   if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={unit:'w',m:t.week||0,role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
   return o;
@@ -2017,7 +2075,7 @@ async function importTransfer(){
 }
 function boot(data){importTransfer().then(r=>bootMain(data,r),()=>bootMain(data,null))}
 function bootMain(data,moved){
-  loadAds();
+  loadAds();bgmInit();
   if(!/claude/.test(location.hostname)&&/^https?:/.test(location.protocol)){const f=document.createElement('footer');f.className='site-foot';f.innerHTML='<a href="terms.html">利用規約</a><a href="privacy.html">プライバシーポリシー</a><a href="mailto:airio.creative@gmail.com">お問い合わせ</a><span>運営：AirIo Creative</span>';document.querySelector('.app').appendChild(f)}
   S=(data&&data.S)?migrate(data.S):load();
   if(S&&S.phase==='open'){S.phase='morning'}

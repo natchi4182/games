@@ -80,6 +80,7 @@
 - 2026-10-18 air-io.com を Cloudflare で取得（オーナー）。DNS は A/AAAA を DNS only、証明書は fly.io（Issued）。air-io.com に AirIo Creative の入口ページ、ゲームは ramen.air-io.com へ。旧 ramen-kaigyo.fly.dev はセーブと広告なし設定を URL の # で引き継いで転送（上書き前に確認）
 - 2026-10-18 MAWARU も mawaru.air-io.com へ移転（旧 mawaru.fly.dev は CANONICAL_HOST で転送）。入口ページに MAWARU を掲載（18歳以上の表示つき）。オーナーが3つのアドレスすべてで動作を確認
 - 2026-10-18「投資のところにも広告」→ 一度きりの設備投資（看板・寸胴・キャッシュレス券売機・製麺機）の前に見返り広告。繰り返す投資（会食・イベント・チラシ・SNS）には出さない
+- 2026-10-19「ゲームのBGM」→ オーナーが Suno で5曲作成（title・training・open・night・legend）。音量を -18 LUFS にそろえ、末尾の無音を削って m4a（112kbps）に変換して bgm/ に配置（元ファイルは bgm/original、イメージには入れない）。場面で切り替え：開業前と仕込み＝title、修行＝training、営業中＝open、日報・休業＝night、伝説になった瞬間に legend を1回。右下の「♪ 音楽」ボタンでオン・オフ（最初はオフ、設定は保存）。広告の再生中と別タブにいる間は止める
 
 ## 次にやること（3つまで）
 1. オーナーの試遊の感想をもとに難易度を調整する
