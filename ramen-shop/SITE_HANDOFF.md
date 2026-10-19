@@ -1,5 +1,7 @@
 # air-io.com（AirIo Creative の入口ページ）引き継ぎ書
 
+> **2026-10-19 追記**：入口ページはサイト管理が Cloudflare Pages（GitHub natchi4182/airio-portal）へ独立させた。この文書の「動いている場所」「ファイル」の入口ページ関係は当時の記録。ramen-kaigyo からは portal 系のファイルと nginx の air-io.com ブロックを削除済み。air-io.com の証明書は、オーナーの確認後にサイト管理が外す。
+
 2026-10-19、オーナーの指示により、air-io.com の管理を「らーめん開業日誌」のセッションから **AirIo Creative サイト管理** へ引き継ぐ。
 以後、入口ページ・ドメイン・AdSense のサイト登録まわりはサイト管理の担当。らーめん開業日誌のセッションはゲームに専念する。
 
