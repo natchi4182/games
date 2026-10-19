@@ -186,6 +186,12 @@ export class Chibi {
       if (this.jump <= 0) { this.jump = 0; this.jumpV = 0; }
     }
 
+    // 伝説の塔の建設中：足場に乗ってハンマーで建てる
+    if (g.tower && this.towerSlot != null && !g.tower.done) {
+      this._towerUpdate(dt);
+      return this._finish(dt);
+    }
+
     if (g.cleared) {
       this._idleAnim(dt, true);
       return this._finish(dt);
@@ -219,7 +225,7 @@ export class Chibi {
   }
 
   _finish(dt) {
-    this.root.position.y = this.jump;
+    this.root.position.y = (this.baseY || 0) + this.jump;
     this.shadow.position.y = 0.015 - this.jump / this.root.scale.y;
     const s = 1 - Math.min(0.5, this.jump);
     this.shadow.scale.set(s, 1, s);
@@ -278,11 +284,12 @@ export class Chibi {
 
   _swing(dt) {
     const T = 0.95;
+    const towerMode = this.towerSlot != null;
     this.swingT += dt * this.speedMul / T;
     if (this.swingT >= 1) {
       this.swingT -= 1;
       this.hitDone = false;
-      if (!this.target || this.target.dead) { this.state = 'idle'; this.thinkCd = 0.1; return; }
+      if (!towerMode && (!this.target || this.target.dead)) { this.state = 'idle'; this.thinkCd = 0.1; return; }
     }
     const u = this.swingT;
     let a, squash = 0, lean = 0;
@@ -300,8 +307,38 @@ export class Chibi {
       this.hammerHead.getWorldPosition(_w);
       this.game.fieldRoot.worldToLocal(_w);
       _w.y = Math.max(0.05, _w.y);
-      this.game.onHammerHit(this, this.target, _w);
+      if (towerMode) this.game.onTowerHit(this, _w);
+      else this.game.onHammerHit(this, this.target, _w);
     }
+  }
+
+  // 塔のまわりの足場の自分の場所へ行って、塔に向かってハンマーを振る
+  _towerUpdate(dt) {
+    const T = this.game.tower, n = Math.max(1, this.game.chibis.length);
+    const a = (this.towerSlot / n) * Math.PI * 2 + 0.4;
+    const r = T.workRadius;
+    const tx = Math.cos(a) * r, tz = Math.sin(a) * r, ty = T.scaffoldY;
+    const sc = 1.35 * T.workScale;
+    this.root.scale.setScalar(this.root.scale.x + (sc - this.root.scale.x) * Math.min(1, dt * 2));
+    const pos = this.root.position;
+    const base = this.baseY || 0;
+    const dx = tx - pos.x, dz = tz - pos.z, dy = ty - base;
+    const far = Math.hypot(dx, dz) > 0.15 * sc || Math.abs(dy) > 0.15 * sc;
+    if (far) {
+      // ぴょんぴょん登っていく
+      const k = Math.min(1, dt * 3);
+      pos.x += dx * k; pos.z += dz * k;
+      this.baseY = base + dy * k;
+      if (this.jump === 0) this.jumpV = 2.2 * Math.sqrt(sc / 1.35);
+      this.walkPhase += dt * 16;
+      this.pivot.rotation.z = Math.sin(this.walkPhase) * 0.12;
+      if (this.state === 'swing') { this.state = 'climb'; this.arm.rotation.x = -0.7; }
+    } else {
+      pos.x = tx; pos.z = tz; this.baseY = ty;
+      if (this.state !== 'swing') { this.state = 'swing'; this.swingT = Math.random() * 0.3; this.hitDone = false; this.pivot.rotation.set(0, 0, 0); }
+      this._swing(dt);
+    }
+    this.face = Math.atan2(-pos.x, -pos.z);
   }
 
   _separate(dt) {

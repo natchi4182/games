@@ -6,6 +6,7 @@ import { Chibi } from './chibi.js';
 import { Fx } from './fx.js';
 import { Sfx } from './audio.js';
 import { ARView, BASE_H } from './ar.js';
+import { Tower, MILESTONES } from './tower.js';
 
 const N = 8;                 // 盤面のマス数（N×N）
 const MAX_CREW = 12;
@@ -49,7 +50,7 @@ scene.add(anchor);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x886644, 1.2);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 1.8);
-sun.position.set(2.5, 7, 4);
+sun.position.set(2.5, 12, 4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.bias = -0.0006;
@@ -130,6 +131,8 @@ const game = {
     return best;
   },
   onHammerHit(chibi, ob, pos) { onHammerHit(chibi, ob, pos); },
+  onTowerHit(chibi, pos) { onTowerHit(chibi, pos); },
+  tower: null,
 };
 
 let stream = null;          // getUserMedia
@@ -315,6 +318,11 @@ bindTap('btnPlayXR', () => { audio.click(); startStage('xr'); });
 // ステージ
 // ---------------------------------------------------------------------------
 function clearStage() {
+  endMeasure();
+  game.tower?.dispose();
+  game.tower = null;
+  ar.orbitLift = 0; ar.orbitExtra = 0;
+  document.body.classList.remove('tower-mode');
   for (const c of game.chibis) c.dispose();
   game.chibis = [];
   game.world?.dispose();
@@ -419,6 +427,7 @@ function spawnChibi(k, initial) {
   if (game.fever > 0) ch.setFever(true);
   anchor.add(ch.root);
   game.chibis.push(ch);
+  if (game.tower) ch.towerSlot = game.chibis.length - 1;
   return ch;
 }
 
@@ -609,12 +618,23 @@ function handleRay() {
 // HUD / アップグレード
 // ---------------------------------------------------------------------------
 function updateHud() {
-  const w = game.world;
-  const pct = w ? Math.floor(w.progress * 100) : 0;
-  $('hudBar').style.width = pct + '%';
-  $('hudPct').textContent = pct + '%';
+  const w = game.world, T = game.tower;
+  if (T) {
+    // 伝説の塔：いまの階の進み具合と、地上からの高さ
+    const b = T.building;
+    $('hudBar').style.width = (T.done ? 100 : Math.floor((b ? b.progress : 0) * 100)) + '%';
+    $('hudPct').textContent = fmtHeight(towerHeightM());
+    const c = towerCeilM();
+    $('hudPctLabel').textContent = c != null ? `天井 ${fmtHeight(c)}` : '高さ（∞）';
+    $('hudStage').textContent = `🏯 ${T.floorCount}階`;
+  } else {
+    const pct = w ? Math.floor(w.progress * 100) : 0;
+    $('hudBar').style.width = pct + '%';
+    $('hudPct').textContent = pct + '%';
+    $('hudPctLabel').textContent = '整地率';
+    $('hudStage').textContent = 'Lv.' + save.level;
+  }
   $('hudCoins').textContent = save.coins.toLocaleString();
-  $('hudStage').textContent = 'Lv.' + save.level;
   const set = (key, lvText) => {
     const cost = COST[key]();
     const el = $('up' + key[0].toUpperCase() + key.slice(1));
@@ -748,6 +768,161 @@ bindTap('btnNextSame', () => {
 });
 bindTap('btnNextShot', () => { audio.click(); overlay('scrClear', false); leaveToCapture(); });
 
+// ---------------------------------------------------------------------------
+// 伝説の塔：整地のあと、天井（屋外なら天）まで建て続ける
+// ---------------------------------------------------------------------------
+const measure = { active: false, maxH: 0, startH: 0 };
+const _camW = new THREE.Vector3();
+
+function fmtHeight(m) {
+  if (m >= 1000) return (m / 1000).toFixed(m >= 10000 ? 0 : 2) + 'km';
+  return m.toFixed(m >= 100 ? 0 : 2) + 'm';
+}
+// 盤面ローカル → 地上からの高さ（m）
+function towerHeightM() { return game.tower ? game.tower.topY * anchor.scale.x : 0; }
+function towerCeilM() { return game.towerCeil != null ? game.towerCeil : null; }
+function cameraHeightM() {
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  _camW.setFromMatrixPosition(cam.matrixWorld);
+  return _camW.y - (ar._floorY != null ? ar._floorY : anchor.position.y);
+}
+
+bindTap('btnTower', () => {
+  audio.click();
+  overlay('scrClear', false);
+  // 位置まで追えているときだけ天井を測れる（iPhone の床トラッキング / WebXR）
+  if (ar.is6dof) overlay('scrTowerStart', true);
+  else { toast('この表示では天井を測れないので、∞モードで建てるよ', 2200); startTower(null); }
+});
+bindTap('btnOutdoor', () => { audio.click(); overlay('scrTowerStart', false); startTower(null); });
+bindTap('btnMeasure', () => { audio.click(); overlay('scrTowerStart', false); beginMeasure(); });
+bindTap('btnMeasureRetry', () => { audio.click(); beginMeasure(); });
+bindTap('btnMeasureSkip', () => { audio.click(); endMeasure(); startTower(null); });
+bindTap('btnMeasureOk', () => {
+  audio.buy();
+  const h = measure.maxH + 0.01;   // スマホの厚みのぶん少し足す
+  endMeasure();
+  startTower(h);
+});
+
+function beginMeasure() {
+  measure.active = true;
+  measure.startH = cameraHeightM();
+  measure.maxH = measure.startH;
+  $('measure').classList.remove('hidden');
+  $('btnMeasureOk').disabled = true;
+}
+function endMeasure() {
+  measure.active = false;
+  $('measure').classList.add('hidden');
+}
+function updateMeasure() {
+  if (!measure.active) return;
+  const ok = ar.is6dof;
+  const h = cameraHeightM();
+  if (ok) measure.maxH = Math.max(measure.maxH, h);
+  $('measureWarn').classList.toggle('hidden', ok);
+  $('measureText').textContent = `いまの高さ ${fmtHeight(Math.max(0, h))}　/　最高 ${fmtHeight(Math.max(0, measure.maxH))}`;
+  $('btnMeasureOk').disabled = !(measure.maxH > measure.startH + 0.3 && measure.maxH > 0.5);
+}
+
+function startTower(ceilM) {
+  game.towerCeil = ceilM;
+  game.tower = new Tower(anchor, (analysis?.seed || 1) % 2147483646 + 1);
+  game.towerMilestone = 0;
+  game.towerLast = false;
+  game.cleared = true;
+  setFocus(null);
+  document.body.classList.add('tower-mode');
+  game.chibis.forEach((c, i) => { c.towerSlot = i; c.baseY = 0; c.state = 'climb'; });
+  toast('伝説の塔の建設開始！', 1800);
+  audio.fanfare();
+  maybeLastFloor();
+  updateHud();
+}
+
+// 次の階が天井につかえるなら、天井ぴったりの最後の階にする
+function maybeLastFloor() {
+  const T = game.tower, c = towerCeilM();
+  if (!T || c == null) return;
+  const s = anchor.scale.x;
+  const remain = c / s - T.topY;                 // 盤面ローカル
+  const next = T.building ? T.building.h : T.nextFloorHeight();
+  if (remain < next) {
+    if (remain < next * 0.35) { endTower(); return; }
+    game.towerLast = true;
+    if (T.building && T.building.progress === 0) { T.building = null; T.startNext(remain); }
+  }
+}
+
+function onTowerHit(chibi, pos) {
+  const T = game.tower;
+  if (!T || T.done || game.paused) return;
+  const fever = game.fever > 0;
+  const power = game.power * (fever ? 2 : 1) * (chibi.boost > 0 ? 1.3 : 1) * (chibi.supervised ? 1.5 : 1);
+  const st = T.building ? T.building.st : null;
+  fx.burst(pos, st ? st.body : 0xffffff, fever ? 8 : 4, 0.6 * T.workScale, { size: 0.05 * T.workScale, ...(fever ? { rainbow: true } : {}) });
+  audio.hit(st && (st.kind === 'pagoda' || st.kind === 'garden') ? 'wood' : 'stone');
+  if (!fever && game.feverGauge < FEVER_NEED) game.feverGauge++;
+  const info = T.addProgress(power);
+  if (info) {
+    save.coins += info.reward;
+    const top = new THREE.Vector3(0, T.topY + 0.3 * T.workScale, 0);
+    fx.text(top, `+${info.reward}`, '#ffd23f', 0.4 * T.workScale, 1.2);
+    fx.burst(top, 0xfff3b0, 18, 1.2 * T.workScale, { size: 0.06 * T.workScale, grav: -4 });
+    audio.cheer();
+    setTimeout(() => audio.coin(), 120);
+    if (info.styleChanged && info.k > 0) toast(`${info.k + 1}階：${info.style.name}！`, 1600);
+    // 高さの節目
+    const hm = towerHeightM();
+    while (game.towerMilestone < MILESTONES.length && hm >= MILESTONES[game.towerMilestone][0]) {
+      const ms = MILESTONES[game.towerMilestone++];
+      if (towerCeilM() == null || ms[0] <= towerCeilM()) setTimeout(() => toast(ms[1], 2200), 600);
+    }
+    persist();
+    if (game.towerLast) { endTower(); return; }
+    T.startNext();
+    maybeLastFloor();
+  }
+  if (performance.now() - (game._towerHud || 0) > 200) { game._towerHud = performance.now(); updateHud(); }
+}
+
+function endTower() {
+  const T = game.tower;
+  if (!T || T.done) return;
+  T.done = true;
+  T.building = null;
+  const hm = towerHeightM();
+  const best = save.towerBest || 0;
+  if (hm > best) save.towerBest = hm;
+  persist();
+  audio.fanfare();
+  for (const c of game.chibis) c.celebrate();
+  for (let k = 0; k < 5; k++) {
+    setTimeout(() => fx.burst(new THREE.Vector3((Math.random() - 0.5) * 3, T.topY, (Math.random() - 0.5) * 3), 0xffffff, 26, 1.4 * T.workScale, { rainbow: true, size: 0.07 * T.workScale, grav: -6 }), k * 250);
+  }
+  $('tHeight').textContent = fmtHeight(hm);
+  $('tFloors').textContent = `${T.floorCount}階`;
+  $('tBest').textContent = fmtHeight(save.towerBest || hm) + (hm >= best ? '（更新！）' : '');
+  toast('天井に到達！', 2200);
+  updateHud();
+  setTimeout(() => overlay('scrTowerEnd', true), 2600);
+}
+bindTap('btnTowerNext', () => { audio.click(); overlay('scrTowerEnd', false); variant++; startStage(playMode); });
+bindTap('btnTowerShot', () => { audio.click(); overlay('scrTowerEnd', false); leaveToCapture(); });
+
+// 塔が伸びたら、PC 表示の視点・カメラの遠くの描画範囲・影の範囲も合わせる
+function updateTowerView(dt) {
+  const T = game.tower;
+  if (!T) return;
+  T.update(dt);
+  const s = anchor.scale.x, topW = T.topY * s;
+  ar.orbitLift += (topW * 0.6 - (ar.orbitLift || 0)) * Math.min(1, dt * 2);
+  ar.orbitExtra += (topW * 1.2 - (ar.orbitExtra || 0)) * Math.min(1, dt * 2);
+  const far = Math.max(60, (topW + 2) * 4);
+  if (Math.abs(camera.far - far) > camera.far * 0.1) { camera.far = far; camera.updateProjectionMatrix(); }
+}
+
 // 床に直接重ねるか（床を認識できるモード）、ジオラマで出すか
 function syncFlush() {
   const w = game.world;
@@ -842,6 +1017,8 @@ renderer.setAnimationLoop((t, frame) => {
     }
     updateGaze();
     updateSupervise();
+    updateTowerView(dt);
+    updateMeasure();
     hudTimer -= dt;
     if (hudTimer <= 0) { hudTimer = 0.5; if (game.fever > 0) updateHud(); }
   }
@@ -927,4 +1104,4 @@ function watchPerf(t) {
 }
 
 // デバッグ・テスト用（コンソールから触れるように）
-window.__game = { game, save, ar, startStage: (m) => startStage(m), goAnalyze, makeSamplePhoto };
+window.__game = { game, save, ar, startStage: (m) => startStage(m), goAnalyze, makeSamplePhoto, startTower };
