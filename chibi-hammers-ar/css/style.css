@@ -256,6 +256,13 @@ body.xr .xr-only { display: inline-flex; }
   width: min(380px, calc(100% - 32px)); pointer-events: auto; gap: 6px;
 }
 .measure h2 { font-size: 18px; }
-.measure ol { margin: 0; padding-left: 20px; line-height: 1.7; }
+.measure p { margin: 0; }
 .measure-num { margin: 4px 0; text-align: center; font-weight: 800; font-size: 16px; color: var(--c-main-d); }
 .measure .warn { color: #d63031; text-align: center; margin: 0; }
+.tower-only { display: none !important; }
+body.tower-mode .tower-only { display: inline-flex !important; }
+.crosshair { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); pointer-events: none; }
+.crosshair::before, .crosshair::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 0 1.5px rgba(0,0,0,.5); }
+.crosshair::before { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
+.crosshair::after { top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
+.crosshair i { position: absolute; inset: 14px; border: 2px solid #ffd23f; border-radius: 50%; }

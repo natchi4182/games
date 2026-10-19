@@ -12,7 +12,7 @@ export const STYLES = [
   { name: '星の尖塔', kind: 'crystal', body: 0x6b5bd6, trim: 0xb7a8ff, roof: 0xffe680, accent: 0x9ff3ff },
 ];
 const FLOORS_PER_STYLE = 5;
-const GROW = 1.004;          // 上の階ほど少しずつ大きくなる（放置で加速する）
+const GROW = 1.004;          // 上の階ほど少しずつ大きくなる
 const CHUNK = 10;            // 完成した階を何階ずつまとめて描くか
 
 // 高さの節目（屋外向け）
@@ -87,27 +87,40 @@ export class Tower {
     this.group = new THREE.Group();
     root.add(this.group);
     this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.75 });
-    this.floors = [];          // { y, h, w, geo, mesh }
+    this.floors = [];          // 完成した階 { k, y, h, w, mesh }
     this.chunks = [];
     this.topY = 0;             // いちばん上の床の高さ（盤面ローカル）
-    this.building = null;      // 建設中の階
+    this.building = null;      // 建設中（階 or 天井のマス）
     this.rng = seed;
     this.anims = [];
-    this.done = false;
+    this.phase = 'tower';      // tower → canopy（天井に届いたら横へ広げる）
+    // 天井
+    this.ceilY = null;
+    this.wall = null;          // { px, pz, nx, nz } この平面の向こうには広げない
+    this.cells = [];           // 完成した天井のマス
+    this.cellQueue = [];
+    this.ring = 0;
+    this.cellSize = 1.5;
     // 足場（ちびたちが乗る輪）
     this.scaffold = new THREE.Group();
-    const plank = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 40).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xa07850, roughness: 0.9 }));
-    plank.scale.set(1, 1, 1);
-    this.scaffold.add(plank);
-    this.scaffoldRing = plank;
+    this.scaffoldRing = new THREE.Mesh(
+      new THREE.TorusGeometry(1, 0.06, 6, 40).rotateX(Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0xa07850, roughness: 0.9 }),
+    );
+    this.scaffold.add(this.scaffoldRing);
     this.group.add(this.scaffold);
-    this.scaffoldY = 0;
+    this.work = { x: 0, y: 0, z: 0, r: 1, s: 1 };   // いまの作業場所（なめらかに追従）
     this._startFloor();
+    this._snapWork();
   }
 
   _rand() { this.rng = (this.rng * 16807) % 2147483647; return this.rng / 2147483647; }
 
   get floorCount() { return this.floors.length; }
+  get cellCount() { return this.cells.length; }
+  /** 天井を埋めた広さ（盤面ローカルの面積） */
+  get canopyArea() { return this.cells.length * this.cellSize * this.cellSize; }
+
   styleOf(k) {
     const s = STYLES[Math.floor(k / FLOORS_PER_STYLE) % STYLES.length];
     const cycle = Math.floor(k / (FLOORS_PER_STYLE * STYLES.length));
@@ -117,18 +130,18 @@ export class Tower {
     return { ...s, body: shift(s.body), trim: shift(s.trim), roof: shift(s.roof), accent: shift(s.accent) };
   }
 
-  /** k 階を建てるのに必要な力 */
-  costOf(k) { return 8 * Math.pow(1.015, k); }
-  /** k 階のコイン */
-  rewardOf(k) { return Math.round(6 * Math.pow(1.012, k)); }
+  /** k 階の大きさ。土台は整地した土地いっぱい、上に行くほどゆるやかに細くなる */
   sizeOf(k) {
     const g = Math.pow(GROW, k);
-    const w = 3.2 * g * (0.9 + 0.1 * Math.cos(k * 0.9)) * (1 - 0.035 * (k % FLOORS_PER_STYLE));
+    const taper = 0.72 + 0.28 * Math.exp(-k / 14);
+    const w = 6.2 * g * taper * (0.95 + 0.05 * Math.cos(k * 0.9)) * (1 - 0.025 * (k % FLOORS_PER_STYLE));
     const kindH = { block: 1.0, pagoda: 0.95, castle: 1.15, clock: 1.25, garden: 0.85, temple: 1.1, crystal: 1.2 };
-    const h = 1.05 * g * (kindH[this.styleOf(k).kind] || 1);
+    const h = 1.5 * g * (kindH[this.styleOf(k).kind] || 1);
     return { w, h, g };
   }
-  /** 次の階の高さ */
+  /** 建てるのに必要な作業量は、階の体積に比例（太い階ほど時間がかかる） */
+  costOf(w, h, k) { return 2.2 * w * w * h * Math.pow(1.01, k); }
+  rewardOf(k) { return Math.round(12 * Math.pow(1.012, k)); }
   nextFloorHeight() { return this.sizeOf(this.floors.length).h; }
 
   _startFloor(maxH = Infinity) {
@@ -137,97 +150,167 @@ export class Tower {
     const sz = this.sizeOf(k);
     const h = Math.min(sz.h, maxH);
     const parts = buildParts(st, sz.w, h, () => this._rand());
-    // 下から順に積み上がるように並べる
-    parts.sort((a, b) => (a.y - a.sy / 2) - (b.y - b.sy / 2));
-    this.building = { k, st, w: sz.w, h, scale: sz.g, parts, shown: 0, progress: 0, cost: this.costOf(k), meshes: [] };
+    parts.sort((a, b) => (a.y - a.sy / 2) - (b.y - b.sy / 2));   // 下から積み上がる
+    this.building = {
+      kind: 'floor', k, st, w: sz.w, h, scale: sz.g, parts, shown: 0, progress: 0,
+      cost: this.costOf(sz.w, h, k), meshes: [], ox: 0, oy: this.topY, oz: 0,
+    };
   }
 
-  /** ちびのハンマー 1 発ぶん。完成した階があればその情報を返す */
+  /** ちびのハンマー 1 発ぶん。完成したらその情報を返す */
   addProgress(power) {
     const b = this.building;
-    if (!b || this.done) return null;
+    if (!b) return null;
     b.progress = Math.min(1, b.progress + power / b.cost);
-    // 進み具合に合わせて部品をぽんぽん出す
     const want = Math.floor(b.progress * b.parts.length);
     while (b.shown < want) this._showPart(b.parts[b.shown++]);
     if (b.progress < 1) return null;
-    return this._completeFloor();
+    return b.kind === 'floor' ? this._completeFloor() : this._completeCell();
   }
 
   _showPart(p) {
     const b = this.building;
-    const g = partGeometry(p);
-    const m = new THREE.Mesh(g, this.mat);
-    m.position.y = this.topY;
-    m.castShadow = this.floors.length < 8;
+    const m = new THREE.Mesh(partGeometry(p), this.mat);
+    m.position.set(b.ox, b.oy, b.oz);
+    m.castShadow = b.kind === 'floor' && this.floors.length < 8;
     m.scale.setScalar(0.01);
     this.group.add(m);
     b.meshes.push(m);
     this.anims.push({ t: 0, dur: 0.35, fn: (u) => {
-      const s = 1 + Math.sin(u * Math.PI) * 0.25 * (1 - u);
-      m.scale.setScalar(Math.max(0.01, Math.min(1, u * 1.6)) * s);
+      m.scale.setScalar(Math.max(0.01, Math.min(1, u * 1.6)) * (1 + Math.sin(u * Math.PI) * 0.25 * (1 - u)));
     } });
+  }
+
+  // 部品をまとめて 1 つの形にする
+  _finishMesh(b) {
+    while (b.shown < b.parts.length) this._showPart(b.parts[b.shown++]);
+    const geo = mergeGeometries(b.parts.map(partGeometry));
+    for (const m of b.meshes) { this.group.remove(m); m.geometry.dispose(); }
+    const mesh = new THREE.Mesh(geo, this.mat);
+    mesh.position.set(b.ox, b.oy, b.oz);
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
+    return mesh;
   }
 
   _completeFloor() {
     const b = this.building;
-    while (b.shown < b.parts.length) this._showPart(b.parts[b.shown++]);
-    // 部品をまとめて 1 つの形にする
-    const geo = mergeGeometries(b.parts.map(partGeometry));
-    for (const m of b.meshes) { this.group.remove(m); m.geometry.dispose(); }
-    const mesh = new THREE.Mesh(geo, this.mat);
-    mesh.position.y = this.topY;
+    const mesh = this._finishMesh(b);
     mesh.castShadow = this.floors.length < 8;
-    mesh.receiveShadow = true;
-    this.group.add(mesh);
-    const floor = { k: b.k, y: this.topY, h: b.h, w: b.w, geo, mesh, style: b.st };
-    this.floors.push(floor);
+    this.floors.push({ k: b.k, y: this.topY, h: b.h, w: b.w, mesh, style: b.st });
     this.topY += b.h;
-    this._maybeChunk();
-    const info = { k: b.k, style: b.st, styleChanged: b.k % FLOORS_PER_STYLE === 0, top: this.topY, reward: this.rewardOf(b.k) };
+    this._chunk(this.floors, CHUNK);
     this.building = null;
-    return info;
+    return { kind: 'floor', k: b.k, style: b.st, styleChanged: b.k % FLOORS_PER_STYLE === 0, reward: this.rewardOf(b.k) };
   }
 
   /** 次の階を始める。maxH を超える場合は天井まで（最後の階） */
   startNext(maxH = Infinity) {
-    if (this.done) return;
-    this._startFloor(maxH);
+    if (this.phase === 'tower') this._startFloor(maxH);
+    else this._startCell();
   }
 
-  // 完成した階を CHUNK 階ずつ 1 つの形にまとめて、描く数を減らす
-  _maybeChunk() {
-    const n = this.floors.length;
-    if (n % CHUNK !== 0) return;
-    const fl = this.floors.slice(n - CHUNK);
-    const geos = fl.map((f) => f.geo.clone().translate(0, f.y, 0));
+  // ---- 天井に届いたら、天井に沿って横へ広げる ----
+  /**
+   * @param ceilY  天井の高さ（盤面ローカル）
+   * @param wall   壁（盤面ローカル）{ px, pz, nx, nz }。n は部屋の内側向き。無ければ null
+   */
+  startCanopy(ceilY, wall) {
+    this.phase = 'canopy';
+    this.ceilY = ceilY;
+    this.wall = wall;
+    const topW = this.floors.length ? this.floors[this.floors.length - 1].w : 4;
+    this.cellSize = Math.max(1.2, topW / 3);
+    this.ring = Math.ceil((topW / 2) / this.cellSize);
+    this.cellQueue = [];
+    this._startCell();
+  }
+
+  _nextCellPos() {
+    let guard = 0;
+    while (!this.cellQueue.length && guard++ < 40) {
+      this.ring++;
+      const r = this.ring, list = [];
+      for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) {
+        if (Math.max(Math.abs(i), Math.abs(j)) !== r) continue;
+        const x = i * this.cellSize, z = j * this.cellSize;
+        // 壁の向こうには広げない
+        if (this.wall && (x - this.wall.px) * this.wall.nx + (z - this.wall.pz) * this.wall.nz < this.cellSize * 0.5) continue;
+        list.push({ x, z, a: Math.atan2(z, x) });
+      }
+      list.sort((p, q) => p.a - q.a);
+      this.cellQueue.push(...list);
+    }
+    return this.cellQueue.shift() || null;
+  }
+
+  _startCell() {
+    const pos = this._nextCellPos();
+    if (!pos) { this.building = null; return; }
+    const n = this.cells.length;
+    const st = this.styleOf(Math.floor(this.ring * 1.5) + this.floors.length);
+    const c = this.cellSize, g = this.sizeOf(this.floors.length).g;
+    const parts = buildCeilingParts(st, c, () => this._rand());
+    parts.sort((a, b) => (b.y + b.sy / 2) - (a.y + a.sy / 2));   // 天井側から下へ
+    this.building = {
+      kind: 'cell', k: n, st, w: c, h: c, scale: g, parts, shown: 0, progress: 0,
+      cost: 30 * Math.pow(1.012, n) * (c / 1.5) ** 2, meshes: [], ox: pos.x, oy: this.ceilY, oz: pos.z,
+    };
+  }
+
+  _completeCell() {
+    const b = this.building;
+    const mesh = this._finishMesh(b);
+    this.cells.push({ x: b.ox, z: b.oz, mesh });
+    this._chunk(this.cells, 16);
+    this.building = null;
+    return { kind: 'cell', k: b.k, style: b.st, reward: Math.round(10 * Math.pow(1.01, b.k)) };
+  }
+
+  // 完成したものを n 個ずつ 1 つの形にまとめて、描く数を減らす
+  _chunk(list, n) {
+    if (list.length % n !== 0) return;
+    const items = list.slice(list.length - n);
+    const geos = items.map((it) => it.mesh.geometry.clone().translate(it.mesh.position.x, it.mesh.position.y, it.mesh.position.z));
     const geo = mergeGeometries(geos);
     geos.forEach((g) => g.dispose());
-    for (const f of fl) { this.group.remove(f.mesh); f.geo.dispose(); f.geo = null; f.mesh = null; }
+    for (const it of items) { this.group.remove(it.mesh); it.mesh.geometry.dispose(); it.mesh = null; }
     const mesh = new THREE.Mesh(geo, this.mat);
-    mesh.castShadow = n <= CHUNK;
+    mesh.castShadow = list === this.floors && list.length <= CHUNK;
     mesh.receiveShadow = true;
     this.group.add(mesh);
     this.chunks.push(mesh);
   }
 
-  /** ちびたちが乗る足場の半径と高さ */
-  get workRadius() { return (this.building ? this.building.w : this.sizeOf(this.floors.length).w) / 2 + 0.6 * this.workScale; }
-  get workScale() { return this.building ? this.building.scale : Math.pow(GROW, this.floors.length); }
+  /** いまの作業場所（ちびたちが乗る足場の中心・高さ・半径） */
+  _workTarget() {
+    const b = this.building;
+    if (this.phase === 'canopy') {
+      const x = b ? b.ox : this.work.x, z = b ? b.oz : this.work.z;
+      const s = this.sizeOf(this.floors.length).g;
+      return { x, z, y: this.ceilY - this.cellSize * 0.9 - 1.0 * s, r: this.cellSize * 0.75, s };
+    }
+    const sz = b ? { w: b.w, g: b.scale } : this.sizeOf(this.floors.length);
+    return { x: 0, z: 0, y: this.topY, r: sz.w / 2 + 0.6 * sz.g, s: sz.g };
+  }
+  _snapWork() { Object.assign(this.work, this._workTarget()); }
+
+  get workRadius() { return this.work.r; }
+  get workScale() { return this.work.s; }
+  get workCenter() { return this.work; }
+  get scaffoldY() { return this.work.y; }
 
   update(dt) {
-    // 足場をいまの作業高さへ
-    this.scaffoldY += (this.topY - this.scaffoldY) * Math.min(1, dt * 3);
-    this.scaffold.position.y = this.scaffoldY + 0.02;
-    const r = this.workRadius;
-    this.scaffoldRing.scale.set(r, this.workScale, r);
-    this.scaffold.visible = !this.done;
-    for (let k = this.anims.length - 1; k >= 0; k--) {
-      const a = this.anims[k];
+    const t = this._workTarget(), k = Math.min(1, dt * 2.5);
+    for (const key of ['x', 'y', 'z', 'r', 's']) this.work[key] += (t[key] - this.work[key]) * k;
+    this.scaffold.position.set(this.work.x, this.work.y + 0.02, this.work.z);
+    this.scaffoldRing.scale.set(this.work.r, this.work.s, this.work.r);
+    for (let i = this.anims.length - 1; i >= 0; i--) {
+      const a = this.anims[i];
       a.t += dt;
       const u = Math.min(1, a.t / a.dur);
       a.fn(u);
-      if (u >= 1) this.anims.splice(k, 1);
+      if (u >= 1) this.anims.splice(i, 1);
     }
   }
 
@@ -332,6 +415,39 @@ function buildParts(st, w, h, rnd) {
       add('box', 0, h - slab / 2, 0, w * 0.7, slab, w * 0.7, st.trim);
       break;
     }
+  }
+  return P;
+}
+
+// 天井からぶら下がる「天井の街」のマス。y=0 が天井、下向きに作る
+function buildCeilingParts(st, c, rnd) {
+  const P = [];
+  const add = (t, x, y, z, sx, sy, sz, col, extra = {}) => P.push({ t, x, y, z, sx, sy, sz, c: col, ...extra });
+  const slab = c * 0.16;
+  add('box', 0, -slab / 2, 0, c * 0.98, slab, c * 0.98, st.trim);                 // 天井に張りつく板
+  add('box', 0, -slab - 0.02, 0, c * 0.9, 0.04, c * 0.9, st.body);
+  const kind = Math.floor(rnd() * 4);
+  if (kind === 0) {
+    // さかさまの家
+    add('box', 0, -slab - c * 0.22, 0, c * 0.5, c * 0.4, c * 0.5, st.body);
+    add('pyramid', 0, -slab - c * 0.55, 0, c * 0.7, c * 0.3, c * 0.7, st.roof, { rx: Math.PI });
+    add('box', 0, -slab - c * 0.2, c * 0.26, c * 0.12, c * 0.16, 0.03, 0x3a3530);
+  } else if (kind === 1) {
+    // ちょうちん
+    for (const [dx, dz] of [[-0.25, -0.25], [0.25, 0.25], [0.25, -0.25]]) {
+      const len = c * (0.25 + rnd() * 0.25);
+      add('cyl', dx * c, -slab - len / 2, dz * c, 0.03, len, 0.03, 0x5a4636);
+      add('sphere', dx * c, -slab - len - c * 0.1, dz * c, c * 0.2, c * 0.26, c * 0.2, st.accent);
+    }
+  } else if (kind === 2) {
+    // さかさまの木
+    add('cyl', 0, -slab - c * 0.2, 0, c * 0.08, c * 0.4, c * 0.08, 0x7a5a3a);
+    add('ico', 0, -slab - c * 0.5, 0, c * 0.5, c * 0.4, c * 0.5, st.roof);
+  } else {
+    // 回廊（アーチ）
+    add('box', -c * 0.35, -slab - c * 0.25, 0, c * 0.1, c * 0.5, c * 0.1, st.body);
+    add('box', c * 0.35, -slab - c * 0.25, 0, c * 0.1, c * 0.5, c * 0.1, st.body);
+    add('box', 0, -slab - c * 0.52, 0, c * 0.85, c * 0.08, c * 0.2, st.roof);
   }
   return P;
 }
