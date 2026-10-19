@@ -5,10 +5,7 @@
       <stop offset=".5" stop-color="#4cbbe6"/>
       <stop offset="1" stop-color="#4593b6"/>
     </linearGradient>
-    <clipPath id="c"><circle cx="63.5" cy="63.5" r="63"/></clipPath>
+    <mask id="m"><circle cx="63.5" cy="63.5" r="63" fill="#fff"/><path d="M52 81.2 C70 76 95 58 116 24 L140 10 L140 48 L127 52 C105 72 75 81 52 82.6 Z" fill="#000"/></mask>
   </defs>
-  <g clip-path="url(#c)">
-    <rect width="127" height="127" fill="url(#g)"/>
-    <path d="M52 81.2 C70 76 95 58 116 24 L140 10 L140 48 L127 52 C105 72 75 81 52 82.6 Z" fill="#fff"/>
-  </g>
+  <rect width="127" height="127" fill="url(#g)" mask="url(#m)"/>
 </svg>
