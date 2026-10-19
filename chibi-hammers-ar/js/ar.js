@@ -6,6 +6,7 @@
 //  - xr モード: WebXR immersive-ar + hit-test で現実の床に荒地を置く（対応端末のみ）
 import * as THREE from 'three';
 import { FloorTracker } from './tracker.js';
+import { GyroSync } from './gyrosync.js';
 
 const EYE_H = 1.3, AHEAD = 1.45;
 export const BASE_H = 0.6;           // ジオラマ土台の厚み（盤面ローカル単位）
@@ -26,8 +27,11 @@ export function guessLongFov() {
 }
 const Z = new THREE.Vector3(0, 0, 1);
 const Q_SCREEN = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const FOV_KEY = 'chibiHammers.cameraFov';
+// カメラ映像はジャイロより少し遅れて届く（ms）。撮影時刻が分からないときの目安で、
+// 残りのずれは追跡中に自動で合わせる（gyrosync.js）
 const GYRO_LATENCY = 40;
-const FOV_KEY = 'chibiHammers.cameraFov';             // カメラ映像はセンサーより少し遅れて届く（ms）
+const LAT_KEY = 'chibiHammers.gyroSync';
 
 export class ARView {
   constructor({ renderer, camera, scene, anchor, dom, onTap }) {
@@ -55,6 +59,9 @@ export class ARView {
     this.trackState = 'off';   // off / aim / run / lost
     this.video = null;
     this.gyroHist = [];
+    let lat = 0;
+    try { const l = parseFloat(localStorage.getItem(LAT_KEY)); if (l >= GyroSync.range[0] && l <= GyroSync.range[1]) lat = l; } catch (_) { /* なし */ }
+    this.gyroSync = new GyroSync(lat);
     this._frameQueued = false;
     this._poseQ = new THREE.Quaternion();
     this._poseC = new THREE.Vector3();
@@ -74,7 +81,7 @@ export class ARView {
       // 映像との時間合わせ用に少しだけ履歴を持つ
       const now = performance.now();
       this.gyroHist.push({ t: now, q: this._deviceQuat(new THREE.Quaternion()) });
-      while (this.gyroHist.length > 2 && now - this.gyroHist[0].t > 400) this.gyroHist.shift();
+      while (this.gyroHist.length > 2 && now - this.gyroHist[0].t > 700) this.gyroHist.shift();
     };
     window.addEventListener('deviceorientation', this._onOrient);
 
@@ -372,11 +379,15 @@ export class ARView {
     this._drawFrame();
     if (this.trackState !== 'run' && this.trackState !== 'lost') { this.onFrameRender?.(); return; }
     const t0 = performance.now();
-    const gNow = this._gyroAt(t);
+    const gNow = this._gyroAt(t - this.gyroSync.lat);
     const dq = this._gPrev ? this._gPrev.clone().invert().multiply(gNow) : null;
     this._gPrev = gNow;
     const qAbs = this.yawOffset.clone().multiply(gNow);
     this.tracker.update(this.video, dq, qAbs);
+    const sync = this.gyroSync;
+    if (sync.learn(t, (tt) => this._gyroAt(tt), this.tracker.q, this.tracker.good)) {
+      if (sync.n % 60 === 0) { try { localStorage.setItem(LAT_KEY, sync.lat.toFixed(1)); } catch (_) { /* なし */ } }
+    }
     this.stats.trackMs = this.stats.trackMs * 0.9 + (performance.now() - t0) * 0.1;
     this.stats.frames++;
     this._poseQ.copy(this.tracker.q);
@@ -450,7 +461,8 @@ export class ARView {
     if (!P) { this.onTrackState?.('aim-low'); return; }
     this._drawFrame();
     const n = this.tracker.start(this.video, cam.quaternion, cam.position);
-    this._gPrev = this._gyroAt(performance.now() - GYRO_LATENCY);
+    this._gPrev = this._gyroAt(performance.now() - GYRO_LATENCY - this.gyroSync.lat);
+    this.gyroSync.reset();
     this._floorY = 0;
     if (!this._placedOnce) { this.fieldScale = 0.2; this._placedOnce = true; }   // 初回は実物大（約 1.6m 四方）
     this.anchor.position.set(P.x, 0, P.z);

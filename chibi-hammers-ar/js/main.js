@@ -1190,7 +1190,8 @@ function watchPerf(t) {
       `描画 ${rf.toFixed(0)}fps / ループ ${(1000 / perf.avg).toFixed(0)}fps\n` +
       `追跡 ${vf.toFixed(0)}fps ${ar.stats.trackMs.toFixed(1)}ms\n` +
       `状態 ${ar.trackState}  点 ${tr ? tr.count : '-'} / 一致 ${tr ? tr.inliers : '-'}  誤差 ${tr && tr.medErr != null ? tr.medErr.toFixed(1) : '-'}px\n` +
-      `解像度 x${DPR_STEPS[perf.dprIdx]}  画角 ${ar.longFov.toFixed(1)}°  映像 ${$('cam').videoWidth}x${$('cam').videoHeight}`;
+      `解像度 x${DPR_STEPS[perf.dprIdx]}  画角 ${ar.longFov.toFixed(1)}°  映像 ${$('cam').videoWidth}x${$('cam').videoHeight}\n` +
+      `ジャイロ時間合わせ ${ar.gyroSync.lat >= 0 ? '+' : ''}${ar.gyroSync.lat.toFixed(0)}ms（学習 ${ar.gyroSync.n}）  ずれ ${ar.gyroSync.sigma != null ? (ar.gyroSync.sigma * 180 / Math.PI).toFixed(2) + '°' : '-'}`;
   }
 }
 
