@@ -119,18 +119,15 @@
         </button>
       </div>
       <div id="toast" class="toast"></div>
+      <div id="crosshair" class="crosshair hidden"><i></i></div>
       <div id="measure" class="panel measure hidden">
         <h2>📏 天井の高さを測る</h2>
-        <ol class="small">
-          <li>スマホの<b>画面を上</b>に向けて（カメラは床に向けたまま）</li>
-          <li>ゆっくり<b>天井まで持ち上げて</b>、そっと当てる</li>
-          <li>下ろしたら「この高さで決定」</li>
-        </ol>
-        <p id="measureText" class="measure-num">いまの高さ -</p>
-        <p id="measureWarn" class="small warn hidden">床の模様を見失いました。ゆっくり動かしてね</p>
+        <p id="measureStep" class="small center"></p>
+        <p id="measureText" class="measure-num">-</p>
+        <p id="measureWarn" class="small warn hidden">床が見えないので測れません。床に照準を向けてね</p>
         <div class="row">
-          <button id="btnMeasureRetry" class="btn ghost">測り直す</button>
-          <button id="btnMeasureOk" class="btn primary" disabled>この高さで決定</button>
+          <button id="btnMeasureRetry" class="btn ghost">やり直す</button>
+          <button id="btnMeasureOk" class="btn primary" disabled>ここが根元</button>
         </div>
         <button id="btnMeasureSkip" class="btn ghost">測らずに建てる（屋外・∞）</button>
       </div>
@@ -149,6 +146,7 @@
         <button id="btnSound" class="btn ghost">🔊 サウンド: ON</button>
         <button id="btnBgm" class="btn ghost">🎵 BGM: ON</button>
         <button id="btnDiag" class="btn ghost">🔧 AR診断表示: OFF</button>
+        <button id="btnTowerQuit" class="btn ghost tower-only">🏁 塔を終えて次の整地へ</button>
         <button id="btnNewLand" class="btn ghost">📷 べつの景色を撮る</button>
         <button id="btnReset" class="btn ghost danger">セーブデータを消す</button>
       </div>
@@ -158,24 +156,9 @@
     <section id="scrTowerStart" class="screen modal">
       <div class="panel">
         <h2>🏯 伝説の塔</h2>
-        <p class="center small">ちびたちが整地した土地に、天まで届く塔を建てていくよ。<br>放置していても、どんどん伸びる！<br>天井に届いたら記録をつけて終了。屋外ならどこまでも。</p>
-        <button id="btnMeasure" class="btn primary">📏 天井にタッチして高さを測る</button>
+        <p class="center small">ちびたちが整地した土地に、太くて高い塔を建てていくよ。<br>放置していても、少しずつ伸び続ける！<br>天井に届いたら、こんどは天井に沿って街を広げていくよ。<br>屋外ならどこまでも。</p>
+        <button id="btnMeasure" class="btn primary">📏 天井の高さを測る（壁の根元→天井）</button>
         <button id="btnOutdoor" class="btn ghost">🌤 屋外なので測らない（∞）</button>
-      </div>
-    </section>
-
-    <!-- 伝説の塔：天井に到達 -->
-    <section id="scrTowerEnd" class="screen modal">
-      <div class="panel clear">
-        <div class="stars">🏯🎊🏯</div>
-        <h2>天井に到達！</h2>
-        <div class="result">
-          <div><span>高さ</span><b id="tHeight"></b></div>
-          <div><span>階数</span><b id="tFloors"></b></div>
-          <div><span>自己ベスト</span><b id="tBest"></b></div>
-        </div>
-        <button id="btnTowerNext" class="btn primary">次の整地へ</button>
-        <button id="btnTowerShot" class="btn ghost">📷 新しい景色を撮る</button>
       </div>
     </section>
 

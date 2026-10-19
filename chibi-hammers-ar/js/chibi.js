@@ -316,8 +316,8 @@ export class Chibi {
   _towerUpdate(dt) {
     const T = this.game.tower, n = Math.max(1, this.game.chibis.length);
     const a = (this.towerSlot / n) * Math.PI * 2 + 0.4;
-    const r = T.workRadius;
-    const tx = Math.cos(a) * r, tz = Math.sin(a) * r, ty = T.scaffoldY;
+    const r = T.workRadius, wc = T.workCenter;
+    const tx = wc.x + Math.cos(a) * r, tz = wc.z + Math.sin(a) * r, ty = T.scaffoldY;
     const sc = 1.35 * T.workScale;
     this.root.scale.setScalar(this.root.scale.x + (sc - this.root.scale.x) * Math.min(1, dt * 2));
     const pos = this.root.position;
@@ -338,7 +338,7 @@ export class Chibi {
       if (this.state !== 'swing') { this.state = 'swing'; this.swingT = Math.random() * 0.3; this.hitDone = false; this.pivot.rotation.set(0, 0, 0); }
       this._swing(dt);
     }
-    this.face = Math.atan2(-pos.x, -pos.z);
+    this.face = Math.atan2(wc.x - pos.x, wc.z - pos.z);
   }
 
   _separate(dt) {
