@@ -292,7 +292,7 @@ function newGame(name,loc,style,diff='real'){
   S.weather=genWeather(0);S.tomorrow=genWeather(1);
   S.buzz.push({mult:.6,days:10,label:'開店景気'});
 }
-function blankMonth(){return{sales:0,food:0,waste:0,labor:0,util:0,rent:0,loan:0,ads:0,misc:0,invest:0,cust:0,lost:0,bowls:0,days:0,brSales:0,brCost:0,brCust:0,owner:0}}
+function blankMonth(){return{sales:0,food:0,waste:0,labor:0,util:0,rent:0,loan:0,ads:0,misc:0,invest:0,cust:0,lost:0,bowls:0,days:0,brSales:0,brCost:0,brCust:0,owner:0,brFood:0,brLabor:0,tax:0}}
 const ratingOf=a=>(3.0*10+a.reduce((x,y)=>x+y,0))/(10+a.length);
 const rating=()=>ratingOf(S.stars);
 const seatsOf=(loc=S.loc,size=S.size)=>LOC[loc].seats+(size?8:0);
@@ -323,7 +323,9 @@ function bowlCost(){
   return {soup:soup*k,noodle:noodle*k,chashu:chashu*k,top:TOPPING*k,total:(soup+noodle+chashu+TOPPING)*k};
 }
 // 客が納得する価格：素材のこだわりと店の評判の分だけ上がる
-function expPrice(r=rating()){const st=STYLES[S.style],m=S.menu;return st.exp+S.expBoost+GRADES[m.grade].prem+CHASHU[m.chashu].prem+NOODLES[m.noodle].prem+Math.max(0,r-3.5)*120}
+// 物価：客が納得する値段は年1%ずつ上がる（時給は年3%上がる）
+const cpi=()=>Math.pow(1.01,Math.floor((S.day||0)/365));
+function expPrice(r=rating()){const st=STYLES[S.style],m=S.menu;return Math.round((st.exp+S.expBoost+GRADES[m.grade].prem+CHASHU[m.chashu].prem+NOODLES[m.noodle].prem+Math.max(0,r-3.5)*120)*cpi())}
 function tasteCore(){
   const st=STYLES[S.style],m=S.menu;
   return st.base+GRADES[m.grade].taste*skillEff(GSK[m.grade])+NOODLES[m.noodle].taste*skillEff(NSK[m.noodle])+CHASHU[m.chashu].taste*skillEff(CSK[m.chashu])+S.skill+(S.secret||0)+(hasT('zettai')?2:0);
@@ -489,7 +491,7 @@ function leave(c){
   const hall=S.staff.hall===0?-1.5:hallOK()?2:.5;
   const bonus=(st.riceFree?1.5:0)+(m.ajitama?.5:0);
   const hype=Math.max(0,rating()-3.6)*7; // 評判が上がるほど客の期待も上がる
-  const val=taste-pricePen-qPen-cPen+hall+bonus-hype+focusAdj()+(S.diff==='easy'?1.5:0)+(hasT('aiso')?1.5:0);
+  const val=taste-pricePen-qPen-cPen+hall+bonus-hype+focusAdj()+(S.diff==='easy'?1.5:0)+(hasT('aiso')?1.5:0)-wearPen();
   const star=clamp(1+(val-36)/12+gauss()*.5,1,5);
   D.sales+=c.bill;D.customers++;D.starSum+=star;D.starN++;
   c.state='gone';
@@ -564,6 +566,9 @@ function nextDay(){
   S.tide=clamp((S.tide||0)*.97+gauss()*.05,-1,1); // 流れ（本人には見えない）
   S.market.pork=1+(S.market.pork-1)*.985+gauss()*.004;
   S.tempStaff=0;S.potHalf=false;
+  {const w0=S.wear||0;S.wear=Math.min(1,w0+1/(365*9)); // 店の傷み（9年ほどで限界）
+   if(w0<.3&&S.wear>=.3)log('—','壁のしみや椅子のがたつきが目立ってきた。投資タブで店を改装できる','info');
+   if(w0<.6&&S.wear>=.6)log('—','店の古さを口にする客が増えてきた。改装すれば客の満足が戻る','bad');}
   if(S._restoreStaff){S.staff=S._restoreStaff;delete S._restoreStaff}
   S.weather=S.tomorrow;S.tomorrow=genWeather(S.day+1);
   devProgress();
@@ -591,13 +596,62 @@ function restDay(){
   log('—',`${fmtDate(S.day)} 休業。店主は休んだ`,'info');
   nextDay();
 }
+// ───────── 税金 ─────────
+// 4月〜3月を1年として3月末に締め、5月末に納める。目安の税率で、細かい控除は省いている
+const TAX_IND=[[3e6,.2],[9e6,.33],[18e6,.43],[4e7,.5],[Infinity,.55]]; // 個人：所得税・住民税・事業税をまとめた目安
+const TAX_CORP=[[8e6,.25],[Infinity,.35]];                            // 法人：法人税・住民税・事業税をまとめた目安
+const CORP_COST=300000, CORP_FEE=50000;
+const taxOn=(v,tbl)=>{let t=0,lo=0;for(const [hi,r] of tbl){if(v>lo)t+=(Math.min(v,hi)-lo)*r;lo=hi}return Math.round(t/1000)*1000};
+function fyTax(ms,n){
+  const sum=k=>ms.reduce((a,m)=>a+(m[k]||0),0);
+  const sales=sum('sales')+sum('brSales');
+  // 消費税：2年前の売上が1000万円を超えた年から。売上に含まれる分から、仕入れ・家賃・設備などで払った分を引く
+  const ctOn=n>=2&&(S.fySales||[])[n-2]>1e7;
+  const brOther=sum('brCost')-sum('brFood')-sum('brLabor');
+  const ct=ctOn?Math.max(0,Math.round((sales/11-(sum('food')+sum('waste')+sum('brFood'))*8/108-(sum('util')+sum('rent')+sum('ads')+sum('misc')+brOther+sum('invest'))/11)/1000)*1000):0;
+  // 設備投資・出店費用はその年の経費にする。個人のときは店主の生活費は経費にならない
+  const base=Math.max(0,sum('profit')-sum('invest')-ct+(S.corp?0:sum('owner')));
+  const inc=taxOn(base,S.corp?TAX_CORP:TAX_IND);
+  return {sales,ct,base,inc,total:ct+inc,ctOn};
+}
+function taxStep(M,ended){
+  // 5月末：前の年の税金を納める。足りなければ6回の分納にする
+  if(ended===4&&S.taxDue){
+    const amt=S.taxDue.total;M.tax=amt;S.taxPaid=(S.taxPaid||0)+amt;
+    const now=Math.min(amt,Math.max(0,S.cash-200000));S.cash-=now;
+    if(now<amt){const rest=Math.round((amt-now)*1.03);S.loans.push({name:'税金の分納',left:rest,pay:Math.ceil(rest/12),noInt:true});log('—',`税金${yen(amt)}のうち${yen(rest)}を分納にした（12か月・延滞税込み）`,'bad')}
+    else log('—',`${S.taxDue.label}の税金${yen(amt)}を納めた`,'info');
+    S.taxDue=null;
+  }
+  // 3月末：1年を締める
+  if(ended===2){
+    const n=S.fyN||0,ms=S.months.filter(m=>(m.fy||0)===n),t=fyTax(ms,n);
+    (S.fySales=S.fySales||[])[n]=t.sales;
+    S.fyN=n+1;
+    if(t.total>0){S.taxDue={...t,label:`${n+1}年目`};M.fyClose=S.taxDue}
+  }
+}
 function monthEnd(){
   const M=S.month;
-  M.rent=rentOf();M.misc+=LEASE+M.bowls*12+50000;M.owner=OWNER;
-  S.cash-=M.rent+LEASE+M.bowls*12+50000+OWNER;
-  for(const b of S.branches){if(S.day-1<b.openDay)continue;const f=rentOf(b.loc,b.size)+b.mgr.salary+50000;M.brCost+=f;b.month.cost+=f;S.cash-=f}
+  const ended=dateOf(S.day-1).getMonth(); // 締めた月（0＝1月）
+  M.rent=rentOf();M.owner=OWNER;
+  let misc=LEASE+M.bowls*12+50000+(S.corp?CORP_FEE:0);
+  S.mainM=(S.mainM||0)+1;
+  if(S.mainM%24===0){misc+=rentOf();log('—',`本店の賃貸契約を更新した（更新料${yen(rentOf())}）`,'info')}
+  M.misc+=misc;
+  S.cash-=M.rent+misc+OWNER;
+  for(const b of S.branches){
+    if(S.day-1<b.openDay)continue;
+    b.m=(b.m||0)+1;
+    // 支店の修繕費は年数とともに増える。家賃の更新料は2年ごと、店長は毎年昇給
+    let f=rentOf(b.loc,b.size)+b.mgr.salary+50000+30000+10000*Math.floor(b.m/12);
+    if(b.m%24===0)f+=rentOf(b.loc,b.size);
+    if(b.m%12===0){b.mgr.salary=Math.round(b.mgr.salary*1.02/1000)*1000;log('—',`${b.name}の${b.mgr.name}を昇給した（月給${yen(b.mgr.salary)}）`,'info')}
+    M.brCost+=f;M.brLabor+=b.mgr.salary;b.month.cost+=f;S.cash-=f;
+  }
+  if(ended===8){S.wage=Math.round(S.wage*1.03/10)*10;log('—',`最低賃金の改定で、アルバイトの時給を${S.wage.toLocaleString()}円に上げた`,'info')}
   M.loan=0;
-  for(const l of S.loans){const pp=Math.min(l.pay,Math.ceil(l.left/.85));S.cash-=pp;M.loan+=pp;l.left=Math.max(0,Math.round(l.left-pp*.85))}
+  for(const l of S.loans){const k=l.noInt?1:.85,pp=Math.min(l.pay,Math.ceil(l.left/k));S.cash-=pp;M.loan+=pp;l.left=Math.max(0,Math.round(l.left-pp*k))}
   S.loans=S.loans.filter(l=>l.left>0);
   const mainProfit=M.sales-M.food-M.waste-M.labor-M.util-M.rent-M.ads-M.misc-M.owner;
   const brProfit=M.brSales-M.brCost;
@@ -605,7 +659,8 @@ function monthEnd(){
   const label=`${Math.floor((S.day-1)/365)+1}年目 ${dateOf(S.day-1).getMonth()+1}月`;
   const brs=S.branches.filter(b=>S.day-1>=b.openDay).map(b=>({name:b.name,sales:b.month.sales,profit:b.month.sales-b.month.cost,cust:b.month.cust,rating:ratingOf(b.stars)}));
   S.branches.forEach(b=>b.month={sales:0,cost:0,cust:0});
-  S.months.push({label,...M,mainProfit,brProfit,profit,brs});
+  S.months.push({label,...M,mainProfit,brProfit,profit,brs,fy:S.fyN||0});
+  taxStep(S.months[S.months.length-1],ended);
   S.totalProfit+=profit;
   S.bestMonthCust=Math.max(S.bestMonthCust,M.cust);
   S.streak42=rating()>=4.2?S.streak42+1:0;S.streak43=rating()>=4.3?(S.streak43||0)+1:0;
@@ -922,6 +977,7 @@ function loanState(){
 }
 function loanTerms(cost){const amt=Math.round(cost*.8/10000)*10000;return {amt,pay:Math.round(amt/60/.85/1000)*1000}}
 let BF=null,RL=null,pendingClose=null;
+const taxWarn=need=>S.taxDue&&S.cash>=need&&S.cash-need<S.taxDue.total+1500000?`<p class="hint" style="color:var(--bad,#b8352a)">注意：5月末に税金${yen(S.taxDue.total)}を納める。これを払うと、手元に${yen(S.cash-need)}しか残らない。</p>`:'';
 function financeBlock(cost,useLoan){
   const ls=loanState(),t=loanTerms(cost);
   const loan=ls.ok&&useLoan;
@@ -949,6 +1005,7 @@ function branchModal(){
      <tr class="sub"><td>月々の固定費（家賃・店長給与・雑費${fin.loan?'・返済':''}）</td><td>${yen(-monthly)}</td></tr>
     </tbody></table>
    </div>
+   ${taxWarn(need)}
    <div class="cfoot"><button class="btn primary" data-act="bfgo" ${S.cash<need?'disabled':''}>${S.cash<need?'資金が足りない':'契約して出店する'}</button><button class="btn ghost" data-act="modalcancel">やめる</button></div></div>`;
 }
 function doBranch(){
@@ -978,14 +1035,17 @@ function relocModal(){
      <tr class="sum"><td>いま手元から払う額</td><td class="${S.cash<need?'neg':''}">${yen(need)}</td></tr>
     </tbody></table>
    </div>
+   ${taxWarn(need)}
    <div class="cfoot"><button class="btn primary" data-act="rlgo" ${same||S.cash<need?'disabled':''}>${same?'いまの店と同じ条件':S.cash<need?'資金が足りない':'移転を決める'}</button><button class="btn ghost" data-act="modalcancel">やめる</button></div></div>`;
 }
+const wearPen=()=>Math.max(0,(S.wear||0)-.35)*7;
+const renovCost=()=>Math.round((3.5e6+LOC[S.loc].seats*60000)*(S.size?1.6:1)/1e5)*1e5;
 function doRelocate(){
   const cost=relocCost(RL.loc,RL.size),fin=financeBlock(cost,RL.loan);
   const need=cost-(fin.loan?fin.t.amt:0);if(S.cash<need)return;
   S.cash-=need;S.month.invest+=cost;
   if(fin.loan)S.loans.push({name:'移転融資',left:fin.t.amt,pay:fin.t.pay});
-  S.loc=RL.loc;S.size=RL.size;S.awareness=Math.max(.2,S.awareness*.65);S.competitor=0;S.relocated=true;
+  S.loc=RL.loc;S.size=RL.size;S.wear=0;S.mainM=0;S.awareness=Math.max(.2,S.awareness*.65);S.competitor=0;S.relocated=true;
   S.staff.kitchen=Math.min(S.staff.kitchen,staffMax('kitchen'));S.staff.hall=Math.min(S.staff.hall,staffMax('hall'));
   S.closedUntil=S.day+4;S.phase='closed';S.closedTitle='移転工事中';S.closedReason=`${LOC[S.loc].name}の新店舗で内装工事中。${fmtDate(S.closedUntil+1)}に新装開店。`;
   S.prep=Math.min(S.prep,maxPrep());
@@ -999,7 +1059,7 @@ function simBranches(){
     if(S.day<b.openDay)continue;
     const r=simBranch(b);
     S.brToday.push({id:b.id,name:b.name,...r});
-    S.month.brSales+=r.sales;S.month.brCost+=r.cost;S.month.brCust+=r.cust;
+    S.month.brSales+=r.sales;S.month.brCost+=r.cost;S.month.brCust+=r.cust;S.month.brFood+=r.food;S.month.brLabor+=r.labor;
     b.month.sales+=r.sales;b.month.cost+=r.cost;b.month.cust+=r.cust;
     S.cash+=r.sales-r.cost;
     if(S.day===b.openDay)log('—',`「${b.name}」が開店した`,'good');
@@ -1015,7 +1075,7 @@ function simBranch(b){
   const wsum=Object.values(L.curve).reduce((a,c)=>a+c,0);
   let share=0;for(let h=11;h<22;h++)share+=L.curve[h]||0;share/=wsum;
   let pot=L.base*fR*fP*weatherF(b.loc,w)*fT*dowF(b.loc,x)*b.aw*brand*(S.sns?1.08:1)*menuDemand(b.loc,w.t)*(S.diff==='easy'?1.08:1)*clamp(1+.04*(S.luck||0)+.05*(S.tide||0),.85,1.15)*share*rnd(.85,1.15);
-  const cap=seatsOf(b.loc,b.size)*1.8*11*rnd(.9,1.05);
+  const cap=seatsOf(b.loc,b.size)*1.6*11*rnd(.9,1.05); // 支店は店主がいないぶん回転が少し落ちる
   pot=saturate(pot,cap);
   const cust=Math.round(Math.min(pot,cap)),lost=Math.max(0,Math.round(pot-cap));
   const bc=bowlCost(),ex=st.extra;
@@ -1023,7 +1083,7 @@ function simBranch(b){
   const sideC=ex.rate*ex.cost+(m.ajitama?SIDES.ajitama.rate*SIDES.ajitama.cost:0)+(st.riceFree?.7*SIDES.rice.cost:m.rice?SIDES.rice.rate*SIDES.rice.cost:0)+(m.gyoza?SIDES.gyoza.rate*SIDES.gyoza.cost:0);
   const sales=cust*(m.price+sideP);
   const food=cust*(bc.total+sideC+15)+Math.max(15,cust*.1)*bc.soup;
-  const labor=(2+Math.ceil(cust/90))*S.wage*12;
+  const labor=(2+Math.ceil(cust/75))*S.wage*12;
   const util=3500+cust*1.1*st.gas+660*10;
   const cost=food+labor+util;
   const taste=tasteCore()-(10-b.mgr.skill)*1.1;
@@ -1035,7 +1095,7 @@ function simBranch(b){
   b.aw=clamp(b.aw+.0015+cust*(avg-2.7)*.00003,.2,1.0);
   if(avg<3)S.awareness=Math.max(.2,S.awareness-(3-avg)*.002);
   b.mgr.skill=Math.min(10,b.mgr.skill+.01);
-  return {cust,lost,sales,cost,profit:sales-cost,avg,rating:ratingOf(b.stars)};
+  return {cust,lost,sales,cost,food,labor,profit:sales-cost,avg,rating:ratingOf(b.stars)};
 }
 function expandHTML(){
   const ladder=STAGES.map((st,i)=>{
@@ -1163,6 +1223,7 @@ function oyakataLines(){
   const costR=bc.total/S.menu.price,gap=Math.round(S.menu.price-expPrice());
   if(S.novice&&nov()>0&&S.day<60&&S.day%5===0)L.push('素人の味は日によってブレる。焦らず、毎日同じ一杯を出すことだけ考えろ。腕が上がれば落ち着く。');
   if(S.critic&&S.critic.day-S.day<=3&&S.critic.day>=S.day)L.unshift(`${S.critic.day===S.day?'今日':fmtDate(S.critic.day)+'に'}伝説の評論家が来る。味は落とすな、客は待たせるな（平均25分以内）。人を入れるか、値段を上げて客を絞れ。`);
+  if(S.taxDue&&S.cash-S.taxDue.total<1500000)L.unshift(`5月末に税金${yen(S.taxDue.total)}を納める。手元にいくら残るか考えてから、大きな買い物をしろ。`);
   if(S.day===0)L.push('最初は欲張るな。スープは目安の杯数だけ炊け。足りなければ売切、余れば捨てる。それが毎日の勝負だ。');
   if(R&&R.day===S.day-1){
     if(R.soldOut&&R.lostS>0)L.push(`昨日は売り切れで${R.lostS}人を帰した。仕込みを増やせ。`);
@@ -1756,6 +1817,8 @@ function morningHTML(){
       ['sign','看板と提灯を新調','120,000円。認知度+0.08（一度きり）',S.inv.sign?'済':'購入',S.inv.sign||S.cash<120000],
       ['pot','寸胴を1本増設','180,000円。仕込み上限 250→400杯',S.inv.pot?'済':'購入',S.inv.pot||S.cash<180000],
       ['cashless','券売機をキャッシュレス対応に','250,000円。客足+4%（駅前は+8%）',S.inv.cashless?'済':'購入',S.inv.cashless||S.cash<250000],
+      ['renov','店を改装する',`${man(renovCost())}。5日休業。店の傷みが消え、新装開店で客足が少し伸びる。いまの店の傷み ${Math.round((S.wear||0)*100)}%${(S.wear||0)>.35?'（客の満足に響いている）':(S.wear||0)>.25?'（そろそろ目立ち始める）':''}`,'改装',(S.wear||0)<.2||S.cash<renovCost()],
+      ['corp','法人にする（法人成り）',`${man(CORP_COST)}＋税理士の顧問料 月${man(CORP_FEE)}。年の利益が大きいほど税金が軽くなる（目安：店主の生活費を含めて年900万円を超えるなら得）`,S.corp?'済':'手続き',S.corp||S.cash<CORP_COST],
       ['machine','製麺機を導入して自家製麺','1,200,000円。麺の段階「自家製麺」（原価22円・旨さ+7）と「自家製・国産小麦」（原価40円・旨さ+10）が選べるようになる。ただし毎日の疲労+6',S.inv.machine?'済':'購入',S.inv.machine||S.cash<1200000],
     ];
     body=`<div class="invest">${items.map(([k,t,d,b,dis])=>`<div class="item"><div><b>${t}</b><span>${d}</span></div><button class="btn ${k==='sns'&&S.sns?'ghost':'accent'}" data-act="buy" data-k="${k}" ${dis?'disabled':''}>${b}</button></div>`).join('')}</div>
@@ -1769,7 +1832,8 @@ function morningHTML(){
 }
 function booksHTML(){
   const M=S.month;
-  const fixedEst=rentOf()+loanPay()+LEASE+50000+OWNER+S.branches.filter(b=>S.day>=b.openDay).reduce((a,b)=>a+rentOf(b.loc,b.size)+b.mgr.salary+50000,0);
+  const fixedEst=rentOf()+loanPay()+LEASE+50000+OWNER+(S.corp?CORP_FEE:0)+S.branches.filter(b=>S.day>=b.openDay).reduce((a,b)=>a+rentOf(b.loc,b.size)+b.mgr.salary+80000+10000*Math.floor((b.m||0)/12),0);
+  const n=S.fyN||0,ms=S.months.filter(m=>(m.fy||0)===n),tx=ms.length?fyTax(ms,n):null,txEst=tx?Math.round(tx.total*12/ms.length/10000)*10000:0;
   const op=M.sales-M.food-M.waste-M.labor-M.util-M.ads+M.brSales-M.brCost;
   const fl=M.sales?((M.food+M.waste+M.labor)/M.sales*100):0;
   return `
@@ -1786,6 +1850,8 @@ function booksHTML(){
     <tr class="sub"><td>月末に引き落とし予定（家賃・返済・リース・雑費・店主の生活費${S.branches.length?'・支店固定費':''}）</td><td>${yen(-(fixedEst+M.bowls*12))}</td></tr>
     <tr class="sub"><td>FL比率（原価＋人件費÷売上）</td><td>${fl.toFixed(1)}%</td></tr>
     <tr class="sub"><td>借入残高</td><td>${yen(debtOf())}</td></tr>
+    ${S.taxDue?`<tr class="sub"><td>5月末に納める税金（${esc(S.taxDue.label)}の分）</td><td class="neg">${yen(-S.taxDue.total)}</td></tr>`:''}
+    ${tx?`<tr class="sub"><td>今年（${n+1}年目）の税金の見込み（3月末で締め・${S.corp?'法人':'個人'}）</td><td>${yen(-txEst)}</td></tr>`:''}
    </tbody></table></div>
    <div><h3>直近の売上と客数</h3>${histChart()}</div>
    <div><h3>最近の口コミ</h3><div class="reviews">${S.reviews.slice(0,6).map(r=>`<div class="review"><span class="stars">${stars(r.star)}</span> ${esc(r.text)}</div>`).join('')||'<p class="hint">まだ口コミはない。</p>'}</div></div>
@@ -1860,7 +1926,7 @@ function closedHTML(){
 function retire(){
   const lp=S.legendPath?LEGEND_PATHS.find(p=>p.id===S.legendPath):null;
   S.phase='retire';
-  S.overReason=`開業から15年。店主は包丁を置き、暖簾を下ろした。${S.legend?`「${S.name}」は${lp?lp.title:'伝説'}として語り継がれていく。`:`最後にたどり着いたのは「${STAGES[Math.max(0,S.stage-1)].name}」。伝説には届かなかったが、この店の一杯を覚えている客がいる。`}本店の評価★${rating().toFixed(2)}・${1+S.branches.length}店舗・通算営業利益${yen(S.totalProfit)}。`;
+  S.overReason=`開業から15年。店主は包丁を置き、暖簾を下ろした。${S.legend?`「${S.name}」は${lp?lp.title:'伝説'}として語り継がれていく。`:`最後にたどり着いたのは「${STAGES[Math.max(0,S.stage-1)].name}」。伝説には届かなかったが、この店の一杯を覚えている客がいる。`}本店の評価★${rating().toFixed(2)}・${1+S.branches.length}店舗・通算営業利益${yen(S.totalProfit)}・納めた税金${yen(S.taxPaid||0)}・最後の手元資金${yen(S.cash)}。`;
   save();render();
 }
 function overHTML(){
@@ -1907,9 +1973,16 @@ function monthHTML(M){
     ${M.brs&&M.brs.length?`<tr class="sum"><td>本店の営業利益</td><td class="${M.mainProfit<0?'neg':'pos'}">${yen(M.mainProfit)}</td></tr>${M.brs.map(b=>`<tr><td>${esc(b.name)}（客${b.cust.toLocaleString()}人・★${b.rating.toFixed(2)}）</td><td class="${b.profit<0?'neg':'pos'}">${yen(b.profit)}</td></tr>`).join('')}`:''}
     <tr class="sum"><td>営業利益${M.brs&&M.brs.length?'（全店）':''}</td><td class="${M.profit<0?'neg':'pos'}">${yen(M.profit)}</td></tr>
     <tr class="sub"><td>借入返済（元利）</td><td>${yen(-M.loan)}</td></tr>
+    ${M.tax?`<tr class="sub"><td>税金（前の年の分）</td><td class="neg">${yen(-M.tax)}</td></tr>`:''}
     <tr class="sub"><td>FL比率</td><td>${fl.toFixed(1)}%　<span class="pill ${fl<60?'good':fl<68?'warn':'bad'}">${fl<60?'優良':fl<68?'要注意':'危険'}</span></td></tr>
     <tr class="sub"><td>月末の手元資金</td><td>${yen(S.cash)}</td></tr>
    </tbody></table>
+   ${M.fyClose?`<div><h3>${esc(M.fyClose.label)}の決算（5月末に納付）</h3><table class="ledger"><tbody>
+    <tr><td>課税される所得</td><td>${yen(M.fyClose.base)}</td></tr>
+    <tr><td>${S.corp?'法人税・住民税・事業税':'所得税・住民税・事業税'}</td><td class="neg">${yen(-M.fyClose.inc)}</td></tr>
+    <tr><td>消費税${M.fyClose.ctOn?'':'（まだかからない）'}</td><td class="neg">${yen(-M.fyClose.ct)}</td></tr>
+    <tr class="sum"><td>納める税金</td><td class="neg">${yen(-M.fyClose.total)}</td></tr></tbody></table>
+    <p class="hint">5月末の手元資金が足りなければ分納になる（延滞税がかかる）。設備投資・出店費用はその年の経費になる。${S.corp?'':'個人のうちは店主の生活費は経費にならない。'}</p></div>`:''}
    <p class="hint">FL比率は飲食店の健康診断。60%以下が目安。設備投資・出店費用（${yen(M.invest)}）は営業利益の外で支払い済み。</p>${diagMini()}</div>
    <div class="cfoot"><button class="btn primary" data-act="closemonth">${S.cash<0?'結果を見る':'来月も頑張る'}</button></div></div>`);
 }
@@ -1934,7 +2007,7 @@ document.addEventListener('click',e=>{
   }
   if(a==='buy'){const k=b.dataset.k;
     // 一度きりの設備投資の前だけ広告（会食・チラシなど繰り返す投資には出さない）
-    if(['sign','pot','cashless','machine'].includes(k)&&!S.inv[k]){adGate('equip',()=>buy(k));return}
+    if((['sign','pot','cashless','machine'].includes(k)&&!S.inv[k])||k==='renov'){adGate('equip',()=>buy(k));return}
     buy(k);return}
   if(a==='open'){closeModal();startDay();return}
   if(a==='rest'){if(S.phase==='closed'||S.phase==='morning'){S.sick=false;restDay()}return}
@@ -2025,6 +2098,11 @@ function buy(k){
   if(k==='pot'&&!S.inv.pot){pay(180000,'寸胴を増設');S.inv.pot=true}
   if(k==='cashless'&&!S.inv.cashless){pay(250000,'券売機をキャッシュレス対応に');S.inv.cashless=true}
   if(k==='machine'&&!S.inv.machine){pay(1200000,'製麺機を導入');S.inv.machine=true;S.menu.noodle=3}
+  if(k==='corp'&&!S.corp&&S.cash>=CORP_COST){pay(CORP_COST,'法人を設立した。税理士と顧問契約');S.corp=true}
+  if(k==='renov'&&S.cash>=renovCost()){
+    pay(renovCost(),'店を改装する');S.wear=0;S.buzz.push({mult:.15,days:30,label:'新装開店'});S.awareness=Math.min(1.25,S.awareness+.03);
+    S.closedUntil=S.day+4;S.phase='closed';S.closedTitle='改装工事中';S.closedReason=`内装と厨房を改装中。${fmtDate(S.closedUntil+1)}に新装開店。`;
+  }
   save();render();
 }
 
@@ -2049,6 +2127,7 @@ function migrate(o){
   if(!o.menuV){o.menu.grade=[0,2,4][o.menu.grade]??0;o.menu.noodle=[0,2,3][o.menu.noodle]??0;o.menuV=2} // スープ・麺を5段階にした版への引き継ぎ
   if(o.menuV===2){o.menu.chashu=[0,2][o.menu.chashu]??0;o.menuV=3} // チャーシューを5段階にした版への引き継ぎ
   if(o.train&&!o.train.cnt)o.train.cnt={};
+  if(o.v===2&&o.fyN===undefined&&o.phase!=='train'){o.fyN=Math.max(0,Math.floor(((o.day||1)-1)/365));o.wear=Math.min(.6,(o.day||0)/(365*9));o.fySales=[];o.taxPaid=0;o.mainM=(o.months||[]).length%24} // 税金・店の傷みを入れる前のセーブ
   if(o.legend&&o.legendJingle===undefined)o.legendJingle=true;
   if(o.phase==='train'&&o.train&&o.train.m!==undefined&&o.train.unit!=='w'){o.train.m=Math.round(o.train.m*4.34);o.train.roleM=Math.round((o.train.roleM||0)*4.34);o.train.unit='w'}
   if(o.phase==='train'&&o.train&&o.train.m===undefined){const t=o.train;o.train={unit:'w',m:t.week||0,role:0,roleM:0,skill:t.skill||0,mgmt:t.mgmt||0,conn:t.conn||0,trust:t.trust||50,fat:t.fat||10,motiv:70,save:t.save||0,secret:t.secret||0,day:'obey',night:'rest',last:null,crisis:null,held:false}}
