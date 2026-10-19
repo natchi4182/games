@@ -142,6 +142,7 @@ export class FloorTracker {
       this.medErr = this._medianErr();
       good = this.inliers >= 10 && this.inliers >= this.count * 0.6 && this.medErr < 2.5;
     }
+    this.good = good;
     this.state = this.inliers >= 10 ? 'tracking' : 'lost';
     if (this.state === 'lost') { this.q.copy(qPred); this.C.copy(Cprev); this.vel.set(0, 0, 0); }
     else this.vel.subVectors(this.C, Cprev).multiplyScalar(0.7);
