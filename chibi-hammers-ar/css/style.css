@@ -248,3 +248,14 @@ body.xr .xr-only { display: inline-flex; }
 .diag input[type=range] { flex: 1; }
 .diag .mini-text { margin-top: 6px; padding: 4px 10px; font-size: 11px; box-shadow: none; }
 .diag-pts { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* ---------- 伝説の塔 ---------- */
+.btn.tower { background: linear-gradient(#ffe08a, #e0a526); color: #4a3426; width: 100%; }
+.measure {
+  position: absolute; left: 50%; bottom: calc(110px + var(--sb)); transform: translateX(-50%);
+  width: min(380px, calc(100% - 32px)); pointer-events: auto; gap: 6px;
+}
+.measure h2 { font-size: 18px; }
+.measure ol { margin: 0; padding-left: 20px; line-height: 1.7; }
+.measure-num { margin: 4px 0; text-align: center; font-weight: 800; font-size: 16px; color: var(--c-main-d); }
+.measure .warn { color: #d63031; text-align: center; margin: 0; }

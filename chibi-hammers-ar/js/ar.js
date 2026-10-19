@@ -38,6 +38,8 @@ export class ARView {
     this.yawOffset = null;
     this.targetQ = new THREE.Quaternion();
     this.orbit = { yaw: 0, pitch: 0.8, dist: 1.75 };
+    this.orbitLift = 0;    // 伝説の塔を見上げるための持ち上げ（PC 表示）
+    this.orbitExtra = 0;
     this.shakeAmt = 0;
     this.pointers = new Map();
     this.pinch0 = null;
@@ -180,13 +182,15 @@ export class ARView {
       }
     } else {
       // オービット（PC など）
+      // 伝説の塔が伸びたら、見上げる位置と距離も合わせる（orbitLift / orbitExtra）
       const o = this.orbit, c = this.anchor.position;
+      const cy = c.y + (this.orbitLift || 0), d = o.dist + (this.orbitExtra || 0);
       cam.position.set(
-        c.x + Math.sin(o.yaw) * Math.cos(o.pitch) * o.dist,
-        c.y + Math.sin(o.pitch) * o.dist,
-        c.z + Math.cos(o.yaw) * Math.cos(o.pitch) * o.dist,
+        c.x + Math.sin(o.yaw) * Math.cos(o.pitch) * d,
+        cy + Math.sin(o.pitch) * d,
+        c.z + Math.cos(o.yaw) * Math.cos(o.pitch) * d,
       );
-      cam.lookAt(c.x, c.y + 0.05, c.z);
+      cam.lookAt(c.x, cy + 0.05, c.z);
     }
     if (this.shakeAmt > 0) {
       cam.position.x += (Math.random() - 0.5) * this.shakeAmt;
