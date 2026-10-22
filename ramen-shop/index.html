@@ -548,11 +548,92 @@ function finishDay(){
   if(S.hist.length>60)S.hist.shift();
   S.lastReport={day:S.day,sales:D.sales,food:D.food+D.soupTotal-waste,waste,wasteN:Math.max(0,D.soupLeft),labor,util,sns,profit,cust:D.customers,sold:D.sold,lost:D.lost,lostQ:D.lostQueue,lostS:D.lostSold,avgStar:D.starN?avg:null,reviews:D.newReviews.slice(0,3),waitMax:D.waitMax,soldOut:D.soldOut,prep:D.prep};
   simBranches();S.lastReport.br=S.brToday;
+  regularsDay();
   if(S.critic&&S.critic.day===S.day)judgeCritic(avg);
   checkStages();
   log(hm(D.min),`閉店。来客${D.customers}人、売上${yen(D.sales)}`,'info');
   S.phase='report';
   render();
+}
+
+// ───────── 常連さん ─────────
+// 来るかどうか・好き嫌いは、その日の味（客の評価）・値段・待ち時間・売り切れで変わる。通ううちに小さな物語が進む
+const REGULARS=[
+  {id:'tanaka',name:'田中さん',who:'近所の会社員',icon:'👔',likes:'早く出てくること・値段が上がりすぎないこと',
+   say:['「今日のは特に旨かった。午後も頑張れるよ」','「ごちそうさん。また明日」','「……昼休みが終わっちゃうよ」','「この値段なら、ほかでもいいかなあ」'],
+   since:()=>S.day>=3,
+   p:()=>{const dw=dateOf(S.day).getDay();return dw===0||dw===6?.05:.3},
+   judge:R=>((R.avgStar||3)-3)*6-Math.max(0,S.menu.price-expPrice())/15-Math.max(0,(R.waitMax||0)-20)*.25+2},
+  {id:'haru',name:'ハルさん',who:'商店街に住むおばあちゃん',icon:'👵',likes:'いつも同じ味・並ばずに座れること',
+   say:['「今日のおつゆは、ほっとする味だねえ」','「ごちそうさま。また来るよ」','「待つのは足腰にこたえるねえ」','「今日はちょっと、いつもと味が違ったかね」'],
+   since:()=>S.day>=10,
+   p:()=>['雨','雪','台風'].includes(S.weather.w)?.04:.2,
+   judge:R=>((R.avgStar||3)-3)*5-Math.max(0,(R.waitMax||0)-25)*.3-(R.soldOut?3:0)+2},
+  {id:'kenta',name:'ケンタくん',who:'近くの大学に通う学生',icon:'🎒',likes:'量が多いこと・安いこと',
+   say:['「腹いっぱい！ これで午後の講義も寝られます」','「ごちそうさまっす」','「今月ちょっと厳しいんで……」','「学生にはちょっと高いっすね」'],
+   since:()=>S.day>=20,
+   p:()=>S.loc==='gakusei'?.4:.25,
+   judge:R=>((R.avgStar||3)-3)*4-Math.max(0,S.menu.price-Math.round(1000*cpi()))/25+((S.menu.rice||STYLES[S.style].riceFree)?2:0)+(STYLES[S.style].extra.rate>.15?1:0)+1},
+  {id:'menkui',name:'麺喰いK',who:'食べ歩きのブロガー',icon:'📝',likes:'スープと麺の出来。採点は辛口',
+   say:['「スープの芯がぶれない。記録しておく」','「悪くない」','「評判ほどではない」','「今日は残念。もう一歩」'],
+   since:()=>rating()>=3.8&&S.day>=60,
+   p:()=>.06,
+   judge:R=>(tasteBase()-70)/4+((R.avgStar||3)-3)*4-1},
+];
+const REG_EPS=[
+  {id:'tanaka1',who:'tanaka',when:r=>r.visits>=12&&r.aff>=60,title:'田中さんが同僚を連れてきた',body:'「ここ、出てくるのが早いんだよ」。昼休みの同僚を3人連れてきた。',fx:()=>{S.awareness=Math.min(1.25,S.awareness+.01);return '近所の会社員に店が知られた（知名度が少し上がった）'}},
+  {id:'tanaka_up',who:'tanaka',when:r=>r.visits>=3&&S.menu.price-expPrice()>80&&r.aff<55,log:'田中さん「また値上げ？ 昼に毎日はきついなあ」'},
+  {id:'tanaka2',who:'tanaka',when:r=>r.visits>=90&&r.aff>=75,title:'田中さんの転勤',body:'「来月から大阪なんだ。この一杯が食べられなくなるのが一番つらいよ」',
+   choices:[{t:'最後の一杯をごちそうする',d:'1,000円ほど。向こうでこの店のことを話してくれるかもしれない',f:r=>{S.cash-=1000;S.buzz.push({mult:.12,days:20,label:'田中さんの口コミ'});r.gone='大阪へ転勤した';return '田中さん「ありがとう。大阪でも自慢するよ」'}},
+            {t:'いつも通りに見送る',d:'',f:r=>{r.gone='大阪へ転勤した';return '田中さん「また東京に来たら寄るよ」'}}]},
+  {id:'haru1',who:'haru',when:r=>r.visits>=15&&r.aff>=60,title:'ハルさんの世間話',body:'「あんたの店のこと、八百屋さんにも話しといたよ」。商店街で評判を広めてくれているらしい。',fx:()=>{S.awareness=Math.min(1.25,S.awareness+.02);return '商店街で評判が広がった（知名度が上がった）'}},
+  {id:'haru_q',who:'haru',when:r=>r.visits>=4&&(S.lastReport.waitMax||0)>30,log:'ハルさん「並ぶのは足腰にこたえるねえ。今日はやめとくよ」'},
+  {id:'haru2',who:'haru',when:r=>r.visits>=60&&r.aff>=75,title:'ハルさんが孫を連れてきた',body:'「この子にも食べさせたくてね」。小学生の孫が、スープを最後まで飲み干した。',fx:()=>{S.stars.push(5,5);return '家族連れの口コミが増えた'}},
+  {id:'kenta1',who:'kenta',when:r=>r.visits>=20&&r.aff>=55,log:'ケンタくん「就活の面接で、この店の話をしたらウケました」'},
+  {id:'kenta2',who:'kenta',when:r=>r.visits>=45&&r.aff>=65&&S.day-r.first>=300,title:'ケンタくんの就職',body:'スーツ姿のケンタくんが来た。「内定出ました。春から近くの会社です。後輩たちにも、この店は教えときました」',fx:()=>{S.buzz.push({mult:.1,days:30,label:'学生の口コミ'});return '学生の客が少し増えそうだ'}},
+  {id:'kenta_bye',who:'kenta',when:r=>r.visits>=8&&r.aff<20,log:'ケンタくんは、最近は駅前のチェーン店に通っているらしい'},
+  {id:'k1',who:'menkui',when:r=>r.visits>=1,title:'麺喰いKのブログ',body:r=>`食べ歩きブロガーの麺喰いKが、この店の記事を書いた。${r.aff>=52?'「スープの芯がぶれない。また来る」':'「評判ほどではない。もう一歩」'}`,
+   fx:r=>{if(r.aff>=52){S.buzz.push({mult:.2,days:10,label:'ブログ記事'});return '記事を見た客が来そうだ'}S.awareness=Math.max(.2,S.awareness-.01);return '少し客足に響くかもしれない'}},
+  {id:'k2',who:'menkui',when:r=>r.visits>=6&&r.aff>=72,title:'麺喰いKの特集記事',body:'「今年いちばん通った店」として、麺喰いKが特集記事を書いた。',fx:()=>{S.buzz.push({mult:.35,days:20,label:'特集記事'});return '遠くからの客が増えそうだ'}},
+];
+const regMood=r=>r.gone?r.gone:r.aff>=80?'すっかりこの店の味方':r.aff>=60?'いつもの席が定位置':r.aff>=40?'ときどき顔を出す':r.aff>=25?'少し足が遠のいている':'最近は見かけない';
+function regularsDay(){
+  const R=S.lastReport;if(!R||!R.cust)return;
+  S.regs=S.regs||{};S.regEp=S.regEp||[];
+  let shown=false;
+  for(const c of REGULARS){
+    let r=S.regs[c.id];
+    if(!r){if(!c.since())continue;r=S.regs[c.id]={aff:50,visits:0,first:null,last:null,gone:'',line:''}}
+    if(r.gone)continue;
+    const f=r.aff<25?.15:Math.min(1,r.aff/100+.2);
+    if(Math.random()>=c.p()*f)continue;
+    const d=clamp(c.judge(R),-10,10);
+    r.aff=clamp(r.aff+d*.3,0,100);r.visits++;r.last=S.day;if(r.first==null)r.first=S.day;
+    r.line=c.say[d>=4?0:d>=0?1:d>-4?2:3];
+    if(r.visits===1)log('—',`${c.icon} ${c.name}（${c.who}）が初めて来店した`,'info');
+    for(const e of REG_EPS){
+      if(e.who!==c.id||S.regEp.includes(e.id)||!e.when(r))continue;
+      if(e.title&&shown)continue;
+      S.regEp.push(e.id);
+      if(e.log){log('—',`${c.icon} ${e.log}`,'info');if(e.fx)e.fx(r)}
+      else{shown=true;queueModal(regModal(c,e,r))}
+      break;
+    }
+  }
+}
+function regModal(c,e,r){
+  const body=typeof e.body==='function'?e.body(r):e.body;
+  const res=e.choices?'':(e.fx?e.fx(r):'');
+  return `<div class="card" role="dialog" aria-modal="true" aria-labelledby="rgh"><div class="chead"><p>${c.icon} 常連さん：${esc(c.name)}（${esc(c.who)}）</p><h2 id="rgh">${esc(e.title)}</h2></div>
+   <div class="cbody"><p style="margin:0">${esc(body)}</p>${res?`<p class="hint">${esc(res)}</p>`:''}
+   ${e.choices?`<div class="opt">${e.choices.map((ch,i)=>`<button data-act="regch" data-k="${e.id}" data-i="${i}"><b>${esc(ch.t)}</b>${ch.d?`<span>${esc(ch.d)}</span>`:''}</button>`).join('')}</div>`:''}</div>
+   ${e.choices?'':'<div class="cfoot"><button class="btn primary" data-act="closemodal">閉じる</button></div>'}</div>`;
+}
+function regularsHTML(){
+  const list=REGULARS.filter(c=>S.regs&&S.regs[c.id]&&S.regs[c.id].visits>0);
+  if(!list.length)return '<div><h3>常連さん</h3><p class="hint">まだ常連と呼べる客はいない。また来たくなる店かどうかは、味・値段・待ち時間で決まる。</p></div>';
+  return `<div><h3>常連さん</h3><div class="talents">${list.map(c=>{const r=S.regs[c.id];return `<div class="tal${r.aff>=60&&!r.gone?' ok':''}"><b>${c.icon} ${esc(c.name)}</b><span>${esc(c.who)}・来店${r.visits}回・${esc(regMood(r))}</span>${r.line?`<span>${esc(r.line)}</span>`:''}<span class="cond">好み：${esc(c.likes)}</span></div>`}).join('')}</div>
+   <p class="hint">常連さんは、味・値段・待ち時間・売り切れに正直に反応する。通ううちに、店の評判を広めてくれることもある。</p></div>`;
 }
 
 // ───────── 日送り・月次 ─────────
@@ -956,6 +1037,7 @@ function diagHTML(){
     ${(S.talents||[]).length?`<p style="margin:0;font-size:12.5px;color:#cfd8ec">才能：${S.talents.map(id=>esc(TALENTS.find(x=>x.id===id).name)).join('・')}</p>`:''}
     <p class="q">${esc(dg.t.q)}${visionLine()?'<br>'+esc(visionLine()):''}<br><strong>このままで本当に満足ですか？</strong></p></div>
    <div><h3>経営の6軸（直近30営業日）</h3><div class="axes">${AX.map(([k,nm])=>`<div class="ax"><span>${nm}</span><span class="axbar"><i style="width:${dg.ax[k].toFixed(0)}%" class="${dg.ax[k]<40?'low':dg.ax[k]>=75?'high':''}"></i></span><span class="axv">${dg.ax[k].toFixed(0)}</span></div>`).join('')}</div></div>
+   ${regularsHTML()}
    <div><h3>次の一手</h3>${dg.weak.map(w=>`<p class="hint" style="color:var(--sumi)">・${esc(w)}</p>`).join('')}</div>
    <p class="hint">総合評価は6軸の平均（${dg.score.toFixed(0)}点）。S 85点以上・A 72・B 58・C 45。</p>`;
 }
@@ -2052,6 +2134,7 @@ document.addEventListener('click',e=>{
   if(a==='adshow'){if(AD.show)AD.show();return}
   if(a==='adcancel'){AD.pending=null;closeModal();return}
   if(a==='adclose'){const go=AD.pending;AD.pending=null;closeModal();if(go)go();save();render();return}
+  if(a==='regch'){const e=REG_EPS.find(x=>x.id===b.dataset.k),c=REGULARS.find(x=>x.id===e.who),r=S.regs[c.id],msg=e.choices[+b.dataset.i].f(r);log('—',`${c.icon} ${msg}`,'info');closeModal();save();render();return}
   if(a==='closemonth'){closeModal();adGate('monthEnd',()=>{});render();return}
   if(a==='hireplus'){if((S.extraStaff||0)>=2||S.cash<100000)return;adGate('staffCap',()=>{S.cash-=100000;S.month.ads+=100000;S.extraStaff=(S.extraStaff||0)+1;log('朝','求人を出した。雇える人数が厨房・ホールとも1人増えた','info');save();render()});return}
 });
