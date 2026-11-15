@@ -135,3 +135,4 @@ h1 span { display: block; font-size: 44px; background: linear-gradient(90deg, #f
 .toast[hidden] { display: none; }
 
 @media (min-height: 760px) { h1 { font-size: 40px; } h1 span { font-size: 52px; } }
+[hidden] { display: none !important; }

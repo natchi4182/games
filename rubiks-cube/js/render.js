@@ -42,7 +42,7 @@ export class CubeView {
     const dl2 = new THREE.DirectionalLight(0xffffff, 0.5); dl2.position.set(-6, -3, -4); this.scene.add(dl2);
 
     this.root = new THREE.Group(); this.scene.add(this.root);
-    this.theta = -0.62; this.phi = 0.5; this.offsetY = 0; // カメラの角度
+    this.theta = -0.62; this.phi = 0.5; // カメラの角度
     this.state = null; this.palette = STD_COLORS.slice();
     this.stickerMeshes = new Array(54);
     this.cubies = [];
@@ -113,14 +113,10 @@ export class CubeView {
     this.camera.updateProjectionMatrix();
     this._placeCamera();
   }
-  setFit(scale, offsetY) { this.fitScale = scale; this.offsetY = offsetY || 0; this.resize(); }
   _placeCamera() {
     const c = this.camera, r = this.dist;
     c.position.set(r * Math.cos(this.phi) * Math.sin(-this.theta), r * Math.sin(this.phi), r * Math.cos(this.phi) * Math.cos(this.theta));
     c.lookAt(0, 0, 0);
-    // 画面の上下に UI があるぶん、少しずらす
-    c.setViewOffset(1000, 1000, 0, -this.offsetY * 1000, 1000, 1000);
-    c.updateProjectionMatrix();
   }
   resetView() { this.theta = -0.62; this.phi = 0.5; this._placeCamera(); }
 

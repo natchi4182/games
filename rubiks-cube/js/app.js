@@ -64,7 +64,7 @@ function show(id) {
   $('#stage').style.visibility = stageVisible ? 'visible' : 'hidden';
   view.autoSpin = id === 'scrTitle';
   view.enabled = id === 'scrPlay';
-  $('#hintBox').hidden = true;
+  $('#hintBox').hidden = true; $('#toast').hidden = true;
   // 解答画面から戻ったときはタイマーを再開
   if (id === 'scrPlay' && play.t0 && !play.done && !play.running && play.history.length) {
     play.t0 = performance.now() - (play.pausedAt || 0); play.running = true; timerLoop();
