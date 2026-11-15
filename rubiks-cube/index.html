@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1f3b">
+  <meta name="description" content="3Dのキューブパズル。ゲームが崩したキューブをそろえる、写真で取り込んだ自分のキューブをそろえる、最短の手順を計算して動きで見せる、の3つのモード。">
+  <title>そろえて！3Dキューブ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js" } }</script>
+  <script src="js/solver.js"></script>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <div id="ui">
+    <!-- タイトル -->
+    <section id="scrTitle" class="screen show">
+      <div class="title-top">
+        <p class="kicker">3D パズル</p>
+        <h1>そろえて！<span>3Dキューブ</span></h1>
+      </div>
+      <div class="menu bottom-panel">
+        <button class="mode-card" data-action="goLevel">
+          <span class="ico">🎲</span><span><b>チャレンジ</b><small>ゲームが崩したキューブをそろえる</small></span>
+        </button>
+        <button class="mode-card" data-action="goCapture">
+          <span class="ico">📷</span><span><b>写真で取り込む</b><small>手元のキューブを撮って、画面の中でそろえる</small></span>
+        </button>
+        <button class="mode-card" data-action="goSolver">
+          <span class="ico">💡</span><span><b>最短解答</b><small>最短の手順を計算して、動きで見せてくれる</small></span>
+        </button>
+        <p class="tiny muted" id="solverStatus">解答エンジンを準備中…</p>
+      </div>
+    </section>
+
+    <!-- 難易度 -->
+    <section id="scrLevel" class="screen solid">
+      <header class="bar"><button class="icon-btn" data-action="goTitle" aria-label="もどる">‹</button><h2>チャレンジ</h2><span></span></header>
+      <div class="content">
+        <p class="lead">むずかしさを選んでね</p>
+        <div id="levelList" class="level-list"></div>
+        <p class="tiny muted">記録はこの端末に保存されます</p>
+      </div>
+    </section>
+
+    <!-- プレイ -->
+    <section id="scrPlay" class="screen">
+      <header class="bar top-panel">
+        <button class="icon-btn" data-action="leavePlay" aria-label="もどる">‹</button>
+        <div class="stats"><span id="playLabel">ふつう</span><b id="timer">0:00.0</b><span><b id="moveCount">0</b> 手</span></div>
+        <button class="icon-btn" data-action="resetView" aria-label="視点を戻す">⟲</button>
+      </header>
+      <div id="hintBox" class="hint" hidden></div>
+      <div class="bottom-panel play-panel">
+        <p class="tiny muted help">面をなぞって回す／すき間や外をなぞって視点を回す</p>
+        <div class="row">
+          <button class="btn" data-action="undo">↶ 戻す</button>
+          <button class="btn" data-action="hint">💡 ヒント</button>
+          <button class="btn" data-action="showSolution">解答を見る</button>
+          <button class="btn" data-action="restart" id="btnRestart">↻ 最初から</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 撮影 -->
+    <section id="scrCapture" class="screen solid">
+      <header class="bar"><button class="icon-btn" data-action="goTitle" aria-label="もどる">‹</button><h2>写真で取り込む <small id="capStep">1/6</small></h2><span></span></header>
+      <div class="content capture">
+        <p id="capGuide" class="guide"></p>
+        <div class="viewport">
+          <canvas id="capCanvas"></canvas>
+          <div class="grid" id="capGrid"></div>
+          <div id="capMsg" class="cap-msg" hidden></div>
+        </div>
+        <label class="zoom" id="capZoomRow" hidden>拡大 <input type="range" id="capZoom" min="1" max="4" step="0.01" value="1"><span class="tiny muted">画像はドラッグで動かせます</span></label>
+        <div class="row">
+          <button class="btn" data-action="capBack">↶ 1つ戻る</button>
+          <button class="btn primary big" data-action="capShot">撮影</button>
+          <label class="btn">🖼 写真を選ぶ<input type="file" accept="image/*" id="capFile" hidden></label>
+        </div>
+        <div class="row">
+          <button class="btn ghost" data-action="capCamera">📷 カメラを使う</button>
+          <button class="btn ghost" data-action="goPaint">🎨 撮らずに色を塗って入力</button>
+        </div>
+        <div id="capNet" class="net mini"></div>
+      </div>
+    </section>
+
+    <!-- 色の確認・修正 -->
+    <section id="scrEdit" class="screen solid">
+      <header class="bar"><button class="icon-btn" data-action="editBack" aria-label="もどる">‹</button><h2>色の確認</h2><span></span></header>
+      <div class="content">
+        <p class="tiny muted">違う色があれば、下の色を選んでマスをタップして直してね（中心の色は変えられません）</p>
+        <div id="editNet" class="net"></div>
+        <div id="palette" class="palette"></div>
+        <p id="editStatus" class="status"></p>
+        <div class="row">
+          <button class="btn primary" data-action="editPlay" id="btnEditPlay">このキューブで遊ぶ</button>
+          <button class="btn primary" data-action="editSolve" id="btnEditSolve">最短解答を見る</button>
+        </div>
+        <div class="row"><button class="btn ghost" data-action="editClear">全部消して塗り直す</button></div>
+      </div>
+    </section>
+
+    <!-- 最短解答 -->
+    <section id="scrSolve" class="screen">
+      <header class="bar top-panel">
+        <button class="icon-btn" data-action="leaveSolve" aria-label="もどる">‹</button>
+        <h2>最短解答</h2>
+        <button class="icon-btn" data-action="resetView" aria-label="視点を戻す">⟲</button>
+      </header>
+      <div class="bottom-panel solve-panel">
+        <p id="solveStatus" class="status"></p>
+        <div id="moveNow" class="move-now"></div>
+        <div id="moveList" class="move-list"></div>
+        <div class="row controls">
+          <button class="icon-btn lg" data-action="solFirst" aria-label="最初へ">⏮</button>
+          <button class="icon-btn lg" data-action="solPrev" aria-label="1手戻る">◀</button>
+          <button class="icon-btn lg primary" data-action="solPlay" id="btnSolPlay" aria-label="再生">▶</button>
+          <button class="icon-btn lg" data-action="solNext" aria-label="1手進む">▶︎|</button>
+          <button class="icon-btn lg" data-action="solSpeed" id="btnSpeed" aria-label="速さ">×1</button>
+        </div>
+        <div class="row">
+          <button class="btn small" data-action="solNew">🎲 新しい問題</button>
+          <button class="btn small" data-action="goCapture">📷 写真から</button>
+          <button class="btn small" data-action="goPaint">🎨 色を塗って</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- クリア -->
+    <div id="clear" class="modal" hidden>
+      <div class="modal-card">
+        <div class="burst">🎉</div>
+        <h2>そろった！</h2>
+        <p id="clearInfo"></p>
+        <p id="clearBest" class="best"></p>
+        <div class="row">
+          <button class="btn primary" data-action="again">もう一回</button>
+          <button class="btn" data-action="goTitle">メニューへ</button>
+        </div>
+      </div>
+      <div id="confetti"></div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
