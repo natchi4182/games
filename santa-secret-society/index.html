@@ -1,0 +1,1492 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05070f">
+<title>秘密結社 S.A.N.T.A.</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05070f; overflow: hidden; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  canvas { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+// =====================================================================
+//  秘密結社 S.A.N.T.A. — Secret Agency for Nocturnal Toy Allocation
+//  6つのミニゲームで、今年のクリスマス作戦を完遂せよ。
+// =====================================================================
+
+const W = 360, H = 640;
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+let scale = 1, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  scale = Math.min(innerWidth / W, innerHeight / H);
+  cv.style.width = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cv.width = Math.round(W * scale * DPR);
+  cv.height = Math.round(H * scale * DPR);
+}
+addEventListener('resize', resize);
+resize();
+
+// ---------------------------------------------------------------- utils
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rand = (a, b) => a + Math.random() * (b - a);
+const ri = (a, b) => Math.floor(rand(a, b + 1));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const lerp = (a, b, t) => a + (b - a) * t;
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic",Meiryo,system-ui,sans-serif';
+function font(sz, w = 'bold') { cx.font = `${w} ${sz}px ${FONT}`; }
+function text(s, x, y, sz, col = '#fff', align = 'center', w = 'bold') {
+  font(sz, w); cx.fillStyle = col; cx.textAlign = align; cx.textBaseline = 'middle'; cx.fillText(s, x, y);
+}
+function textO(s, x, y, sz, col = '#fff', ol = '#000', lw = 4, align = 'center') {
+  font(sz); cx.textAlign = align; cx.textBaseline = 'middle'; cx.lineJoin = 'round';
+  cx.lineWidth = lw; cx.strokeStyle = ol; cx.strokeText(s, x, y); cx.fillStyle = col; cx.fillText(s, x, y);
+}
+function wrapLines(s, maxW, sz, w = 'normal') {
+  font(sz, w);
+  const out = [];
+  for (const para of s.split('\n')) {
+    let line = '';
+    for (const ch of para) {
+      if (cx.measureText(line + ch).width > maxW && line) {
+        // 行頭禁則（句読点を前の行に残す）
+        if ('、。」』）！？ー…'.includes(ch)) { line += ch; out.push(line); line = ''; continue; }
+        out.push(line); line = ch;
+      } else line += ch;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  cx.beginPath();
+  cx.moveTo(x + r, y); cx.lineTo(x + w - r, y); cx.quadraticCurveTo(x + w, y, x + w, y + r);
+  cx.lineTo(x + w, y + h - r); cx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  cx.lineTo(x + r, y + h); cx.quadraticCurveTo(x, y + h, x, y + h - r);
+  cx.lineTo(x, y + r); cx.quadraticCurveTo(x, y, x + r, y); cx.closePath();
+}
+
+// emoji → offscreen cache（毎フレームの fillText を避ける）
+const emoCache = new Map();
+function emo(ch, x, y, size, alpha = 1) {
+  const k = ch + '|' + size;
+  let c = emoCache.get(k);
+  if (!c) {
+    c = document.createElement('canvas');
+    const s = Math.ceil(size * 1.4) * 2;
+    c.width = c.height = s;
+    const g = c.getContext('2d');
+    g.font = `${size * 2}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(ch, s / 2, s / 2 + size * 0.12);
+    emoCache.set(k, c);
+  }
+  if (alpha !== 1) cx.globalAlpha = alpha;
+  cx.drawImage(c, x - c.width / 4, y - c.height / 4, c.width / 2, c.height / 2);
+  if (alpha !== 1) cx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- audio
+let AC = null, muted = false;
+try { muted = localStorage.getItem('santa_muted') === '1'; } catch (e) {}
+function audioInit() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (AC && AC.state === 'suspended') AC.resume();
+}
+function tone(freq, dur, type = 'square', vol = 0.08, slide = 0, delay = 0) {
+  if (!AC || muted) return;
+  const t = AC.currentTime + delay;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+let noiseBuf = null;
+function noise(dur = 0.2, vol = 0.2, freq = 1200, delay = 0) {
+  if (!AC || muted) return;
+  if (!noiseBuf) {
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.6, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t = AC.currentTime + delay;
+  const s = AC.createBufferSource(); s.buffer = noiseBuf;
+  const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq;
+  const g = AC.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(AC.destination); s.start(t); s.stop(t + dur + 0.05);
+}
+const NOTE = n => 440 * Math.pow(2, (n - 69) / 12);
+function melody(seq, bpm = 160, type = 'square', vol = 0.06) {
+  // seq: [[midi, beats], ...] midi=0 は休符
+  let t = 0; const b = 60 / bpm;
+  for (const [n, len] of seq) { if (n) tone(NOTE(n), len * b * 0.9, type, vol, 0, t); t += len * b; }
+}
+const SFX = {
+  click: () => tone(880, 0.05, 'square', 0.05),
+  type: () => tone(1400 + Math.random() * 300, 0.015, 'square', 0.015),
+  beep: () => tone(660, 0.12, 'square', 0.07),
+  go: () => { tone(990, 0.25, 'square', 0.08); tone(1320, 0.3, 'triangle', 0.06, 0, 0.05); },
+  good: () => { tone(988, 0.07, 'square', 0.06); tone(1319, 0.12, 'square', 0.06, 0, 0.07); },
+  bad: () => tone(200, 0.25, 'sawtooth', 0.07, -120),
+  flip: () => tone(500, 0.05, 'triangle', 0.08, 300),
+  coin: () => { tone(1319, 0.05, 'square', 0.05); tone(1760, 0.1, 'square', 0.05, 0, 0.05); },
+  boom: () => { noise(0.45, 0.35, 600); tone(110, 0.35, 'sawtooth', 0.08, -70); },
+  shot: () => { noise(0.12, 0.3, 3000); tone(300, 0.08, 'square', 0.05, -200); },
+  empty: () => tone(1800, 0.03, 'square', 0.04),
+  reload: () => { tone(400, 0.05, 'square', 0.05); tone(700, 0.06, 'square', 0.05, 0, 0.12); },
+  hit: () => { noise(0.1, 0.3, 1500); tone(160, 0.1, 'square', 0.07, -60); },
+  guard: () => tone(1200, 0.06, 'triangle', 0.06, -400),
+  whoosh: () => noise(0.08, 0.08, 4000),
+  jump: () => tone(300, 0.12, 'triangle', 0.06, 400),
+  drop: () => tone(700, 0.15, 'triangle', 0.05, -400),
+  pop: () => { tone(600, 0.06, 'square', 0.05, 600); },
+  combo: n => tone(600 + n * 120, 0.12, 'square', 0.06),
+  end: () => melody([[76, .5], [79, .5], [84, 1.5]], 220),
+  jingle: () => melody([[76, .5], [76, .5], [76, 1], [76, .5], [76, .5], [76, 1], [76, .5], [79, .5], [72, .75], [74, .25], [76, 2]], 220, 'square', 0.05),
+  fanfare: () => melody([[72, .33], [72, .33], [72, .33], [72, 1], [68, 1], [70, 1], [72, .66], [70, .33], [72, 2.5]], 150, 'square', 0.06),
+  sad: () => melody([[67, 1], [66, 1], [65, 1], [64, 3]], 110, 'triangle', 0.07),
+};
+
+// ---------------------------------------------------------------- input
+const keys = {};
+const ptrs = new Map();
+function toLocal(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault(); audioInit();
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  const p = toLocal(e); ptrs.set(e.pointerId, p);
+  if (e.button === 2) { scene.key && scene.key('Reload'); return; }
+  scene.down && scene.down(p.x, p.y, e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  const p = toLocal(e); if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, p);
+  scene.move && scene.move(p.x, p.y, e.pointerId, ptrs.has(e.pointerId));
+});
+function ptrEnd(e) {
+  const p = toLocal(e); ptrs.delete(e.pointerId);
+  scene.up && scene.up(p.x, p.y, e.pointerId);
+}
+cv.addEventListener('pointerup', ptrEnd);
+cv.addEventListener('pointercancel', ptrEnd);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('keydown', e => {
+  audioInit();
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (!keys[e.code]) { keys[e.code] = true; scene.key && scene.key(e.code); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+// ---------------------------------------------------------------- buttons
+function Btn(x, y, w, h, label, onTap, opt = {}) { return { x, y, w, h, label, onTap, ...opt }; }
+function hit(b, x, y) { return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; }
+function drawBtn(b, t = 0) {
+  const pressed = b._p;
+  const col = b.color || '#c8102e', dark = b.dark || '#7a0a1c';
+  const oy = pressed ? 3 : 0;
+  rr(b.x, b.y + 4, b.w, b.h, 12); cx.fillStyle = dark; cx.fill();
+  rr(b.x, b.y + oy, b.w, b.h, 12); cx.fillStyle = col; cx.fill();
+  cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,255,255,.35)'; cx.stroke();
+  if (b.glow) { cx.globalAlpha = 0.25 + 0.2 * Math.sin(t * 5); rr(b.x - 3, b.y - 3 + oy, b.w + 6, b.h + 6, 14); cx.strokeStyle = '#ffd700'; cx.lineWidth = 3; cx.stroke(); cx.globalAlpha = 1; }
+  text(b.label, b.x + b.w / 2, b.y + b.h / 2 + oy + 1, b.size || 18, b.tc || '#fff');
+}
+// 各シーンで使い回せるボタン処理
+const BtnMix = {
+  down(x, y) { for (const b of this.btns || []) if (hit(b, x, y)) { b._p = true; this._pb = b; } },
+  up(x, y) {
+    const b = this._pb; this._pb = null;
+    for (const bb of this.btns || []) bb._p = false;
+    if (b && hit(b, x, y)) { SFX.click(); b.onTap(); }
+  },
+};
+
+// ---------------------------------------------------------------- particles
+let parts = [];
+let shake = 0;
+function burst(x, y, col, n = 12, sp = 160, life = 0.6, size = 3) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = sp * (0.3 + Math.random() * 0.7);
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, col: Array.isArray(col) ? pick(col) : col, size: size * (0.6 + Math.random() * 0.8), g: 300 });
+  }
+}
+function floatText(s, x, y, col = '#fff', sz = 18) {
+  parts.push({ x, y, vx: 0, vy: -50, life: 0.9, max: 0.9, txt: s, col, size: sz, g: 0 });
+}
+function updateParts(dt) {
+  for (const p of parts) { p.life -= dt; p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+  parts = parts.filter(p => p.life > 0);
+  shake = Math.max(0, shake - dt * 30);
+}
+function drawParts() {
+  for (const p of parts) {
+    const a = clamp(p.life / p.max, 0, 1);
+    if (p.txt) { cx.globalAlpha = a; textO(p.txt, p.x, p.y, p.size, p.col, '#000', 4); cx.globalAlpha = 1; }
+    else { cx.globalAlpha = a; cx.fillStyle = p.col; cx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); cx.globalAlpha = 1; }
+  }
+}
+
+// ---------------------------------------------------------------- backdrop
+const stars = [...Array(80)].map(() => ({ x: Math.random() * W, y: Math.random() * H * 0.7, r: Math.random() * 1.4 + 0.3, p: Math.random() * 6 }));
+const snow = [...Array(70)].map(() => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 2 + 0.6, v: Math.random() * 25 + 18, p: Math.random() * 6 }));
+let gT = 0;
+function drawNight(top = '#060a1c', bot = '#1a1240') {
+  const g = cx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, bot);
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+  for (const s of stars) { cx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(gT * 1.5 + s.p)); cx.fillStyle = '#fff'; cx.fillRect(s.x, s.y, s.r, s.r); }
+  cx.globalAlpha = 1;
+}
+function drawSnow(dt, alpha = 0.8) {
+  cx.fillStyle = '#fff';
+  for (const s of snow) {
+    s.y += s.v * dt; s.x += Math.sin(gT + s.p) * 12 * dt;
+    if (s.y > H + 4) { s.y = -4; s.x = Math.random() * W; }
+    cx.globalAlpha = alpha * (s.r / 2.6); cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 7); cx.fill();
+  }
+  cx.globalAlpha = 1;
+}
+function drawEmblem(x, y, r) {
+  cx.save(); cx.translate(x, y);
+  cx.fillStyle = '#7a0a1c'; cx.beginPath(); cx.arc(0, 3, r, 0, 7); cx.fill();
+  const g = cx.createRadialGradient(-r * .3, -r * .3, 2, 0, 0, r); g.addColorStop(0, '#ff3b4f'); g.addColorStop(1, '#a50d24');
+  cx.fillStyle = g; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill();
+  cx.lineWidth = r * 0.08; cx.strokeStyle = '#ffd700'; cx.beginPath(); cx.arc(0, 0, r * 0.86, 0, 7); cx.stroke();
+  // star
+  cx.fillStyle = '#fff'; cx.beginPath();
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr2 = i % 2 ? r * 0.28 : r * 0.62; cx.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2); }
+  cx.closePath(); cx.fill();
+  text('S', 0, 2, r * 0.5, '#a50d24', 'center', '900');
+  cx.restore();
+}
+function drawPanel(x, y, w, h, col = 'rgba(8,12,30,.88)') {
+  rr(x, y, w, h, 14); cx.fillStyle = col; cx.fill();
+  cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,215,0,.45)'; cx.stroke();
+}
+function hud(title, time, right) {
+  cx.fillStyle = 'rgba(0,0,0,.55)'; cx.fillRect(0, 0, W, 44);
+  text(title, 10, 22, 14, '#ffd700', 'left');
+  if (time != null) {
+    const t = Math.max(0, time);
+    text(t.toFixed(t < 10 ? 1 : 0), W / 2, 22, 22, t < 6 ? (Math.floor(t * 4) % 2 ? '#ff5050' : '#fff') : '#fff');
+  }
+  if (right) text(right, W - 10, 22, 15, '#fff', 'right');
+}
+
+// ---------------------------------------------------------------- save
+const SAVE_KEY = 'santa_ops_v1';
+let save = { best: 0, bestRank: '', missions: {} };
+try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(save, s); } catch (e) {}
+function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+
+// ---------------------------------------------------------------- scene mgr
+let scene = { update() {}, draw() {} };
+let fade = 0;
+function go(s, arg) { scene = s; fade = 1; parts = []; shake = 0; s.enter && s.enter(arg); }
+
+// =====================================================================
+//  MINI GAME 1 : 市場調査（パズル・神経衰弱）
+// =====================================================================
+function Research(api) {
+  const kinds = ['🧸', '🚂', '🎮', '⚽', '🎨', '📚', '🎸', '🚲', '🤖', '🦄'];
+  const names = ['エマ', 'ソウタ', 'リオ', 'ハナ', 'ノア', 'ミア', 'ユイ', 'レオ', 'アオイ', 'カイ'];
+  const COLS = 4, CW = 72, CH = 84, GAP = 8, X0 = (W - (COLS * CW + (COLS - 1) * GAP)) / 2, Y0 = 108;
+  const LIMIT = 55;
+  const deck = shuffle(kinds.flatMap((k, i) => [{ k, n: names[i] }, { k, n: names[i] }]));
+  const cards = deck.map((d, i) => ({ ...d, i, col: i % COLS, row: Math.floor(i / COLS), open: true, done: false, f: 1, shake: 0 }));
+  let time = LIMIT, first = null, lock = 0, found = 0, miss = 0, preview = 2.2, combo = 0;
+  function pos(c) { return { x: X0 + c.col * (CW + GAP), y: Y0 + c.row * (CH + GAP) }; }
+  function finish() {
+    const rate = found / 10 * 0.8 + (found === 10 ? 0.2 * Math.min(1, time / 22) : 0);
+    api.end(rate, [`特定した願い: ${found} / 10 件`, `誤照合: ${miss} 回`, `残り時間: ${Math.max(0, time).toFixed(1)} 秒`], found === 10 ? 'ALL MATCHED!' : 'TIME UP');
+  }
+  return {
+    update(dt) {
+      for (const c of cards) { c.f = lerp(c.f, c.open || c.done ? 1 : 0, Math.min(1, dt * 14)); c.shake = Math.max(0, c.shake - dt); }
+      if (preview > 0) { preview -= dt; if (preview <= 0) cards.forEach(c => c.open = false); return; }
+      time -= dt;
+      if (lock > 0) { lock -= dt; if (lock <= 0) cards.forEach(c => { if (!c.done) c.open = false; }); }
+      if (time <= 0) finish();
+    },
+    draw() {
+      drawNight('#0a1330', '#17254a');
+      hud('OP-01 市場調査', preview > 0 ? LIMIT : time, `照合 ${found}/10`);
+      text(preview > 0 ? '― 傍受した手紙を記憶せよ ―' : '同じ「願い」のカードを2枚そろえろ', W / 2, 74, 14, preview > 0 ? '#ffd700' : '#9fb3d9');
+      if (combo > 1) text(`連続照合 ×${combo}`, W / 2, 94, 12, '#ff8');
+      for (const c of cards) {
+        const p = pos(c);
+        const sx = Math.abs(Math.cos((1 - c.f) * Math.PI / 2 * 2)) * (c.f > 0.5 ? 1 : 1);
+        const front = c.f > 0.5;
+        const k = front ? (c.f - 0.5) * 2 : (0.5 - c.f) * 2;
+        cx.save();
+        cx.translate(p.x + CW / 2 + (c.shake > 0 ? Math.sin(c.shake * 60) * 4 : 0), p.y + CH / 2);
+        cx.scale(Math.max(0.02, k), 1);
+        if (front) {
+          rr(-CW / 2, -CH / 2, CW, CH, 10); cx.fillStyle = c.done ? '#d9ffe0' : '#fffaf0'; cx.fill();
+          cx.lineWidth = 3; cx.strokeStyle = c.done ? '#2ecc71' : '#e5c07b'; cx.stroke();
+          emo(c.k, 0, -8, 34);
+          text(c.n + 'より', 0, CH / 2 - 13, 11, '#6b4b2a');
+          if (c.done) { cx.globalAlpha = 0.85; text('✔', CW / 2 - 12, -CH / 2 + 12, 16, '#2ecc71'); cx.globalAlpha = 1; }
+        } else {
+          rr(-CW / 2, -CH / 2, CW, CH, 10); cx.fillStyle = '#8a1022'; cx.fill();
+          cx.lineWidth = 3; cx.strokeStyle = '#ffd700'; cx.stroke();
+          cx.strokeStyle = 'rgba(255,215,0,.3)'; cx.lineWidth = 1; rr(-CW / 2 + 6, -CH / 2 + 6, CW - 12, CH - 12, 6); cx.stroke();
+          drawEmblem(0, -6, 17);
+          text('極秘', 0, CH / 2 - 14, 11, '#ffd700');
+        }
+        cx.restore();
+      }
+    },
+    down(x, y) {
+      if (preview > 0 || lock > 0) return;
+      for (const c of cards) {
+        const p = pos(c);
+        if (x >= p.x && x <= p.x + CW && y >= p.y && y <= p.y + CH) {
+          if (c.open || c.done) return;
+          c.open = true; SFX.flip();
+          if (!first) { first = c; return; }
+          if (first.k === c.k) {
+            first.done = c.done = true; found++; combo++;
+            SFX.good(); const q = pos(c); burst(q.x + CW / 2, q.y + CH / 2, ['#ffd700', '#2ecc71', '#fff'], 16);
+            floatText(combo > 1 ? `願い特定! ×${combo}` : '願い特定!', q.x + CW / 2, q.y, '#ffd700', 15);
+            time += combo > 1 ? 1 : 0;
+            first = null;
+            if (found === 10) setTimeout(finish, 350);
+          } else {
+            miss++; combo = 0; SFX.bad(); c.shake = first.shake = 0.3; lock = 0.65; first = null;
+          }
+          return;
+        }
+      }
+    },
+  };
+}
+
+// =====================================================================
+//  MINI GAME 2 : 資金調達（アクション・キャッチ）
+// =====================================================================
+function Funding(api) {
+  const LIMIT = 40, TARGET = 520, PY = 560;
+  const goods = [{ e: '💵', v: 5, w: 50 }, { e: '💰', v: 10, w: 34 }, { e: '💎', v: 30, w: 14 }];
+  let time = LIMIT, score = 0, px = W / 2, tx = W / 2, items = [], spT = 0.5, stun = 0, caught = 0, bombs = 0, streak = 0, maxStreak = 0, dragging = false;
+  function spawn() {
+    const prog = 1 - time / LIMIT;
+    if (Math.random() < 0.2 + prog * 0.12) items.push({ e: '💣', bad: true, x: rand(24, W - 24), y: -20, vy: rand(150, 210) + prog * 120, r: 0, vr: rand(-3, 3) });
+    else {
+      let r = Math.random() * 98, g = goods[0];
+      for (const it of goods) { if (r < it.w) { g = it; break; } r -= it.w; }
+      items.push({ e: g.e, v: g.v, x: rand(24, W - 24), y: -20, vy: rand(130, 190) + prog * 140 + (g.v === 30 ? 60 : 0), r: 0, vr: rand(-2, 2) });
+    }
+  }
+  function finish() {
+    api.end(score / TARGET, [`調達資金: ${score} 億ドル`, `目標: ${TARGET} 億ドル`, `最大連続キャッチ: ${maxStreak}`, `爆弾被弾: ${bombs} 回`], 'TIME UP');
+  }
+  return {
+    update(dt) {
+      time -= dt; if (time <= 0) { finish(); return; }
+      const prog = 1 - time / LIMIT;
+      spT -= dt; if (spT <= 0) { spawn(); spT = lerp(0.55, 0.3, prog) * rand(0.7, 1.2); }
+      if (stun > 0) stun -= dt;
+      else {
+        if (keys.ArrowLeft || keys.KeyA) tx = px - 400 * dt * 3;
+        if (keys.ArrowRight || keys.KeyD) tx = px + 400 * dt * 3;
+        tx = clamp(tx, 26, W - 26);
+        px = lerp(px, tx, Math.min(1, dt * 16));
+      }
+      for (const it of items) {
+        it.y += it.vy * dt; it.r += it.vr * dt;
+        if (!it.gone && it.y > PY - 30 && it.y < PY + 10 && Math.abs(it.x - px) < 36 && stun <= 0) {
+          it.gone = true;
+          if (it.bad) {
+            bombs++; streak = 0; stun = 1.0; const loss = Math.min(score, 40); score -= loss;
+            SFX.boom(); shake = 10; burst(it.x, it.y, ['#ff5', '#f80', '#f30', '#555'], 26, 240);
+            floatText(`-${loss}`, px, PY - 60, '#ff5050', 22);
+          } else {
+            const bonus = streak >= 10 ? 2 : 1; score += it.v * bonus; caught++; streak++; maxStreak = Math.max(maxStreak, streak);
+            SFX.coin(); burst(it.x, it.y, '#ffd700', 8, 120, 0.4);
+            floatText(`+${it.v * bonus}`, it.x, it.y - 20, bonus > 1 ? '#7ff' : '#ffd700', 16);
+          }
+        }
+        if (!it.gone && it.y > H + 20) { it.gone = true; if (!it.bad) streak = 0; }
+      }
+      items = items.filter(i => !i.gone);
+    },
+    draw() {
+      // 夜の金融街
+      drawNight('#081022', '#20304f');
+      for (let i = 0; i < 9; i++) {
+        const bx = i * 42 - 6, bh = 110 + ((i * 53) % 90);
+        cx.fillStyle = '#0d1a33'; cx.fillRect(bx, PY + 20 - bh, 40, bh);
+        cx.fillStyle = 'rgba(255,220,120,.35)';
+        for (let wy = PY + 30 - bh; wy < PY; wy += 16) for (let wx = bx + 6; wx < bx + 36; wx += 12) if ((wx * 7 + wy * 3) % 5 < 2) cx.fillRect(wx, wy, 5, 7);
+      }
+      cx.fillStyle = '#e8eef8'; cx.fillRect(0, PY + 20, W, H - PY - 20);
+      for (const it of items) { cx.save(); cx.translate(it.x, it.y); cx.rotate(it.r); emo(it.e, 0, 0, it.bad ? 30 : 28); cx.restore(); }
+      // player
+      const st = stun > 0;
+      cx.save(); cx.translate(px, PY);
+      if (st) cx.rotate(Math.sin(gT * 30) * 0.2);
+      cx.fillStyle = '#5b3a1e'; rr(-34, -12, 68, 24, 8); cx.fill();
+      cx.fillStyle = '#8b5a2b'; rr(-30, -18, 60, 14, 6); cx.fill();
+      emo('🎅', 0, -40, 34);
+      cx.fillStyle = '#111'; cx.fillRect(-11, -48, 22, 6);
+      cx.restore();
+      if (st) emo('💫', px, PY - 76, 20);
+      // gauge
+      const r = clamp(score / TARGET, 0, 1);
+      cx.fillStyle = 'rgba(0,0,0,.5)'; rr(12, 54, W - 24, 14, 7); cx.fill();
+      cx.fillStyle = r >= 1 ? '#2ecc71' : '#ffd700'; rr(12, 54, (W - 24) * r, 14, 7); cx.fill();
+      text(`目標達成 ${Math.floor(r * 100)}%`, W / 2, 61, 11, '#000');
+      if (streak >= 10) text('🔥 連続キャッチ ボーナス ×2', W / 2, 84, 13, '#7ff');
+      hud('OP-02 資金調達', time, `${score}億$`);
+    },
+    down(x, y) { dragging = true; tx = x; },
+    move(x, y, id, isDown) { if (isDown) tx = x; },
+    up() { dragging = false; },
+  };
+}
+
+// =====================================================================
+//  MINI GAME 3 : プレゼント調達（パズル・3マッチ）
+// =====================================================================
+function Procure(api) {
+  const C = 7, R = 8, S = 46, X0 = (W - C * S) / 2, Y0 = 150;
+  const T = ['🧸', '🚗', '🎮', '⚽', '📚', '🎸'];
+  const TC = ['#c0392b', '#2980b9', '#8e44ad', '#27ae60', '#d35400', '#f1c40f'];
+  const LIMIT = 60, TARGET = 2400;
+  let g = [], state = 'idle', time = LIMIT, score = 0, combo = 0, clearT = 0, marked = null, sel = null, swapInfo = null, start = null, made = 0, maxCombo = 0, banner = 0, bannerTxt = '';
+  const nt = () => Math.floor(Math.random() * T.length);
+  for (let r = 0; r < R; r++) { g[r] = []; for (let c = 0; c < C; c++) {
+    let t; do { t = nt(); } while ((c >= 2 && g[r][c - 1].t === t && g[r][c - 2].t === t) || (r >= 2 && g[r - 1][c].t === t && g[r - 2][c].t === t));
+    g[r][c] = { t, ox: 0, oy: -(R - r) * S - 200 * Math.random(), sc: 1 };
+  } }
+  state = 'fall';
+  function findMatches() {
+    const m = new Set();
+    for (let r = 0; r < R; r++) { let run = 1; for (let c = 1; c <= C; c++) {
+      if (c < C && g[r][c] && g[r][c - 1] && g[r][c].t === g[r][c - 1].t) run++;
+      else { if (run >= 3) for (let k = c - run; k < c; k++) m.add(r * C + k); run = 1; }
+    } }
+    for (let c = 0; c < C; c++) { let run = 1; for (let r = 1; r <= R; r++) {
+      if (r < R && g[r][c] && g[r - 1][c] && g[r][c].t === g[r - 1][c].t) run++;
+      else { if (run >= 3) for (let k = r - run; k < r; k++) m.add(k * C + c); run = 1; }
+    } }
+    return m;
+  }
+  function lineAt(r, c) {
+    const t = g[r][c].t; let h = 1, v = 1;
+    for (let k = c - 1; k >= 0 && g[r][k].t === t; k--) h++;
+    for (let k = c + 1; k < C && g[r][k].t === t; k++) h++;
+    for (let k = r - 1; k >= 0 && g[k][c].t === t; k--) v++;
+    for (let k = r + 1; k < R && g[k][c].t === t; k++) v++;
+    return h >= 3 || v >= 3;
+  }
+  function hasMoves() {
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) for (const [dr, dc] of [[0, 1], [1, 0]]) {
+      const r2 = r + dr, c2 = c + dc; if (r2 >= R || c2 >= C) continue;
+      [g[r][c], g[r2][c2]] = [g[r2][c2], g[r][c]];
+      const ok = lineAt(r, c) || lineAt(r2, c2);
+      [g[r][c], g[r2][c2]] = [g[r2][c2], g[r][c]];
+      if (ok) return true;
+    }
+    return false;
+  }
+  function doSwap(a, b, back) {
+    const A = g[a.r][a.c], B = g[b.r][b.c];
+    g[a.r][a.c] = B; g[b.r][b.c] = A;
+    A.ox = (a.c - b.c) * S; A.oy = (a.r - b.r) * S;
+    B.ox = (b.c - a.c) * S; B.oy = (b.r - a.r) * S;
+    swapInfo = { a, b, back }; state = 'swap'; SFX.pop();
+  }
+  function startClear(m) {
+    marked = m; clearT = 0.22; state = 'clear';
+    combo++; maxCombo = Math.max(maxCombo, combo);
+    const pts = m.size * 10 * combo + (m.size >= 5 ? 50 : m.size === 4 ? 20 : 0);
+    score += pts; made += m.size;
+    let sx = 0, sy = 0; for (const k of m) { sx += X0 + (k % C) * S + S / 2; sy += Y0 + Math.floor(k / C) * S + S / 2; }
+    floatText(`+${pts}`, sx / m.size, sy / m.size, combo > 1 ? '#7ff' : '#ffd700', 18 + Math.min(combo, 5) * 2);
+    if (combo >= 2) { bannerTxt = `${combo} CHAIN!`; banner = 0.9; }
+    SFX.combo(combo);
+  }
+  function collapse() {
+    for (const k of marked) {
+      const r = Math.floor(k / C), c = k % C;
+      burst(X0 + c * S + S / 2, Y0 + r * S + S / 2, TC[g[r][c].t], 8, 140, 0.5);
+      g[r][c] = null;
+    }
+    marked = null;
+    for (let c = 0; c < C; c++) {
+      let w = R - 1;
+      for (let r = R - 1; r >= 0; r--) if (g[r][c]) { const t = g[r][c]; if (w !== r) { t.oy = (r - w) * S; g[w][c] = t; g[r][c] = null; } w--; }
+      let n = 0;
+      for (let r = w; r >= 0; r--) { n++; g[r][c] = { t: nt(), ox: 0, oy: -(w + 1) * S - n * 6, sc: 1 }; }
+    }
+    state = 'fall';
+  }
+  function settled(dt, sp) {
+    let done = true;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+      const t = g[r][c]; if (!t) continue;
+      if (t.ox) { t.ox = Math.sign(t.ox) * Math.max(0, Math.abs(t.ox) - sp * dt); done = false; }
+      if (t.oy) { t.oy = Math.sign(t.oy) * Math.max(0, Math.abs(t.oy) - sp * dt); if (t.oy) done = false; }
+      if (t.ox) done = false;
+    }
+    return done;
+  }
+  function cell(x, y) {
+    const c = Math.floor((x - X0) / S), r = Math.floor((y - Y0) / S);
+    return (c >= 0 && c < C && r >= 0 && r < R) ? { r, c } : null;
+  }
+  function trySwap(a, b) {
+    if (state !== 'idle' || time <= 0) return;
+    if (Math.abs(a.r - b.r) + Math.abs(a.c - b.c) !== 1) return;
+    combo = 0; sel = null; doSwap(a, b, false);
+  }
+  function finish() {
+    api.end(score / TARGET, [`調達スコア: ${score} / ${TARGET}`, `確保したおもちゃ: ${made} 個`, `最大チェイン: ${maxCombo}`], 'TIME UP');
+  }
+  return {
+    update(dt) {
+      if (state !== 'fall' || time < LIMIT) time -= dt;
+      if (time <= 0) { finish(); return; }
+      banner = Math.max(0, banner - dt);
+      if (state === 'swap') {
+        if (settled(dt, 420)) {
+          if (swapInfo.back) state = 'idle';
+          else { const m = findMatches(); if (m.size) startClear(m); else doSwap(swapInfo.a, swapInfo.b, true); }
+        }
+      } else if (state === 'clear') {
+        clearT -= dt; if (clearT <= 0) collapse();
+      } else if (state === 'fall') {
+        if (settled(dt, 760)) {
+          const m = findMatches();
+          if (m.size) startClear(m);
+          else {
+            state = 'idle';
+            if (!hasMoves()) {
+              bannerTxt = 'シャッフル!'; banner = 1;
+              const all = []; for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) all.push(g[r][c].t);
+              do { shuffle(all); for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { g[r][c].t = all[r * C + c]; g[r][c].oy = -12; } } while (findMatches().size || !hasMoves());
+              state = 'fall';
+            }
+          }
+        }
+      }
+    },
+    draw() {
+      // 工場
+      const bg = cx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a1a10'); bg.addColorStop(1, '#4a2e1a');
+      cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+      cx.fillStyle = 'rgba(255,255,255,.04)'; for (let i = 0; i < 12; i++) cx.fillRect(0, i * 56, W, 2);
+      hud('OP-03 プレゼント調達', time, `${score}pt`);
+      const r0 = clamp(score / TARGET, 0, 1);
+      cx.fillStyle = 'rgba(0,0,0,.5)'; rr(12, 54, W - 24, 14, 7); cx.fill();
+      cx.fillStyle = r0 >= 1 ? '#2ecc71' : '#ffd700'; rr(12, 54, (W - 24) * r0, 14, 7); cx.fill();
+      text(`調達ノルマ ${Math.floor(r0 * 100)}%`, W / 2, 61, 11, '#000');
+      text('隣のおもちゃとスワイプで入れ替え、3つ以上そろえろ', W / 2, 92, 12, '#f5deb3');
+      text('秘密工場ベルトコンベア', W / 2, 118, 11, 'rgba(255,255,255,.4)');
+      // board
+      rr(X0 - 8, Y0 - 8, C * S + 16, R * S + 16, 12); cx.fillStyle = '#1b0f08'; cx.fill();
+      cx.strokeStyle = '#ffd700'; cx.lineWidth = 2; cx.stroke();
+      cx.save(); cx.beginPath(); cx.rect(X0 - 4, Y0 - 4, C * S + 8, R * S + 8); cx.clip();
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        cx.fillStyle = (r + c) % 2 ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.1)';
+        cx.fillRect(X0 + c * S, Y0 + r * S, S, S);
+      }
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        const t = g[r][c]; if (!t) continue;
+        const x = X0 + c * S + S / 2 + t.ox, y = Y0 + r * S + S / 2 + t.oy;
+        const mk = marked && marked.has(r * C + c);
+        if (sel && sel.r === r && sel.c === c) { cx.fillStyle = 'rgba(255,215,0,.45)'; rr(x - S / 2 + 2, y - S / 2 + 2, S - 4, S - 4, 8); cx.fill(); }
+        if (mk) { cx.fillStyle = 'rgba(255,255,255,' + (0.4 + 0.4 * Math.sin(gT * 40)) + ')'; cx.beginPath(); cx.arc(x, y, S * 0.45, 0, 7); cx.fill(); }
+        cx.fillStyle = TC[t.t] + '55'; cx.beginPath(); cx.arc(x, y, S * 0.42, 0, 7); cx.fill();
+        emo(T[t.t], x, y, mk ? 26 + clearT * 30 : 28);
+      }
+      cx.restore();
+      if (banner > 0) { cx.globalAlpha = Math.min(1, banner * 2); textO(bannerTxt, W / 2, Y0 + R * S / 2, 36, '#ffd700', '#7a0a1c', 6); cx.globalAlpha = 1; }
+      text('連鎖でボーナス倍率アップ!', W / 2, Y0 + R * S + 30, 13, '#f5deb3');
+    },
+    get dbg() { return { g, state, score, R, C }; },
+    down(x, y) { const p = cell(x, y); if (!p) return; start = { ...p, x, y, moved: false }; },
+    move(x, y, id, isDown) {
+      if (!start || start.moved || !isDown) return;
+      const dx = x - start.x, dy = y - start.y;
+      if (Math.hypot(dx, dy) > 16) {
+        start.moved = true;
+        const b = Math.abs(dx) > Math.abs(dy) ? { r: start.r, c: start.c + Math.sign(dx) } : { r: start.r + Math.sign(dy), c: start.c };
+        if (b.r >= 0 && b.r < R && b.c >= 0 && b.c < C) trySwap(start, b);
+      }
+    },
+    up(x, y) {
+      if (start && !start.moved && state === 'idle') {
+        if (sel && Math.abs(sel.r - start.r) + Math.abs(sel.c - start.c) === 1) trySwap(sel, start);
+        else if (sel && sel.r === start.r && sel.c === start.c) sel = null;
+        else { sel = { r: start.r, c: start.c }; SFX.click(); }
+      }
+      start = null;
+    },
+  };
+}
+
+// =====================================================================
+//  MINI GAME 4 : 輸送護衛（ガンシューティング）
+// =====================================================================
+function Escort(api) {
+  const LIMIT = 45, MAXA = 6, GROUND = 545, HUDY = 566;
+  let time = LIMIT, hp = 100, ammo = MAXA, reloadT = 0, en = [], spT = 1.2, kills = 0, hostile = 0, ff = 0, shots = 0, hits = 0;
+  let aim = { x: W / 2, y: 280 }, flash = 0, msg = '', msgT = 0, road = 0, deerT = 6;
+  const TGT = () => ({ x: rand(110, 250), y: 495 });
+  function spawn() {
+    const prog = 1 - time / LIMIT;
+    const r = Math.random();
+    hostile++;
+    if (r < 0.18 + prog * 0.15 && prog > 0.15) {
+      en.push({ type: 'heavy', x: rand(60, W - 60), y: -40, tx: rand(60, W - 60), ty: rand(90, 200), hp: 4, max: 4, r: 28, ph: 'in', t: 0, fire: 1.6, life: 10, sp: 70 });
+    } else if (r < 0.5) {
+      const left = Math.random() < 0.5;
+      en.push({ type: 'jet', x: left ? -20 : W + 20, y: rand(80, 220), vx: left ? 1 : -1, hp: 1, max: 1, r: 16, ph: 'zig', t: 0, sp: 95 + prog * 40, base: 0 });
+    } else {
+      en.push({ type: 'drone', x: rand(30, W - 30), y: -30, tx: rand(40, W - 40), ty: rand(80, 300), hp: 1, max: 1, r: 18, ph: 'in', t: 0, sp: 100 + prog * 50 });
+    }
+  }
+  function damage(n, x, y) {
+    hp = Math.max(0, hp - n); shake = 8; SFX.boom(); burst(x, y, ['#ff5', '#f80', '#f30', '#666'], 24, 220);
+    floatText(`積荷 -${n}`, x, y - 20, '#ff5050', 18);
+    if (hp <= 0) finish('CARGO LOST');
+  }
+  function finish(m) {
+    const kr = hostile ? kills / hostile : 1;
+    const rate = 0.7 * hp / 100 + 0.3 * kr - ff * 0.03;
+    api.end(rate, [`積荷の無事: ${hp}%`, `撃墜: ${kills} / ${hostile} 機`, `命中率: ${shots ? Math.round(hits / shots * 100) : 0}%`, `トナカイ誤射: ${ff} 回`], m || 'CONVOY SAFE');
+  }
+  function shoot(x, y) {
+    if (reloadT > 0) return;
+    if (ammo <= 0) { SFX.empty(); msg = 'RELOAD!'; msgT = 0.8; return; }
+    ammo--; shots++; flash = 0.06; SFX.shot(); aim = { x, y };
+    for (let i = en.length - 1; i >= 0; i--) {
+      const e = en[i];
+      if (Math.hypot(e.x - x, e.y - y) < e.r + 10) {
+        hits++;
+        if (e.type === 'deer') {
+          ff++; e.dead = true; SFX.bad(); hp = Math.max(0, hp - 5);
+          floatText('誤射! 味方だ!', e.x, e.y - 20, '#ff8080', 16); burst(e.x, e.y, ['#a0522d', '#fff'], 12);
+          return;
+        }
+        e.hp--; e.hitF = 0.08;
+        if (e.hp <= 0) {
+          e.dead = true; if (e.type !== 'missile') kills++;
+          SFX.hit(); burst(e.x, e.y, ['#ff5', '#f80', '#fff', '#888'], 18, 200);
+          floatText(e.type === 'heavy' ? '+大型撃墜' : '撃墜', e.x, e.y - 16, '#ffd700', 14);
+        } else { SFX.hit(); burst(e.x, e.y, '#ff8', 5, 100, 0.3); }
+        return;
+      }
+    }
+    burst(x, y, '#ccc', 4, 60, 0.3, 2);
+  }
+  function reload() { if (reloadT > 0 || ammo === MAXA) return; reloadT = 0.7; SFX.reload(); }
+  return {
+    update(dt) {
+      time -= dt; if (time <= 0) { finish(); return; }
+      const prog = 1 - time / LIMIT;
+      road = (road + dt * 260) % 60; flash -= dt; msgT -= dt;
+      if (reloadT > 0) { reloadT -= dt; if (reloadT <= 0) ammo = MAXA; }
+      spT -= dt; if (spT <= 0) { spawn(); spT = lerp(1.25, 0.55, prog) * rand(0.7, 1.3); }
+      deerT -= dt; if (deerT <= 0) { deerT = rand(5, 9); const left = Math.random() < 0.5; en.push({ type: 'deer', x: left ? -30 : W + 30, y: rand(90, 260), vx: left ? 1 : -1, hp: 1, r: 20, t: 0 }); }
+      for (const e of en) {
+        e.t += dt; if (e.hitF) e.hitF -= dt;
+        if (e.type === 'drone') {
+          if (e.ph === 'in') { const dx = e.tx - e.x, dy = e.ty - e.y, d = Math.hypot(dx, dy); if (d < 4) { e.ph = 'hover'; e.t = 0; e.wait = rand(0.8, 2.0); } else { e.x += dx / d * e.sp * dt; e.y += dy / d * e.sp * dt; } }
+          else if (e.ph === 'hover') { e.x += Math.sin(e.t * 4) * 20 * dt; if (e.t > e.wait) { e.ph = 'dive'; const T = TGT(); e.dx = T.x; e.dy = T.y; e.v = 60; } }
+          else if (e.ph === 'dive') { e.v += 220 * dt; const dx = e.dx - e.x, dy = e.dy - e.y, d = Math.hypot(dx, dy) || 1; e.x += dx / d * e.v * dt; e.y += dy / d * e.v * dt; if (d < 14) { e.dead = true; damage(6, e.x, e.y); } }
+        } else if (e.type === 'jet') {
+          e.x += e.vx * e.sp * dt; e.y += (22 + prog * 25) * dt; e.y += Math.sin(e.t * 5) * 40 * dt;
+          if ((e.vx > 0 && e.x > W - 30) || (e.vx < 0 && e.x < 30)) e.vx *= -1;
+          if (e.y > 470) { e.dead = true; damage(5, e.x, e.y); }
+        } else if (e.type === 'heavy') {
+          if (e.ph === 'in') { const dx = e.tx - e.x, dy = e.ty - e.y, d = Math.hypot(dx, dy); if (d < 4) { e.ph = 'hover'; e.t = 0; } else { e.x += dx / d * e.sp * dt; e.y += dy / d * e.sp * dt; } }
+          else if (e.ph === 'hover') {
+            e.x += Math.sin(e.t * 1.2) * 50 * dt; e.fire -= dt;
+            if (e.fire <= 0) { e.fire = 2.3; const T = TGT(); const d = Math.hypot(T.x - e.x, T.y - e.y); en.push({ type: 'missile', x: e.x, y: e.y + 20, vx: (T.x - e.x) / d * 120, vy: (T.y - e.y) / d * 120, hp: 1, r: 9, t: 0 }); tone(900, 0.15, 'sawtooth', 0.04, -500); }
+            if (e.t > e.life) { e.ph = 'dive'; e.v = 40; const T = TGT(); e.dx = T.x; e.dy = T.y; }
+          } else { e.v += 120 * dt; const dx = e.dx - e.x, dy = e.dy - e.y, d = Math.hypot(dx, dy) || 1; e.x += dx / d * e.v * dt; e.y += dy / d * e.v * dt; if (d < 16) { e.dead = true; damage(12, e.x, e.y); } }
+        } else if (e.type === 'missile') {
+          e.x += e.vx * dt; e.y += e.vy * dt; if (Math.random() < 0.5) parts.push({ x: e.x, y: e.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.4, max: 0.4, col: '#aaa', size: 4, g: 0 });
+          if (e.y > 485) { e.dead = true; damage(4, e.x, e.y); }
+        } else if (e.type === 'deer') {
+          e.x += e.vx * 110 * dt; e.y += Math.sin(e.t * 3) * 15 * dt;
+          if (e.x < -50 || e.x > W + 50) e.dead = true;
+        }
+      }
+      en = en.filter(e => !e.dead);
+    },
+    draw() {
+      drawNight('#050816', '#1b1036');
+      cx.fillStyle = '#f4f1c9'; cx.beginPath(); cx.arc(300, 90, 26, 0, 7); cx.fill();
+      // city silhouette
+      cx.fillStyle = '#0c0f22';
+      for (let i = 0; i < 12; i++) { const bh = 60 + ((i * 37) % 70); cx.fillRect(i * 32 - 4, GROUND - 40 - bh, 30, bh + 40); }
+      // road
+      cx.fillStyle = '#23263a'; cx.fillRect(0, 480, W, GROUND - 480 + 30);
+      cx.fillStyle = '#f5f5f5'; for (let x = -road; x < W; x += 60) cx.fillRect(x, 525, 30, 4);
+      cx.fillStyle = '#e8eef8'; cx.fillRect(0, GROUND + 15, W, 6);
+      // convoy truck
+      const by = 470 + Math.sin(gT * 18) * 1.2;
+      cx.fillStyle = '#222'; [110, 145, 215, 250].forEach(x => { cx.beginPath(); cx.arc(x, by + 48, 11, 0, 7); cx.fill(); });
+      cx.fillStyle = '#8a1022'; rr(95, by - 10, 170, 52, 6); cx.fill();
+      cx.fillStyle = '#ffd700'; cx.fillRect(170, by - 10, 14, 52); cx.fillRect(95, by + 10, 170, 10);
+      cx.fillStyle = '#2c3e50'; rr(265, by + 4, 40, 38, 6); cx.fill();
+      cx.fillStyle = '#9fd3ff'; cx.fillRect(282, by + 10, 18, 14);
+      text('S.A.N.T.A. LOGISTICS', 180, by + 32, 9, '#fff');
+      // cargo HP
+      cx.fillStyle = 'rgba(0,0,0,.6)'; rr(95, by - 26, 170, 10, 5); cx.fill();
+      cx.fillStyle = hp > 50 ? '#2ecc71' : hp > 25 ? '#f1c40f' : '#e74c3c'; rr(95, by - 26, 170 * hp / 100, 10, 5); cx.fill();
+      // enemies
+      for (const e of en) {
+        cx.save(); cx.translate(e.x, e.y);
+        if (e.hitF > 0) cx.globalAlpha = 0.5;
+        if (e.type === 'drone') {
+          cx.fillStyle = '#333'; cx.fillRect(-22, -14, 44, 4);
+          cx.fillStyle = 'rgba(200,200,200,.6)'; const rw = 10 * Math.abs(Math.sin(gT * 40));
+          cx.fillRect(-22 - rw, -17, rw * 2, 2); cx.fillRect(22 - rw, -17, rw * 2, 2);
+          cx.fillStyle = '#1a1a1a'; cx.beginPath(); cx.arc(0, 0, 14, 0, 7); cx.fill();
+          cx.fillStyle = '#ff2a2a'; cx.beginPath(); cx.arc(0, 2, 5, 0, 7); cx.fill();
+          text('K', 0, -6, 8, '#ff2a2a');
+        } else if (e.type === 'jet') {
+          cx.scale(e.vx, 1);
+          cx.fillStyle = '#2b2b3a'; cx.beginPath(); cx.moveTo(18, 0); cx.lineTo(-14, -8); cx.lineTo(-10, 0); cx.lineTo(-14, 8); cx.closePath(); cx.fill();
+          cx.fillStyle = '#ff6a00'; cx.beginPath(); cx.moveTo(-12, -3); cx.lineTo(-22 - Math.random() * 6, 0); cx.lineTo(-12, 3); cx.fill();
+          emo('😈', 2, -8, 14);
+        } else if (e.type === 'heavy') {
+          cx.fillStyle = '#3d0d0d'; rr(-30, -18, 60, 36, 10); cx.fill();
+          cx.fillStyle = '#111'; cx.fillRect(-36, -24, 72, 6);
+          cx.fillStyle = '#ff2a2a'; cx.beginPath(); cx.arc(-10, 0, 5, 0, 7); cx.arc(10, 0, 5, 0, 7); cx.fill();
+          cx.fillStyle = '#000'; rr(-30, 22, 60, 5, 2); cx.fill();
+          cx.fillStyle = '#ff2a2a'; rr(-30, 22, 60 * e.hp / e.max, 5, 2); cx.fill();
+          text('KRAMPUS', 0, -11, 8, '#ff9');
+        } else if (e.type === 'missile') {
+          cx.rotate(Math.atan2(e.vy, e.vx));
+          cx.fillStyle = '#ddd'; cx.fillRect(-9, -3, 16, 6); cx.fillStyle = '#e74c3c'; cx.beginPath(); cx.moveTo(7, -3); cx.lineTo(12, 0); cx.lineTo(7, 3); cx.fill();
+        } else if (e.type === 'deer') {
+          cx.scale(-e.vx, 1); emo('🦌', 0, 0, 30); cx.scale(-e.vx, 1);
+          text('味方', 0, -24, 9, '#7f7');
+        }
+        cx.restore();
+      }
+      // crosshair
+      cx.strokeStyle = flash > 0 ? '#fff' : '#ff3b3b'; cx.lineWidth = 2;
+      cx.beginPath(); cx.arc(aim.x, aim.y, 14, 0, 7); cx.moveTo(aim.x - 22, aim.y); cx.lineTo(aim.x - 6, aim.y); cx.moveTo(aim.x + 6, aim.y); cx.lineTo(aim.x + 22, aim.y);
+      cx.moveTo(aim.x, aim.y - 22); cx.lineTo(aim.x, aim.y - 6); cx.moveTo(aim.x, aim.y + 6); cx.lineTo(aim.x, aim.y + 22); cx.stroke();
+      if (flash > 0) { cx.fillStyle = 'rgba(255,255,220,.25)'; cx.fillRect(0, 0, W, H); }
+      // HUD bottom
+      cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fillRect(0, HUDY, W, H - HUDY);
+      cx.strokeStyle = '#ffd700'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(0, HUDY); cx.lineTo(W, HUDY); cx.stroke();
+      for (let i = 0; i < MAXA; i++) {
+        const x = 18 + i * 20;
+        cx.fillStyle = i < ammo ? '#ffd700' : '#444'; rr(x, 590, 10, 30, 4); cx.fill();
+      }
+      rr(200, 582, 148, 48, 10); cx.fillStyle = reloadT > 0 ? '#555' : ammo === 0 ? (Math.floor(gT * 6) % 2 ? '#c8102e' : '#7a0a1c') : '#2c3e50'; cx.fill();
+      text(reloadT > 0 ? '装填中…' : 'RELOAD ↻', 274, 606, 17, '#fff');
+      text(`積荷 ${hp}%`, 150, 605, 12, hp > 50 ? '#2ecc71' : '#ff6b6b');
+      if (msgT > 0) textO(msg, W / 2, 330, 30, '#ff5050', '#000', 5);
+      hud('OP-04 輸送護衛', time, `撃墜 ${kills}`);
+    },
+    down(x, y) { if (y >= HUDY) reload(); else shoot(x, y); },
+    move(x, y) { if (y < HUDY) aim = { x, y }; },
+    key(code) { if (code === 'KeyR' || code === 'Reload' || code === 'Space') reload(); },
+  };
+}
+
+// =====================================================================
+//  MINI GAME 5 : 幹部撃退（格闘ゲーム）
+// =====================================================================
+function Fight(api) {
+  const FL = 392, LIMIT = 60;
+  const ATK = {
+    punch: { s: 0.07, a: 0.1, r: 0.16, rng: 50, dmg: 6, kb: 150, st: 0.3 },
+    kick: { s: 0.17, a: 0.12, r: 0.28, rng: 66, dmg: 11, kb: 260, st: 0.42 },
+  };
+  const mk = (x, face, isP) => ({ x, y: 0, vx: 0, vy: 0, face, hp: 100, st: 'idle', t: 0, hit: false, meter: 0, isP, walk: 0, flash: 0, stun: 0 });
+  const P = mk(110, 1, true), E = mk(250, -1, false);
+  let time = LIMIT, proj = [], over = 0, result = '', aiT = 0.6, ai = { l: 0, r: 0, guard: 0 }, combo = 0, comboT = 0, maxCombo = 0, intro = 1.2;
+  const B = {
+    left: { x: 10, y: 528, w: 70, h: 70, l: '◀' }, right: { x: 88, y: 528, w: 70, h: 70, l: '▶' }, jump: { x: 49, y: 452, w: 70, h: 70, l: '▲' },
+    guard: { x: 202, y: 452, w: 70, h: 70, l: '🛡' }, sp: { x: 280, y: 452, w: 70, h: 70, l: '🎁' },
+    punch: { x: 202, y: 528, w: 70, h: 70, l: '👊' }, kick: { x: 280, y: 528, w: 70, h: 70, l: '🦵' },
+  };
+  const HOLD = ['left', 'right', 'guard'];
+  const touches = new Map();
+  const held = k => { for (const v of touches.values()) if (v === k) return true; return false; };
+  const free = f => f.st === 'idle' || f.st === 'walk' || f.st === 'guard';
+  function act(f, k) {
+    if (over || intro > 0) return;
+    const air = f.y > 0;
+    if (k === 'jump' && free(f) && !air) { f.vy = 540; f.st = 'idle'; SFX.jump(); }
+    else if ((k === 'punch' || k === 'kick') && (free(f) || (air && f.st === 'idle'))) { f.st = k; f.t = 0; f.hit = false; SFX.whoosh(); }
+    else if (k === 'sp' && free(f) && !air && f.meter >= 100) {
+      f.meter = 0; f.st = 'throw'; f.t = 0;
+      proj.push({ x: f.x + f.face * 30, y: 70, vx: f.face * 290, owner: f, r: 0 }); SFX.jump();
+      floatText(f.isP ? 'プレゼント・ボム!' : 'ブラック・コール!', f.x, FL - 140, f.isP ? '#ffd700' : '#c77dff', 16);
+    }
+  }
+  function apply(att, o, dmg, kb, st) {
+    const dir = Math.sign(o.x - att.x) || att.face;
+    const guarded = o.st === 'guard' && o.face === -dir;
+    if (guarded) {
+      o.hp = Math.max(0, o.hp - dmg * 0.15); o.vx = dir * kb * 0.5; o.knock = 0.12; o.meter = Math.min(100, o.meter + 4);
+      SFX.guard(); burst(o.x - dir * 12, FL - o.y - 70, '#9cf', 8, 120, 0.3);
+    } else {
+      o.hp = Math.max(0, o.hp - dmg); o.st = 'hit'; o.t = 0; o.stun = st; o.vx = dir * kb; if (o.y > 0) o.vy = 200;
+      o.flash = 0.12; att.meter = Math.min(100, att.meter + dmg * 1.6); o.meter = Math.min(100, o.meter + dmg * 0.8);
+      SFX.hit(); shake = dmg > 10 ? 9 : 5;
+      burst(o.x - dir * 8, FL - o.y - 70, ['#fff', '#ffd700', '#ff6b6b'], 12, 200, 0.4);
+      floatText(String(Math.round(dmg)), o.x, FL - o.y - 120, att.isP ? '#ffd700' : '#ff6b6b', 18);
+      if (att.isP) { combo = comboT > 0 ? combo + 1 : 1; comboT = 0.9; maxCombo = Math.max(maxCombo, combo); }
+    }
+    if (o.hp <= 0 && !over) { o.st = 'ko'; o.t = 0; o.vy = 300; o.vx = dir * 200; over = 2.2; result = 'K.O.!'; SFX.boom(); shake = 14; }
+  }
+  function stepF(f, o, dt, inp) {
+    f.t += dt; f.flash -= dt;
+    if (f.y > 0 || f.vy > 0) { f.vy -= 1500 * dt; f.y += f.vy * dt; if (f.y <= 0) { f.y = 0; f.vy = 0; } }
+    const dirTo = Math.sign(o.x - f.x) || f.face;
+    switch (f.st) {
+      case 'idle': case 'walk': {
+        if (over && f.st !== 'ko') { f.vx = 0; f.st = 'idle'; break; }
+        if (inp.guard && f.y === 0) { f.st = 'guard'; f.vx = 0; break; }
+        const mv = (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
+        if (f.y === 0) f.vx = mv * 135; else f.vx = lerp(f.vx, mv * 135, dt * 3);
+        f.st = mv && f.y === 0 ? 'walk' : 'idle'; if (mv) f.walk += dt;
+        f.face = dirTo; break;
+      }
+      case 'guard': f.vx *= Math.pow(0.001, dt); f.face = dirTo; if (!inp.guard || over) f.st = 'idle'; break;
+      case 'punch': case 'kick': {
+        const a = ATK[f.st];
+        if (f.y === 0) f.vx *= Math.pow(0.0005, dt);
+        if (!f.hit && f.t >= a.s && f.t <= a.s + a.a) {
+          const dx = (o.x - f.x) * f.face;
+          if (dx > -6 && dx < a.rng + 8 && Math.abs(o.y - f.y) < 70 && o.st !== 'ko') { f.hit = true; apply(f, o, f.y > 0 ? a.dmg * 1.2 : a.dmg, a.kb, a.st); }
+        }
+        if (f.t > a.s + a.a + a.r) f.st = 'idle';
+        break;
+      }
+      case 'hit': f.vx *= Math.pow(0.01, dt); if (f.t > f.stun && f.y === 0) f.st = 'idle'; break;
+      case 'throw': f.vx = 0; if (f.t > 0.35) f.st = 'idle'; break;
+      case 'ko': f.vx *= Math.pow(0.05, dt); break;
+    }
+    if (f.st !== 'ko' && f.st !== 'hit' && f.st !== 'guard' && f.knock > 0) f.knock -= dt;
+    f.x = clamp(f.x + f.vx * dt, 24, W - 24);
+  }
+  function think() {
+    const dx = P.x - E.x, d = Math.abs(dx), dir = Math.sign(dx);
+    ai = { l: 0, r: 0, guard: 0 };
+    if (!free(E) || over) return;
+    const pAtk = (P.st === 'punch' || P.st === 'kick') && P.t < ATK[P.st].s + 0.04;
+    const incoming = proj.some(p => p.owner === P && Math.sign(E.x - p.x) === Math.sign(p.vx) && Math.abs(E.x - p.x) < 170);
+    if (incoming && Math.random() < 0.6) { if (Math.random() < 0.5) act(E, 'jump'); else { ai.guard = 1; aiT = 0.5; } return; }
+    if (pAtk && d < 95 && Math.random() < 0.5) { ai.guard = 1; aiT = 0.38; return; }
+    if (E.meter >= 100 && d > 110 && Math.random() < 0.55) { act(E, 'sp'); return; }
+    if (d > 72) { if (dir > 0) ai.r = 1; else ai.l = 1; if (Math.random() < 0.05) act(E, 'jump'); aiT = rand(0.15, 0.35); return; }
+    const r = Math.random();
+    if (r < 0.36) act(E, 'punch');
+    else if (r < 0.6) act(E, 'kick');
+    else if (r < 0.72) { if (dir > 0) ai.l = 1; else ai.r = 1; aiT = 0.3; }
+    else if (r < 0.84) { ai.guard = 1; aiT = 0.35; }
+    else aiT = 0.3;
+  }
+  function finish() {
+    let rate;
+    const win = E.hp < P.hp;
+    if (win) rate = 0.6 + 0.4 * P.hp / 100; else rate = 0.5 * (100 - E.hp) / 100;
+    api.end(rate, [win ? '勝利: 幹部を撃退した!' : '敗北: 幹部を取り逃がした…', `残り体力: ${Math.round(P.hp)}%`, `与えたダメージ: ${Math.round(100 - E.hp)}`, `最大コンボ: ${maxCombo}`], win ? 'YOU WIN' : 'YOU LOSE');
+  }
+  function drawFighter(f, pal) {
+    // shadow
+    cx.fillStyle = 'rgba(0,0,0,.35)'; cx.beginPath(); cx.ellipse(f.x, FL + 2, 24 - Math.min(f.y, 80) * 0.12, 6, 0, 0, 7); cx.fill();
+    cx.save(); cx.translate(f.x, FL - f.y);
+    if (f.flash > 0 && Math.floor(f.flash * 60) % 2) cx.globalAlpha = 0.5;
+    cx.scale(f.face, 1);
+    if (f.st === 'ko') { cx.rotate(-Math.min(1.5, f.t * 4)); }
+    else if (f.st === 'hit') cx.rotate(-0.22);
+    const a = ATK[f.st]; const at = a ? (f.t < a.s ? 0 : f.t < a.s + a.a ? 1 : 2) : -1;
+    const wk = f.st === 'walk' ? Math.sin(f.walk * 14) * 9 : 0;
+    const bob = f.st === 'idle' ? Math.sin(gT * 4) * 1.5 : 0;
+    const air = f.y > 0;
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    // legs
+    const leg = (x1, y1, x2, y2) => { cx.strokeStyle = pal.pants; cx.lineWidth = 10; cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); cx.fillStyle = '#111'; cx.beginPath(); cx.arc(x2, y2, 6, 0, 7); cx.fill(); };
+    if (f.st === 'kick' && at >= 0) {
+      leg(-4, -38, -10, 0);
+      if (at === 0) leg(5, -38, 22, -30); else if (at === 1) leg(5, -42, 58, -52); else leg(5, -38, 26, -14);
+    } else if (air) { leg(-4, -38, -14, -12); leg(5, -38, 16, -18); }
+    else if (f.st === 'guard') { leg(-4, -38, -14, 0); leg(5, -38, 16, 0); }
+    else { leg(-4, -38, -6 - wk, 0); leg(5, -38, 8 + wk, 0); }
+    // body
+    cx.fillStyle = pal.body; rr(-15, -84 + bob, 30, 48, 9); cx.fill();
+    cx.fillStyle = pal.trim; cx.fillRect(-15, -50 + bob, 30, 6); cx.fillStyle = '#ffd700'; cx.fillRect(-4, -51 + bob, 8, 8);
+    if (pal.tie) { cx.fillStyle = pal.tie; cx.beginPath(); cx.moveTo(-3, -82 + bob); cx.lineTo(3, -82 + bob); cx.lineTo(0, -62 + bob); cx.fill(); }
+    // arms
+    const arm = (x2, y2) => { cx.strokeStyle = pal.body; cx.lineWidth = 9; cx.beginPath(); cx.moveTo(0, -74 + bob); cx.lineTo(x2, y2); cx.stroke(); cx.fillStyle = pal.glove; cx.beginPath(); cx.arc(x2, y2, 6.5, 0, 7); cx.fill(); };
+    if (f.st === 'punch') { arm(-10, -58); if (at === 0) arm(6, -70); else if (at === 1) arm(50, -74); else arm(26, -70); }
+    else if (f.st === 'guard') { arm(16, -88); arm(22, -74); }
+    else if (f.st === 'throw') { arm(-8, -58); arm(20, -104); }
+    else if (f.st === 'hit' || f.st === 'ko') { arm(-22, -96); arm(-14, -92); }
+    else { arm(-9, -56 + bob); arm(16, -60 + bob); }
+    // head
+    const hy = -98 + bob;
+    if (pal.kind === 'santa') {
+      cx.fillStyle = '#f2c9a0'; cx.beginPath(); cx.arc(0, hy, 13, 0, 7); cx.fill();
+      cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(2, hy + 8, 12, 0, Math.PI); cx.fill(); cx.beginPath(); cx.arc(2, hy + 10, 9, 0, 7); cx.fill();
+      cx.fillStyle = '#111'; rr(-6, hy - 4, 20, 6, 2); cx.fill();
+      cx.fillStyle = '#c8102e'; cx.beginPath(); cx.moveTo(-14, hy - 6); cx.lineTo(13, hy - 8); cx.lineTo(-10, hy - 30); cx.closePath(); cx.fill();
+      cx.fillStyle = '#fff'; cx.fillRect(-14, hy - 10, 28, 6); cx.beginPath(); cx.arc(-11, hy - 30, 5, 0, 7); cx.fill();
+    } else {
+      cx.fillStyle = '#3a2a3a'; cx.beginPath(); cx.arc(0, hy, 13, 0, 7); cx.fill();
+      cx.strokeStyle = '#d9c7a8'; cx.lineWidth = 4;
+      cx.beginPath(); cx.moveTo(-6, hy - 10); cx.quadraticCurveTo(-18, hy - 22, -10, hy - 32); cx.stroke();
+      cx.beginPath(); cx.moveTo(5, hy - 11); cx.quadraticCurveTo(14, hy - 24, 4, hy - 34); cx.stroke();
+      cx.fillStyle = '#ff2a2a'; cx.beginPath(); cx.arc(5, hy - 2, 2.6, 0, 7); cx.arc(11, hy - 2, 2.6, 0, 7); cx.fill();
+      cx.strokeStyle = '#fff'; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(2, hy + 6); cx.lineTo(12, hy + 5); cx.stroke();
+    }
+    cx.restore();
+  }
+  function bar(x, w, f, flip, name, col) {
+    cx.fillStyle = '#000'; rr(x - 2, 52, w + 4, 18, 5); cx.fill();
+    const r = f.hp / 100; cx.fillStyle = r > 0.5 ? '#2ecc71' : r > 0.25 ? '#f1c40f' : '#e74c3c';
+    if (flip) rr(x + w * (1 - r), 54, w * r, 14, 4); else rr(x, 54, w * r, 14, 4); cx.fill();
+    text(name, flip ? x + w : x, 80, 11, col, flip ? 'right' : 'left');
+    cx.fillStyle = '#222'; rr(x, 88, w, 6, 3); cx.fill();
+    cx.fillStyle = f.meter >= 100 ? (Math.floor(gT * 8) % 2 ? '#fff' : '#ffd700') : '#d4a017';
+    if (flip) rr(x + w * (1 - f.meter / 100), 88, w * f.meter / 100, 6, 3); else rr(x, 88, w * f.meter / 100, 6, 3); cx.fill();
+  }
+  return {
+    update(dt) {
+      if (intro > 0) { intro -= dt; return; }
+      if (!over) { time -= dt; if (time <= 0) { time = 0; over = 1.6; result = 'TIME UP'; } }
+      comboT -= dt;
+      const pin = { l: held('left') || keys.ArrowLeft || keys.KeyA, r: held('right') || keys.ArrowRight || keys.KeyD, guard: held('guard') || keys.ArrowDown || keys.KeyS || keys.KeyL };
+      aiT -= dt; if (aiT <= 0) { aiT = rand(0.12, 0.28); think(); }
+      stepF(P, E, dt, over ? {} : pin); stepF(E, P, dt, over ? {} : ai);
+      // 押し合い
+      if (P.st !== 'ko' && E.st !== 'ko' && Math.abs(P.y - E.y) < 50) {
+        const dx = E.x - P.x, ov = 34 - Math.abs(dx);
+        if (ov > 0) { const s = Math.sign(dx) || 1; P.x = clamp(P.x - s * ov / 2, 24, W - 24); E.x = clamp(E.x + s * ov / 2, 24, W - 24); }
+      }
+      for (const p of proj) {
+        p.x += p.vx * dt; p.r += dt * 10;
+        const o = p.owner === P ? E : P;
+        if (!p.dead && Math.abs(p.x - o.x) < 26 && o.y < 95 && o.st !== 'ko') { p.dead = true; apply(p.owner, o, 18, 280, 0.55); burst(p.x, FL - 70, ['#ffd700', '#c8102e', '#2ecc71'], 22, 240); }
+        if (p.x < -30 || p.x > W + 30) p.dead = true;
+      }
+      proj = proj.filter(p => !p.dead);
+      if (over) { over -= dt; if (over <= 0) finish(); }
+    },
+    draw() {
+      // 屋上ステージ（北極の倉庫）
+      drawNight('#0b0820', '#2a1a4a');
+      cx.fillStyle = '#f4f1c9'; cx.beginPath(); cx.arc(70, 140, 30, 0, 7); cx.fill();
+      cx.fillStyle = '#120e26';
+      for (let i = 0; i < 8; i++) { const bh = 90 + ((i * 41) % 80); cx.fillRect(i * 48 - 10, FL - bh, 44, bh); }
+      cx.fillStyle = 'rgba(255,230,140,.3)'; for (let i = 0; i < 30; i++) cx.fillRect((i * 67) % W, FL - 30 - ((i * 29) % 120), 5, 7);
+      cx.fillStyle = '#3b3f58'; cx.fillRect(0, FL, W, 46);
+      cx.fillStyle = '#e8eef8'; cx.fillRect(0, FL, W, 5);
+      cx.fillStyle = '#2a2d40'; for (let x = 0; x < W; x += 40) cx.fillRect(x, FL + 8, 2, 38);
+      text('S.A.N.T.A. 北極倉庫・屋上', W / 2, FL + 28, 11, 'rgba(255,255,255,.4)');
+      for (const p of proj) { cx.save(); cx.translate(p.x, FL - p.y); cx.rotate(p.r); emo(p.owner === P ? '🎁' : '🌑', 0, 0, 26); cx.restore(); }
+      drawFighter(E, { kind: 'krampus', body: '#1d1d26', trim: '#5b1a8a', pants: '#2b2b38', glove: '#5b1a8a' });
+      drawFighter(P, { kind: 'santa', body: '#c8102e', trim: '#111', pants: '#1a1a1a', glove: '#fff', tie: '#111' });
+      bar(12, 140, P, false, 'エージェント（あなた）', '#ffd700');
+      bar(W - 152, 140, E, true, '敵幹部 ブラックルフ', '#c77dff');
+      text(Math.ceil(time), W / 2, 66, 26, time < 10 ? '#ff6b6b' : '#fff');
+      if (combo >= 2 && comboT > 0) textO(`${combo} HIT!`, 70, 120, 22, '#ffd700', '#7a0a1c', 5);
+      if (intro > 0) textO(intro > 0.5 ? 'ROUND 1' : 'FIGHT!', W / 2, 220, 40, '#fff', '#c8102e', 7);
+      if (over && result) textO(result, W / 2, 220, 44, '#ffd700', '#7a0a1c', 8);
+      // controls
+      cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fillRect(0, FL + 46, W, H - FL - 46);
+      for (const k in B) {
+        const b = B[k], on = held(k);
+        cx.globalAlpha = k === 'sp' && P.meter < 100 ? 0.35 : 1;
+        rr(b.x, b.y, b.w, b.h, 16); cx.fillStyle = on ? '#ffd700' : 'rgba(255,255,255,.14)'; cx.fill();
+        cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,255,255,.4)'; cx.stroke();
+        if (b.l.length === 1) text(b.l, b.x + b.w / 2, b.y + b.h / 2 + 1, 28, on ? '#000' : '#fff'); else emo(b.l, b.x + b.w / 2, b.y + b.h / 2, 30);
+        cx.globalAlpha = 1;
+      }
+      text('パンチ', B.punch.x + 35, B.punch.y + 64, 9, '#aaa'); text('キック', B.kick.x + 35, B.kick.y + 64, 9, '#aaa');
+      text('ガード(長押し)', B.guard.x + 35, B.guard.y - 7, 9, '#aaa'); text('必殺(ゲージMAX)', B.sp.x + 35, B.sp.y - 7, 9, '#aaa');
+    },
+    down(x, y, id) {
+      for (const k in B) if (hit(B[k], x, y)) { touches.set(id, k); if (!HOLD.includes(k)) act(P, k); return; }
+    },
+    move(x, y, id) {
+      if (!touches.has(id)) return;
+      const cur = touches.get(id);
+      if (!HOLD.includes(cur)) return;
+      for (const k of ['left', 'right']) if (hit(B[k], x, y) && HOLD.includes(cur) && cur !== 'guard') touches.set(id, k);
+    },
+    up(x, y, id) { touches.delete(id); },
+    key(code) {
+      if (code === 'KeyJ' || code === 'KeyZ') act(P, 'punch');
+      else if (code === 'KeyK' || code === 'KeyX') act(P, 'kick');
+      else if (code === 'KeyW' || code === 'ArrowUp' || code === 'Space') act(P, 'jump');
+      else if (code === 'KeyI' || code === 'KeyC') act(P, 'sp');
+    },
+  };
+}
+
+// =====================================================================
+//  MINI GAME 6 : 配達（アクション・煙突投下）
+// =====================================================================
+function Delivery(api) {
+  const N = 26, GROUND = 600, SX = 92;
+  let houses = [], wx = 0, speed = 120, presents = N + 8, drops = [], cool = 0, delivered = 0, spotted = 0, missed = 0, t = 0, endT = -1;
+  let x = 380;
+  for (let i = 0; i < N; i++) {
+    const w = ri(78, 116), h = ri(90, 200), roof = ri(22, 38), chw = 24, chh = ri(22, 36);
+    const chx = x + ri(10, w - chw - 10);
+    const top = GROUND - h;
+    const roofAt = xx => top - roof * (1 - Math.abs((xx - (x + w / 2)) / (w / 2 + 6)));
+    const chTop = Math.min(roofAt(chx), roofAt(chx + chw)) - chh;
+    houses.push({ x, w, h, top, roof, chx, chw, chTop, roofAt, awake: i > 3 && Math.random() < 0.45, f: rand(0.25, 0.45), ph: Math.random(), done: 0, col: pick(['#6b3e2e', '#4e5d6c', '#7a5c3a', '#5a4a6a', '#3e5e4a']) });
+    x += w + ri(26, 70);
+  }
+  const lastX = x;
+  const isAwake = h => h.awake && ((t * h.f + h.ph) % 1) < 0.42;
+  function drop() {
+    if (presents <= 0 || cool > 0 || endT >= 0) return;
+    presents--; cool = 0.2; SFX.drop();
+    drops.push({ x: wx + SX, y: sy() + 16, vx: speed * 0.55, vy: 40, r: 0 });
+  }
+  const sy = () => 128 + Math.sin(t * 2.2) * 10;
+  function finish() {
+    const rate = delivered / N - spotted * 0.02;
+    api.end(rate, [`配達成功: ${delivered} / ${N} 軒`, `子供に目撃: ${spotted} 回`, `ハズレ: ${missed} 個`, `残りプレゼント: ${presents} 個`], 'MERRY CHRISTMAS!');
+  }
+  return {
+    update(dt) {
+      t += dt; cool -= dt;
+      const prog = clamp(wx / lastX, 0, 1);
+      speed = 120 + prog * 50;
+      wx += speed * dt;
+      for (const d of drops) {
+        const py = d.y; d.vy += 540 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.r += dt * 4;
+        for (const h of houses) {
+          if (d.x < h.x - 4 || d.x > h.x + h.w + 4) continue;
+          if (d.x > h.chx + 2 && d.x < h.chx + h.chw - 2 && py <= h.chTop && d.y >= h.chTop) {
+            d.dead = true;
+            if (h.done) { floatText('配達済み', d.x - wx, h.chTop - 10, '#ccc', 13); missed++; }
+            else if (isAwake(h)) { h.done = 2; spotted++; SFX.bad(); floatText('見られた!', d.x - wx, h.chTop - 14, '#ff6b6b', 18); }
+            else { h.done = 1; delivered++; SFX.good(); burst(d.x - wx, h.chTop, ['#ffd700', '#fff', '#2ecc71'], 16, 160); floatText('配達完了!', d.x - wx, h.chTop - 14, '#ffd700', 17); }
+            break;
+          }
+          if (d.x >= h.x && d.x <= h.x + h.w && d.y >= h.roofAt(d.x)) { d.dead = true; missed++; SFX.pop(); burst(d.x - wx, d.y, ['#c8102e', '#ffd700'], 8, 100); floatText('ハズレ', d.x - wx, d.y - 10, '#aaa', 12); break; }
+        }
+        if (!d.dead && d.y >= GROUND) { d.dead = true; missed++; burst(d.x - wx, GROUND, '#fff', 6, 80); }
+      }
+      drops = drops.filter(d => !d.dead);
+      if (endT < 0 && (wx > lastX + 40 || (presents === 0 && drops.length === 0))) endT = 1.0;
+      if (endT >= 0) { endT -= dt; if (endT < 0) { endT = 0; finish(); } }
+    },
+    draw() {
+      drawNight('#071030', '#26346a');
+      cx.fillStyle = '#fffbe0'; cx.beginPath(); cx.arc(280, 100, 34, 0, 7); cx.fill();
+      // far hills
+      cx.fillStyle = '#1b2850';
+      cx.beginPath(); cx.moveTo(0, GROUND);
+      for (let i = 0; i <= 12; i++) { const xx = i * 36 - ((wx * 0.2) % 36); cx.lineTo(xx, GROUND - 130 - Math.sin((i + Math.floor(wx * 0.2 / 36)) * 1.7) * 30); }
+      cx.lineTo(W, GROUND); cx.fill();
+      // houses
+      for (const h of houses) {
+        const x0 = h.x - wx; if (x0 > W + 20 || x0 + h.w < -20) continue;
+        cx.fillStyle = h.col; cx.fillRect(x0, h.top, h.w, h.h);
+        // chimney
+        const cxs = h.chx - wx;
+        cx.fillStyle = '#7b2d26'; cx.fillRect(cxs, h.chTop, h.chw, h.top - h.chTop + 2);
+        cx.fillStyle = '#5a1f1a'; cx.fillRect(cxs - 3, h.chTop, h.chw + 6, 6);
+        cx.fillStyle = '#fff'; cx.fillRect(cxs - 3, h.chTop - 3, h.chw + 6, 3);
+        // roof
+        cx.fillStyle = '#2b1d1a'; cx.beginPath(); cx.moveTo(x0 - 6, h.top); cx.lineTo(x0 + h.w / 2, h.top - h.roof); cx.lineTo(x0 + h.w + 6, h.top); cx.closePath(); cx.fill();
+        cx.strokeStyle = '#fff'; cx.lineWidth = 4; cx.beginPath(); cx.moveTo(x0 - 6, h.top); cx.lineTo(x0 + h.w / 2, h.top - h.roof); cx.lineTo(x0 + h.w + 6, h.top); cx.stroke();
+        // windows
+        const aw = isAwake(h);
+        for (let wy = h.top + 18; wy < GROUND - 40; wy += 46) for (const wxo of [14, h.w - 36]) {
+          cx.fillStyle = aw ? '#ffe066' : '#1b2a4a'; cx.fillRect(x0 + wxo, wy, 22, 24);
+          cx.strokeStyle = '#2b1d1a'; cx.lineWidth = 2; cx.strokeRect(x0 + wxo, wy, 22, 24);
+          if (aw && wy === h.top + 18 && wxo === 14) emo('👀', x0 + wxo + 11, wy + 13, 14);
+        }
+        cx.fillStyle = '#3b2314'; cx.fillRect(x0 + h.w / 2 - 10, GROUND - 34, 20, 34);
+        if (h.done === 1) { emo('🎁', cxs + h.chw / 2, h.chTop - 22, 18); }
+        if (h.done === 2) { emo('😲', cxs + h.chw / 2, h.chTop - 22, 18); }
+        if (h.awake && !h.done) text(aw ? '起きてる!' : 'zzz', x0 + h.w / 2, h.top - h.roof - 12, 10, aw ? '#ff6b6b' : '#9fb3d9');
+      }
+      cx.fillStyle = '#eef3fb'; cx.fillRect(0, GROUND, W, H - GROUND);
+      // drops
+      for (const d of drops) { cx.save(); cx.translate(d.x - wx, d.y); cx.rotate(d.r); emo('🎁', 0, 0, 18); cx.restore(); }
+      // sleigh
+      const yy = sy();
+      emo('🦌', SX + 74, yy - 6, 26); emo('🦌', SX + 46, yy - 2, 26);
+      cx.strokeStyle = '#c9a227'; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(SX + 18, yy + 2); cx.lineTo(SX + 40, yy + 2); cx.moveTo(SX + 18, yy + 2); cx.lineTo(SX + 66, yy - 2); cx.stroke();
+      cx.save(); cx.translate(SX, yy);
+      cx.fillStyle = '#c8102e'; cx.beginPath(); cx.moveTo(-28, -8); cx.lineTo(20, -8); cx.quadraticCurveTo(26, 8, 10, 12); cx.lineTo(-24, 12); cx.quadraticCurveTo(-34, 4, -28, -8); cx.fill();
+      cx.strokeStyle = '#ffd700'; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(-30, 18); cx.lineTo(18, 18); cx.quadraticCurveTo(28, 18, 26, 10); cx.stroke();
+      emo('🎅', -8, -16, 24);
+      cx.fillStyle = '#111'; cx.fillRect(-16, -22, 16, 4);
+      cx.restore();
+      // HUD
+      const prog = clamp(wx / lastX, 0, 1);
+      cx.fillStyle = 'rgba(0,0,0,.5)'; rr(12, 54, W - 24, 10, 5); cx.fill();
+      cx.fillStyle = '#9fd3ff'; rr(12, 54, (W - 24) * prog, 10, 5); cx.fill();
+      emo('🛷', 12 + (W - 24) * prog, 59, 14);
+      text('画面タップでプレゼント投下 ／ 窓が光る家は子供が起きてるぞ', W / 2, 80, 11, '#cfe0ff');
+      hud('OP-06 配達', null, `🎁×${presents}  配達 ${delivered}/${N}`);
+    },
+    down() { drop(); },
+    key(code) { if (code === 'Space' || code === 'Enter' || code === 'ArrowDown') drop(); },
+  };
+}
+
+// =====================================================================
+//  MISSIONS
+// =====================================================================
+const MISSIONS = [
+  { id: 'research', code: 'OP-01', name: '市場調査', genre: 'パズル', icon: '🔍', date: '12月1日', make: Research,
+    story: '今年、子供たちは何を欲しがっているのか？　世界中から傍受した「サンタへの手紙」の暗号データを解析する。\n手紙は一瞬だけ表示される。記憶して、同じ願いのペアを照合せよ。',
+    how: '・最初の2秒間、全カードが表示される\n・カードを2枚タップして同じ絵ならペア成立\n・連続で当てると制限時間+1秒\n・早く全部そろえるほど高評価' },
+  { id: 'funding', code: 'OP-02', name: '資金調達', genre: 'アクション', icon: '💰', date: '12月6日', make: Funding,
+    story: 'プレゼント作戦には莫大な資金が必要だ。世界中の協力者から秘密裏に送られる寄付金を回収せよ。\nただし敵対組織 K.R.A.M.P.U.S. が爆弾を紛れ込ませている。',
+    how: '・指でドラッグ（または ← →）で左右に移動\n・💵 +5　💰 +10　💎 +30\n・💣 に当たると資金を失い、少し動けなくなる\n・10連続キャッチで獲得額2倍' },
+  { id: 'procure', code: 'OP-03', name: 'プレゼント調達', genre: 'パズル', icon: '🏭', date: '12月11日', make: Procure,
+    story: '調査結果と資金をもとに、秘密工場でおもちゃを量産する。ベルトコンベアのおもちゃを並べ替えて梱包ラインへ送り込め。',
+    how: '・隣り合うおもちゃをスワイプ（またはタップ→タップ）で入れ替え\n・縦か横に3つ以上そろうと出荷\n・連鎖するとスコア倍率アップ\n・4つ・5つ消しでボーナス' },
+  { id: 'escort', code: 'OP-04', name: '輸送護衛', genre: 'ガンシューティング', icon: '🎯', date: '12月18日', make: Escort,
+    story: '完成したプレゼントを北極基地へ輸送中、K.R.A.M.P.U.S. の襲撃ドローン部隊が現れた！\n輸送トラックを守り抜け。',
+    how: '・敵をタップして射撃（弾は6発）\n・下の RELOAD を押して装填（キーボードは R）\n・大型機は4発、ミサイルも撃ち落とせる\n・🦌 は味方！撃つと積荷が傷む' },
+  { id: 'fight', code: 'OP-05', name: '幹部撃退', genre: '格闘', icon: '🥊', date: '12月23日', make: Fight,
+    story: '前夜、K.R.A.M.P.U.S. の幹部「ブラックルフ」が北極倉庫に単身潜入！\nプレゼントを奪われる前に、屋上で決着をつけろ。',
+    how: '・◀ ▶ 移動　▲ ジャンプ　🛡 長押しでガード\n・👊 パンチ（速い）　🦵 キック（強い・長い）\n・ゲージMAXで 🎁 必殺プレゼント・ボム\n・キーボード: A/D 移動 W ジャンプ J パンチ K キック S ガード I 必殺' },
+  { id: 'delivery', code: 'OP-06', name: '配達', genre: 'アクション', icon: '🛷', date: '12月24日', make: Delivery,
+    story: 'ついに決行の夜。ソリで世界中の家の煙突にプレゼントを届けろ。\n起きている子供に姿を見られたら機密漏洩だ。',
+    how: '・画面タップ（スペース）でプレゼントを投下\n・プレゼントは少し後ろへ流れながら落ちる\n・窓が光っている家は子供が起きている。暗くなるのを待て\n・各家の煙突に1つずつ届けよう' },
+];
+const CODENAMES = ['ルドルフ', 'ダッシャー', 'ダンサー', 'プランサー', 'ヴィクセン', 'コメット', 'キューピッド', 'ドナー', 'ブリッツェン'];
+const G = { mode: 'campaign', idx: 0, results: [], codename: pick(CODENAMES) };
+const gradeOf = r => r >= 0.95 ? 'S' : r >= 0.8 ? 'A' : r >= 0.6 ? 'B' : r >= 0.4 ? 'C' : 'D';
+const gradeCol = { S: '#ffd700', A: '#ff6b6b', B: '#6bc5ff', C: '#a3e635', D: '#999' };
+
+// =====================================================================
+//  SCENES
+// =====================================================================
+const Title = {
+  ...BtnMix,
+  enter() {
+    this.t = 0;
+    this.btns = [
+      Btn(60, 400, 240, 58, '作戦開始', () => { G.mode = 'campaign'; G.idx = 0; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { glow: true, size: 22 }),
+      Btn(60, 474, 240, 50, '訓練モード（個別ミッション）', () => go(Training), { color: '#1f3a68', dark: '#0f1f3a', size: 15 }),
+      Btn(110, 540, 140, 40, muted ? '🔇 サウンド OFF' : '🔊 サウンド ON', () => { muted = !muted; try { localStorage.setItem('santa_muted', muted ? '1' : '0'); } catch (e) {} this.btns[2].label = muted ? '🔇 サウンド OFF' : '🔊 サウンド ON'; }, { color: '#333', dark: '#111', size: 13 }),
+    ];
+  },
+  update(dt) { this.t += dt; },
+  draw(dt) {
+    drawNight();
+    cx.fillStyle = '#fffbe0'; cx.beginPath(); cx.arc(285, 110, 40, 0, 7); cx.fill();
+    // silhouette sleigh crossing moon
+    const sx = ((this.t * 40) % (W + 200)) - 100;
+    cx.fillStyle = '#05070f'; emo('🦌', sx + 40, 110 + Math.sin(this.t * 2) * 5, 18, 0.9); emo('🛷', sx, 116 + Math.sin(this.t * 2) * 5, 22, 0.9);
+    drawSnow(dt);
+    text('TOP SECRET', W / 2, 168, 12, '#ff5050');
+    cx.strokeStyle = '#ff5050'; cx.lineWidth = 1.5; rr(W / 2 - 50, 158, 100, 20, 4); cx.stroke();
+    drawEmblem(W / 2, 236, 44);
+    textO('秘密結社', W / 2, 300, 22, '#fff', '#7a0a1c', 5);
+    textO('S.A.N.T.A.', W / 2, 340, 46, '#ffd700', '#7a0a1c', 8);
+    text('Secret Agency for Nocturnal Toy Allocation', W / 2, 374, 10, '#cfd8ff', 'center', 'normal');
+    for (const b of this.btns) drawBtn(b, this.t);
+    if (save.best) text(`最高達成率 ${save.best.toFixed(1)}%（ランク ${save.bestRank}）`, W / 2, 608, 12, '#ffd700');
+    else text('全6ミッションの達成率で、あなたの成績が決まる', W / 2, 608, 12, '#9fb3d9', 'center', 'normal');
+  },
+};
+
+// タイプライター付き文章パネル
+function typeScene(cfg) {
+  return {
+    ...BtnMix,
+    enter(arg) {
+      this.cfg = typeof cfg === 'function' ? cfg(arg) : cfg; this.t = 0; this.n = 0;
+      this.lines = wrapLines(this.cfg.body, W - 64, 15);
+      this.total = this.lines.join('').length;
+      this.btns = [Btn(60, 560, 240, 54, this.cfg.btn, () => { if (this.n < this.total) { this.n = this.total; return; } this.cfg.next(); }, { glow: true, size: 19 })];
+    },
+    update(dt) {
+      this.t += dt;
+      const prev = Math.floor(this.n);
+      if (this.n < this.total) { this.n = Math.min(this.total, this.n + dt * 38); if (Math.floor(this.n) !== prev && Math.floor(this.n) % 2) SFX.type(); }
+    },
+    draw(dt) {
+      drawNight('#04060f', '#141030'); drawSnow(dt, 0.4);
+      this.cfg.head(this.t);
+      drawPanel(16, this.cfg.top || 196, W - 32, (this.cfg.bottom || 540) - (this.cfg.top || 196));
+      let left = Math.floor(this.n), y = (this.cfg.top || 196) + 26;
+      for (const l of this.lines) {
+        const s = l.slice(0, Math.max(0, left)); left -= l.length;
+        text(s, 32, y, 15, '#e8ecff', 'left', 'normal'); y += 24;
+        if (left < 0) break;
+      }
+      for (const b of this.btns) { b.label = this.n < this.total ? '▶ スキップ' : this.cfg.btn; drawBtn(b, this.t); }
+    },
+    down(x, y) { BtnMix.down.call(this, x, y); if (!this._pb && this.n < this.total) this.n = this.total; },
+  };
+}
+
+const Prologue = typeScene(() => ({
+  btn: 'ブリーフィングへ',
+  top: 220,
+  head(t) {
+    drawEmblem(W / 2, 96, 36);
+    text('― 長官からの暗号通信 ―', W / 2, 156, 14, '#ffd700');
+    text(`コードネーム《${G.codename}》`, W / 2, 186, 18, '#fff');
+  },
+  body: `《${G.codename}》、よく来てくれた。\n\n我々、秘密結社 S.A.N.T.A. は、千年以上にわたり世界中の子供たちに「クリスマスの奇跡」を届けてきた。\n\n今年もその夜が近づいている。だが敵対組織 K.R.A.M.P.U.S. が、クリスマスを奪おうと暗躍しているとの情報が入った。\n\n市場調査、資金調達、調達、輸送、そして配達――。君にはこの作戦の全指揮を任せる。\n\n最終的な達成率が、君の評価となる。健闘を祈る。`,
+  next: () => go(Briefing, 0),
+}));
+
+const Briefing = typeScene(i => {
+  const m = MISSIONS[i];
+  return {
+    btn: 'ミッション開始',
+    top: 172, bottom: 545,
+    head(t) {
+      text(G.mode === 'campaign' ? `${m.date}　MISSION ${i + 1} / 6` : `訓練モード　MISSION ${i + 1}`, W / 2, 34, 13, '#9fb3d9');
+      emo(m.icon, W / 2, 80, 44);
+      textO(`${m.code} ${m.name}`, W / 2, 130, 26, '#ffd700', '#7a0a1c', 5);
+      rr(W / 2 - 60, 146, 120, 20, 10); cx.fillStyle = '#c8102e'; cx.fill();
+      text(m.genre, W / 2, 156, 12, '#fff');
+    },
+    body: m.story + '\n\n【操作】\n' + m.how,
+    next: () => go(Play, i),
+  };
+});
+
+const Play = {
+  enter(i) {
+    this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4;
+    this.g = this.m.make({ end: (rate, lines, msg) => { if (this.done) return; this.done = { rate: clamp(rate, 0, 1), lines, msg: msg || 'MISSION END', t: 0 }; SFX.end(); } });
+  },
+  update(dt) {
+    if (this.cd > 0) {
+      this.cd -= dt; const n = Math.ceil(this.cd - 0.6);
+      if (n !== this.last) { this.last = n; if (n > 0) SFX.beep(); else if (n === 0) SFX.go(); }
+      return;
+    }
+    if (this.done) { this.done.t += dt; if (this.done.t > 1.8) go(Result, { i: this.i, ...this.done }); return; }
+    this.g.update(dt);
+  },
+  draw() {
+    cx.save();
+    if (shake > 0) cx.translate(rand(-shake, shake) * 0.6, rand(-shake, shake) * 0.6);
+    this.g.draw(); drawParts();
+    cx.restore();
+    if (this.cd > 0) {
+      cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fillRect(0, 0, W, H);
+      const n = Math.ceil(this.cd - 0.6);
+      const f = (this.cd - 0.6) % 1;
+      textO(n > 0 ? String(n) : 'START!', W / 2, H / 2 - 20, n > 0 ? 80 + f * 30 : 54, '#fff', '#c8102e', 8);
+      text(`${this.m.code} ${this.m.name}`, W / 2, H / 2 + 50, 16, '#ffd700');
+    }
+    if (this.done) {
+      cx.fillStyle = `rgba(0,0,0,${Math.min(0.55, this.done.t)})`; cx.fillRect(0, 0, W, H);
+      const s = Math.min(1, this.done.t * 4);
+      cx.save(); cx.translate(W / 2, H / 2 - 20); cx.scale(s, s);
+      textO(this.done.msg, 0, 0, this.done.msg.length > 10 ? 30 : 42, '#ffd700', '#7a0a1c', 7);
+      cx.restore();
+    }
+  },
+  down(x, y, id) { if (this.cd > 0 || this.done) return; this.g.down && this.g.down(x, y, id); },
+  move(x, y, id, d) { if (this.cd > 0 || this.done) return; this.g.move && this.g.move(x, y, id, d); },
+  up(x, y, id) { this.g.up && this.g.up(x, y, id); },
+  key(c) { if (this.cd > 0 || this.done) return; this.g.key && this.g.key(c); },
+};
+
+const COMMENTS = {
+  S: ['完璧だ。君は伝説になる。', '非の打ち所がない仕事ぶりだ。'],
+  A: ['見事な手際だ。', '優秀だ。この調子で頼む。'],
+  B: ['悪くない。だが、まだやれるはずだ。', '及第点だ。次で取り返せ。'],
+  C: ['危なかったな…気を引き締めろ。', 'ギリギリだ。子供たちの夢がかかっているぞ。'],
+  D: ['これでは作戦に支障が出る…！', '厳しい結果だ。だが次がある。'],
+};
+const Result = {
+  ...BtnMix,
+  enter(a) {
+    this.a = a; this.t = 0; this.shown = 0; this.g = gradeOf(a.rate); this.comment = pick(COMMENTS[this.g]); this.played = false;
+    const m = MISSIONS[a.i];
+    const prev = save.missions[m.id] || 0;
+    this.newBest = a.rate > prev; if (this.newBest) { save.missions[m.id] = a.rate; persist(); }
+    if (G.mode === 'campaign') {
+      G.results[a.i] = a.rate;
+      const last = a.i === MISSIONS.length - 1;
+      this.btns = [Btn(60, 556, 240, 56, last ? '最終評価へ' : '次の作戦へ ▶', () => { if (last) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 20 })];
+    } else {
+      this.btns = [
+        Btn(30, 556, 145, 56, 'もう一度', () => go(Briefing, a.i), { size: 18 }),
+        Btn(185, 556, 145, 56, '訓練メニュー', () => go(Training), { color: '#1f3a68', dark: '#0f1f3a', size: 16 }),
+      ];
+    }
+  },
+  update(dt) {
+    this.t += dt;
+    this.shown = Math.min(this.a.rate, this.shown + dt * 0.8);
+    if (!this.played && this.shown >= this.a.rate) { this.played = true; if (this.g === 'S' || this.g === 'A') SFX.jingle(); else if (this.g === 'D') SFX.sad(); else SFX.good(); }
+  },
+  draw(dt) {
+    drawNight('#04060f', '#141030'); drawSnow(dt, 0.5);
+    const m = MISSIONS[this.a.i];
+    text('MISSION REPORT', W / 2, 40, 14, '#9fb3d9');
+    emo(m.icon, W / 2, 86, 40);
+    textO(`${m.code} ${m.name}`, W / 2, 134, 24, '#fff', '#000', 4);
+    drawPanel(20, 160, W - 40, 370);
+    text('達成率', W / 2, 190, 14, '#9fb3d9');
+    text(`${(this.shown * 100).toFixed(1)}%`, W / 2, 232, 48, '#fff');
+    cx.fillStyle = '#222'; rr(40, 266, W - 80, 14, 7); cx.fill();
+    cx.fillStyle = this.shown >= 0.8 ? '#ffd700' : this.shown >= 0.4 ? '#6bc5ff' : '#e74c3c'; rr(40, 266, (W - 80) * this.shown, 14, 7); cx.fill();
+    if (this.played) {
+      const s = Math.min(1, (this.t - this.a.rate / 0.8) * 5 + 0.2);
+      cx.save(); cx.translate(W - 70, 214); cx.scale(Math.max(0.01, s), Math.max(0.01, s)); cx.rotate(-0.2);
+      cx.strokeStyle = gradeCol[this.g]; cx.lineWidth = 4; cx.beginPath(); cx.arc(0, 0, 30, 0, 7); cx.stroke();
+      text(this.g, 0, 2, 40, gradeCol[this.g], 'center', '900');
+      cx.restore();
+      if (this.newBest && save.missions[m.id] === this.a.rate && G.mode === 'training') text('★自己ベスト更新', W / 2, 296, 12, '#ffd700');
+    }
+    let y = 322;
+    for (const l of this.a.lines) { text(l, 44, y, 15, '#e8ecff', 'left', 'normal'); y += 28; }
+    if (this.played) {
+      text('長官より:', 44, 474, 12, '#ffd700', 'left');
+      const ls = wrapLines(`「${this.comment}」`, W - 90, 14);
+      ls.forEach((l, k) => text(l, 44, 498 + k * 20, 14, '#fff', 'left', 'normal'));
+    }
+    if (this.played) for (const b of this.btns) drawBtn(b, this.t);
+  },
+  down(x, y) { if (!this.played) { this.shown = this.a.rate; return; } BtnMix.down.call(this, x, y); },
+};
+
+const RANKS = [
+  { min: 95, r: 'S', title: '伝説のサンタクロース', msg: '世界中の子供たちが、最高の笑顔で朝を迎えた。君の名は、結社の歴史に永遠に刻まれるだろう。来年は君が長官だ。' },
+  { min: 85, r: 'A', title: '筆頭エージェント', msg: 'ほぼ完璧な作戦だった。子供たちの歓声が北極まで届いている。今夜はゆっくりココアでも飲んでくれ。' },
+  { min: 70, r: 'B', title: '一人前のエージェント', msg: '作戦は成功だ。いくつか取りこぼしはあったが、多くの子供たちが喜んでいる。来年はさらに上を目指せ。' },
+  { min: 50, r: 'C', title: '見習いエージェント', msg: 'なんとか夜は明けた…。プレゼントが届かなかった家もある。トナカイたちと共に、一から鍛え直しだ。' },
+  { min: 0, r: 'D', title: '石炭係', msg: 'これは…惨敗だ。K.R.A.M.P.U.S. の高笑いが聞こえる。君には来年、石炭の配達から始めてもらう。' },
+];
+const Final = {
+  ...BtnMix,
+  enter() {
+    this.t = 0;
+    const rs = MISSIONS.map((m, i) => G.results[i] || 0);
+    this.total = rs.reduce((a, b) => a + b, 0) / rs.length * 100;
+    this.rank = RANKS.find(r => this.total >= r.min);
+    this.kids = Math.round(this.total / 100 * 2200000000);
+    this.newBest = this.total > save.best;
+    if (this.newBest) { save.best = this.total; save.bestRank = this.rank.r; persist(); }
+    this.btns = [
+      Btn(30, 576, 145, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { size: 16 }),
+      Btn(185, 576, 145, 50, 'タイトルへ', () => go(Title), { color: '#1f3a68', dark: '#0f1f3a', size: 16 }),
+    ];
+    this.played = false;
+  },
+  update(dt) {
+    this.t += dt;
+    if (!this.played && this.t > 2.6) { this.played = true; if (this.total >= 70) SFX.fanfare(); else SFX.sad(); if (this.total >= 85) for (let i = 0; i < 4; i++) setTimeout(() => burst(rand(60, 300), rand(100, 260), ['#ffd700', '#ff6b6b', '#6bc5ff', '#2ecc71', '#fff'], 40, 260, 1.2, 4), i * 300); }
+  },
+  draw(dt) {
+    drawNight('#0a1030', '#3a2050');
+    cx.fillStyle = 'rgba(255,200,120,.15)'; cx.beginPath(); cx.arc(W / 2, H + 120, 300, 0, 7); cx.fill();
+    drawSnow(dt);
+    text('12月25日 早朝 ― 最終作戦報告', W / 2, 30, 13, '#9fb3d9');
+    textO('MISSION COMPLETE', W / 2, 62, 26, '#ffd700', '#7a0a1c', 6);
+    drawPanel(16, 86, W - 32, 220);
+    MISSIONS.forEach((m, i) => {
+      const r = G.results[i] || 0, y = 108 + i * 33;
+      const k = clamp((this.t - i * 0.25) * 2, 0, 1);
+      cx.globalAlpha = k;
+      emo(m.icon, 34, y, 16);
+      text(m.name, 50, y, 13, '#fff', 'left');
+      cx.fillStyle = '#222'; rr(150, y - 6, 120, 12, 6); cx.fill();
+      cx.fillStyle = gradeCol[gradeOf(r)]; rr(150, y - 6, 120 * r * k, 12, 6); cx.fill();
+      text(`${Math.round(r * 100 * k)}%`, 308, y, 13, '#fff', 'right');
+      text(gradeOf(r), 326, y, 14, gradeCol[gradeOf(r)], 'center', '900');
+      cx.globalAlpha = 1;
+    });
+    const k2 = clamp((this.t - 1.6) / 1.0, 0, 1);
+    text('総合達成率', W / 2, 330, 14, '#9fb3d9');
+    text(`${(this.total * k2).toFixed(1)}%`, W / 2, 370, 50, '#fff');
+    if (this.t > 2.6) {
+      const s = Math.min(1, (this.t - 2.6) * 4);
+      cx.save(); cx.translate(W - 62, 362); cx.scale(s, s); cx.rotate(-0.2);
+      cx.strokeStyle = gradeCol[this.rank.r]; cx.lineWidth = 5; cx.beginPath(); cx.arc(0, 0, 32, 0, 7); cx.stroke();
+      text(this.rank.r, 0, 2, 44, gradeCol[this.rank.r], 'center', '900');
+      cx.restore();
+      textO(`称号: ${this.rank.title}`, W / 2, 412, 19, gradeCol[this.rank.r], '#000', 4);
+      text(`笑顔になった子供たち: 約${(this.kids / 1e8).toFixed(1)}億人`, W / 2, 440, 13, '#ffe9b0');
+      drawPanel(16, 456, W - 32, 108, 'rgba(8,12,30,.8)');
+      const ls = wrapLines(this.rank.msg, W - 64, 13);
+      ls.slice(0, 5).forEach((l, i) => text(l, 32, 476 + i * 19, 13, '#fff', 'left', 'normal'));
+      for (const b of this.btns) drawBtn(b, this.t);
+      if (this.newBest) text('★ NEW RECORD', W / 2 + 112, 330, 12, '#ffd700');
+    }
+    drawParts();
+  },
+  down(x, y) { if (this.t < 2.6) { this.t = 2.6; return; } BtnMix.down.call(this, x, y); },
+};
+
+const Training = {
+  ...BtnMix,
+  enter() {
+    this.t = 0;
+    this.btns = MISSIONS.map((m, i) => Btn(24, 110 + i * 68, W - 48, 58, '', () => { G.mode = 'training'; go(Briefing, i); }, { color: '#1a2547', dark: '#0b1228', m }));
+    this.btns.push(Btn(110, 530 + 50, 140, 44, '◀ タイトル', () => go(Title), { color: '#333', dark: '#111', size: 15 }));
+  },
+  update(dt) { this.t += dt; },
+  draw(dt) {
+    drawNight('#04060f', '#141030'); drawSnow(dt, 0.4);
+    textO('訓練モード', W / 2, 44, 26, '#ffd700', '#7a0a1c', 5);
+    text('好きなミッションを練習できる', W / 2, 78, 13, '#9fb3d9', 'center', 'normal');
+    for (const b of this.btns) {
+      drawBtn(b, this.t);
+      if (b.m) {
+        const best = save.missions[b.m.id];
+        emo(b.m.icon, b.x + 30, b.y + 29, 26);
+        text(`${b.m.code} ${b.m.name}`, b.x + 58, b.y + 21, 16, '#fff', 'left');
+        text(b.m.genre, b.x + 58, b.y + 41, 11, '#9fb3d9', 'left', 'normal');
+        if (best != null) { text(`${Math.round(best * 100)}%`, b.x + b.w - 44, b.y + 29, 15, '#fff', 'right'); text(gradeOf(best), b.x + b.w - 20, b.y + 29, 20, gradeCol[gradeOf(best)], 'center', '900'); }
+        else text('未プレイ', b.x + b.w - 14, b.y + 29, 12, '#777', 'right');
+      }
+    }
+  },
+};
+
+// =====================================================================
+//  MAIN LOOP
+// =====================================================================
+go(Title);
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; gT += dt;
+  cx.setTransform(scale * DPR, 0, 0, scale * DPR, 0, 0);
+  scene.update(dt);
+  updateParts(dt);
+  scene.draw(dt);
+  if (fade > 0) { cx.fillStyle = `rgba(0,0,0,${fade})`; cx.fillRect(0, 0, W, H); fade = Math.max(0, fade - dt * 4); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// テスト用フック
+window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training }, G, MISSIONS };
+</script>
+</body>
+</html>
