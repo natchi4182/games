@@ -36,7 +36,7 @@ function resize() {
 addEventListener('resize', resize);
 addEventListener('load', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 100));
-document.addEventListener('visibilitychange', () => { if (!document.hidden) resize(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) resize(); else if (typeof scene !== 'undefined' && scene && scene.pause) scene.pause(); });
 resize();
 
 // ---------------------------------------------------------------- utils
@@ -3642,12 +3642,65 @@ const Briefing = typeScene(i => {
 
 const Play = {
   enter(i) {
-    this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4;
+    this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
     this.g = this.m.make({ end: (rate, lines, msg) => { if (this.done) return; this.done = { rate: clamp(rate, 0, 1), lines, msg: msg || 'MISSION END', t: 0, good: rate >= .6 };
       const good = this.done.good; scrFlash = .9; scrFlashCol = good ? '255,250,230' : '255,60,80'; shake = 14;
       noise(.6, .4, 1800); tone(good ? 880 : 220, .5, 'square', .06, good ? 440 : -100); tone(55, .6, 'sawtooth', .08, -20);
       setTimeout(() => good ? melody([[72, .25], [76, .25], [79, .25], [84, .75]], 320, 'square', .06) : melody([[64, .5], [63, .5], [62, 1.5]], 180, 'sawtooth', .05), 250);
       for (let i = 0; i < 60; i++) { const a2 = rand(0, 7), v = rand(150, 600); parts.push({ x: W / 2, y: H / 2 - 20, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v, life: 1, max: 1, col: good ? pick([GOLD2, '#fff', '#ff3b5c', '#4fd18b', '#7fb8ff']) : pick(['#ff3b5c', '#b44cff', '#fff']), size: 4, g: 200 }); } } });
+  },
+  pause() {
+    if (this.paused || this.done || this.cd > 0) return;
+    this.paused = { t: 0, abortArm: false };
+    for (const k in keys) keys[k] = false;
+    const P = this;
+    this.paused.btns = [
+      Btn(52, 420, 256, 56, '作戦再開', () => P.resume(), { glow: true, size: 19, sub: 'RESUME' }),
+      Btn(52, 488, 124, 48, 'やり直す', () => go(Play, P.i), { kind: 'dark', size: 15, sub: 'RETRY' }),
+      Btn(184, 488, 124, 48, '作戦中断', () => { if (!P.paused.abortArm) { P.paused.abortArm = true; P.paused.btns[2].label = 'もう一度で中断'; P.paused.btns[2].sub = 'CONFIRM'; tone(300, .1, 'square', .05); return; } go(G.mode === 'campaign' ? Title : Training); }, { kind: 'dark', size: 15, sub: 'ABORT' }),
+    ];
+    noise(.35, .3, 2500); tone(880, .1, 'square', .05); tone(440, .25, 'square', .05, -200, .08); shake = 0;
+  },
+  resume() { this.paused = null; this.resumeT = .7; tone(660, .08, 'square', .05); tone(990, .2, 'square', .05, 0, .08); noise(.3, .2, 4000); },
+  drawPauseBtn() {
+    if (this.cd > 0 || this.done || this.paused) return;
+    const x = W / 2 + 54, y = 22; bevel(x - 12, y - 11, 24, 22, 5); cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.7)'; cx.lineWidth = 1; cx.stroke();
+    cx.fillStyle = GOLD2; cx.fillRect(x - 5, y - 6, 3.5, 12); cx.fillRect(x + 1.5, y - 6, 3.5, 12);
+  },
+  drawPause() {
+    const pz = this.paused, t = pz.t, k = 1 - Math.pow(1 - Math.min(1, t * 5), 3), m = this.m;
+    cx.fillStyle = `rgba(3,2,8,${.72 * k})`; cx.fillRect(0, 0, W, H);
+    cx.save(); cx.globalAlpha = k; for (let y = (gT * 30) % 4; y < H; y += 4) { cx.fillStyle = 'rgba(0,0,0,.25)'; cx.fillRect(0, y, W, 1.5); } cx.restore();
+    // 左右から閉じるシャッター
+    const sw = 26 * k; cx.fillStyle = INK; cx.fillRect(0, 0, sw, H); cx.fillRect(W - sw, 0, sw, H);
+    cx.fillStyle = CRIM; for (let y = -40 + (gT * 40) % 40; y < H; y += 40) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(sw, y + 14); cx.lineTo(sw, y + 26); cx.lineTo(0, y + 12); cx.fill(); cx.beginPath(); cx.moveTo(W, y); cx.lineTo(W - sw, y + 14); cx.lineTo(W - sw, y + 26); cx.lineTo(W, y + 12); cx.fill(); }
+    cx.fillStyle = GOLD; cx.fillRect(sw, 0, 1, H); cx.fillRect(W - sw - 1, 0, 1, H);
+    // 上下の警告テープ
+    for (const [y, dir] of [[54, 1], [H - 40, -1]]) {
+      cx.save(); cx.globalAlpha = k; cx.fillStyle = CRIM; cx.fillRect(0, y, W, 18); cx.beginPath(); cx.rect(0, y, W, 18); cx.clip();
+      const msg = 'OPERATION ON HOLD  //  PAUSED  //  '; cx.font = `900 9px ${MONO}`; const mw = cx.measureText(msg).width + msg.length * 2;
+      for (let x = -((gT * 50 * dir) % mw + mw) % mw; x < W; x += mw) spaced(msg, x, y + 9.5, 9, '#ffe9ec', 2, 'left', MONO, '900');
+      cx.restore();
+    }
+    // 回転するリングと PAUSED
+    const cy = 170;
+    cx.save(); cx.translate(W / 2, cy); cx.globalAlpha = k; cx.scale(.6 + .4 * k, .6 + .4 * k);
+    for (let i = 0; i < 3; i++) { cx.save(); cx.rotate(gT * (i % 2 ? -.7 : .9)); cx.setLineDash([10 + i * 6, 6]); cx.strokeStyle = i === 1 ? 'rgba(255,60,90,.6)' : 'rgba(212,175,55,.6)'; cx.lineWidth = 1.5; circ(0, 0, 62 + i * 16); cx.stroke(); cx.restore(); }
+    const sg = cx.createRadialGradient(0, 0, 0, 0, 0, 90); sg.addColorStop(0, 'rgba(179,18,46,.35)'); sg.addColorStop(1, 'rgba(179,18,46,0)'); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = sg; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 94, gT * 2, gT * 2 + .8); cx.closePath(); cx.fill(); cx.globalCompositeOperation = 'source-over';
+    cx.fillStyle = 'rgba(255,255,255,.9)'; cx.fillRect(-14, -22, 10, 44); cx.fillRect(4, -22, 10, 44);
+    cx.restore();
+    const gl = (Math.sin(gT * 3) > .97 || t < .25) ? 1 : 0;
+    cx.save(); cx.globalAlpha = k; chromaText('PAUSED', W / 2 + (gl ? rand(-5, 5) : 0), cy + 112, 40, 6, SERIF, goldGrad(cy + 92, cy + 132), gl); cx.restore();
+    // ミッション情報
+    const ck = clamp((t - .12) * 5, 0, 1);
+    cx.save(); cx.globalAlpha = ck; cx.translate((1 - ck) * -60, 0);
+    bevel(40, 320, W - 80, 82, 10); cx.fillStyle = 'rgba(10,8,14,.9)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.5)'; cx.lineWidth = 1; cx.stroke(); corners(44, 324, W - 88, 74, 8, CRIM, 1.5);
+    emo(m.icon, 70, 346, 22); mono(`${m.code}  ·  ${m.genre}`, 92, 338, 8.5, GOLD, 'left'); serifText(m.name, 92, 356, 16, '#fff', 'left', '900');
+    const tip = (m.how.split('\n')[0] || '').replace(/^・/, ''); const ls = wrapLines(tip, W - 110, 10.5);
+    ls.slice(0, 2).forEach((l, i) => text(l, 56, 380 + i * 14, 10.5, '#b9ad8c', 'left', 'normal'));
+    cx.restore();
+    pz.btns.forEach((b, i) => { const q = clamp((t - .2 - i * .07) * 6, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30); drawBtn(b, t); cx.restore(); });
+    cx.save(); cx.globalAlpha = k * .6; mono('ESC / P で再開', W / 2, 556, 8, '#8f876f'); cx.restore();
   },
   update(dt) {
     if (this.cd > 0) {
@@ -3661,6 +3714,8 @@ const Play = {
       }
       return;
     }
+    if (this.paused) { this.paused.t += dt; return; }
+    if (this.resumeT > 0) { this.resumeT -= dt; return; }
     if (this.done) { this.done.t += dt; if (this.done.t > 2.5) go(Result, { i: this.i, ...this.done }); return; }
     if (hitStopG > 0) { hitStopG -= dt; } else this.g.update(dt);
   },
@@ -3724,11 +3779,15 @@ const Play = {
   draw() {
     cx.save();
     if (shake > 0) cx.translate(rand(-shake, shake) * 0.6, rand(-shake, shake) * 0.6);
+    if (this.paused) { const k = Math.min(1, this.paused.t * 5); cx.filter = `grayscale(${.8 * k}) blur(${2 * k}px)`; }
     if (this.done) { const z = 1 + Math.min(1, this.done.t * 1.5) * .1, r = (this.done.good ? -1 : 1) * Math.min(1, this.done.t * 1.5) * .04; cx.translate(W / 2, H / 2); cx.rotate(r); cx.scale(z, z); cx.translate(-W / 2, -H / 2); if (this.done.t < 1.2) cx.filter = this.done.good ? 'none' : 'grayscale(.7) contrast(1.2)'; else cx.filter = 'blur(2px) brightness(.7)'; }
     this.g.draw(); cx.filter = 'none'; drawParts();
     if (scrFlash > 0) { cx.fillStyle = `rgba(${scrFlashCol},${Math.min(1, scrFlash)})`; cx.fillRect(-20, -20, W + 40, H + 40); scrFlash = Math.max(0, scrFlash - 1 / 30); }
     cx.restore();
     if (this.cd > 0) this.drawCountdown();
+    this.drawPauseBtn();
+    if (this.paused) this.drawPause();
+    if (this.resumeT > 0) { const q = 1 - this.resumeT / .7; cx.fillStyle = `rgba(255,250,235,${Math.max(0, .5 - q)})`; cx.fillRect(0, 0, W, H); cx.save(); cx.globalAlpha = 1 - q; cx.translate(W / 2, H / 2 - 20); cx.scale(1 + q * .8, 1 + q * .8); chromaText('RESUME', 0, 0, 40, 6, SERIF, goldGrad(-20, 20), q < .2 ? 1 : 0); cx.restore(); cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = GOLD2; cx.globalAlpha = 1 - q; cx.lineWidth = 3; circ(W / 2, H / 2 - 20, 30 + q * 400); cx.stroke(); cx.restore(); }
     if (this.done) {
       const d = this.done, t = d.t, good = d.good, cy = H / 2 - 20;
       const C1 = good ? GOLD2 : '#ff3b5c', C2 = good ? '#ff3b5c' : '#b44cff';
@@ -3773,10 +3832,20 @@ const Play = {
       if (t > 2.15) { const w = clamp((t - 2.15) / .35, 0, 1); cx.fillStyle = INK; cx.beginPath(); cx.moveTo(-200, 0); cx.lineTo(-200 + (W + 400) * w, 0); cx.lineTo(-200 + (W + 400) * w - 200, H); cx.lineTo(-200, H); cx.closePath(); cx.fill(); cx.strokeStyle = C1; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(-200 + (W + 400) * w, 0); cx.lineTo(-200 + (W + 400) * w - 200, H); cx.stroke(); }
     }
   },
-  down(x, y, id) { if (this.cd > 0 || this.done) return; this.g.down && this.g.down(x, y, id); },
-  move(x, y, id, d) { if (this.cd > 0 || this.done) return; this.g.move && this.g.move(x, y, id, d); },
-  up(x, y, id) { this.g.up && this.g.up(x, y, id); },
-  key(c) { if (this.cd > 0 || this.done) return; this.g.key && this.g.key(c); },
+  down(x, y, id) {
+    if (this.paused) { if (this.paused.t > .2) BtnMix.down.call(this.paused, x, y); return; }
+    if (this.resumeT > 0) return;
+    if (this.cd > 0 || this.done) return;
+    if (y < 44 && x > W / 2 + 34 && x < W / 2 + 76) { this.pause(); return; }
+    this.g.down && this.g.down(x, y, id);
+  },
+  move(x, y, id, d) { if (this.paused || this.resumeT > 0) return; if (this.cd > 0 || this.done) return; this.g.move && this.g.move(x, y, id, d); },
+  up(x, y, id) { if (this.paused) { BtnMix.up.call(this.paused, x, y); return; } this.g.up && this.g.up(x, y, id); },
+  key(c) {
+    if (c === 'Escape' || c === 'KeyP') { if (this.paused) this.resume(); else this.pause(); return; }
+    if (this.paused || this.resumeT > 0) return;
+    if (this.cd > 0 || this.done) return; this.g.key && this.g.key(c);
+  },
 };
 
 const COMMENTS = {
