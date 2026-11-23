@@ -269,6 +269,8 @@ function bgmWant() {
   if (scene === Prologue || scene === Briefing || scene === Training) return 'brief';
   if (scene === Play) return Play.done ? null : Play.m.id;
   if (scene === Result) return Result.t > (Result.R || 0) + .9 ? 'report' : null;
+  if (scene === NameEntry) return 'victory';
+  if (scene === Ranking) return 'report';
   if (scene === Final) return Final.t > 3 ? (Final.good ? 'victory' : 'gloom') : null;
   return null;
 }
@@ -341,8 +343,9 @@ cv.addEventListener('pointercancel', ptrEnd);
 cv.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('keydown', e => {
   audioInit();
+  if (scene === NameEntry && e.code === 'Backspace') e.preventDefault();
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-  if (!keys[e.code]) { keys[e.code] = true; scene.key && scene.key(e.code); }
+  if (!keys[e.code]) { keys[e.code] = true; scene.key && scene.key(e.code, e.key); }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -3761,9 +3764,10 @@ const Title = {
     this.t = titleSeen ? 2.7 : 0; titleSeen = true; this.glitch = 0; this.slam = false; this.beats = {};
     const sndLabel = () => muted ? '🔇 SOUND OFF' : '🔊 SOUND ON';
     this.btns = [
-      Btn(52, 446, 256, 60, '作戦開始', () => { G.mode = 'campaign'; G.idx = 0; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { glow: true, size: 21, sub: 'OPERATION  START' }),
-      Btn(52, 518, 256, 48, '訓練モード', () => go(Training), { kind: 'dark', size: 16, sub: 'TRAINING' }),
+      Btn(52, 446, 256, 60, '作戦開始', () => { G.mode = 'campaign'; G.idx = 0; G.results = []; G.entered = false; G.codename = pick(CODENAMES); go(Prologue); }, { glow: true, size: 21, sub: 'OPERATION  START' }),
+      Btn(52, 518, 124, 48, '訓練モード', () => go(Training), { kind: 'dark', size: 15, sub: 'TRAINING' }),
       Btn(120, 578, 120, 28, sndLabel(), () => { muted = !muted; try { localStorage.setItem('santa_muted', muted ? '1' : '0'); } catch (e) {} this.btns[2].label = sndLabel(); }, { kind: 'ghost', size: 11 }),
+      Btn(184, 518, 124, 48, 'ランキング', () => go(Ranking), { kind: 'dark', size: 15, sub: 'HALL OF FAME' }),
     ];
     const mkF = (x, face, kind) => ({ x, y: 0, vx: 0, vy: 0, face, hp: 100, st: 'idle', t: 0, isP: kind === 'santa', walk: 0, flash: 0, rig: newRig(kind) });
     this.S = mkF(-80, 1, 'santa'); this.K = mkF(W + 80, -1, 'krampus');
@@ -4511,9 +4515,11 @@ const Final = {
     this.newBest = this.total > save.best;
     if (this.newBest) { save.best = this.total; save.bestRank = this.rank.r; persist(); }
     this.btns = [
-      Btn(24, 578, 150, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
+      Btn(24, 578, 150, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.entered = false; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
       Btn(186, 578, 150, 50, 'タイトルへ', () => go(Title), { kind: 'dark', size: 15, sub: 'HEADQUARTERS' }),
     ];
+    this.rkPos = G.mode === 'campaign' && !G.entered ? rankPos(Math.round(this.total * 10) / 10) : -1;
+    if (this.rkPos >= 0) this.btns = [Btn(40, 578, 280, 50, `第${this.rkPos + 1}位 ランクイン！名前を登録`, () => go(NameEntry, { score: this.total, rank: this.rank.r, ex: this.ex != null }), { glow: true, size: 15, sub: 'ENTER YOUR NAME' })];
     this.conf = []; this.fw = 0; this.fl = 0; this.coal = []; this.ev = {};
     const kind = this.good ? 'santa' : 'krampus';
     this.hero = { x: W / 2, y: 0, vx: 0, vy: 0, face: 1, hp: 100, st: 'idle', t: 0, isP: kind === 'santa', walk: 0, flash: 0, rig: newRig(kind) };
@@ -4706,6 +4712,158 @@ const Alert = {
   down(x, y) { if (this.t < 2.2) { this.t = 2.2; for (const k of ['slam', 'cond', 'stamp']) this.ev[k] = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
+// =====================================================================
+//  ランキング（端末に保存・上位10名）＆ 名前入力
+// =====================================================================
+const RANK_N = 10, NAME_MAX = 6;
+if (!Array.isArray(save.ranking)) {
+  save.ranking = [['RUDOLF', 97.5, 'S'], ['DASHER', 92, 'A'], ['VIXEN', 88.5, 'A'], ['COMET', 84, 'B'], ['CUPID', 79, 'B'], ['DONNER', 73.5, 'B'], ['BLITZN', 66, 'C'], ['PRANCR', 58.5, 'C'], ['DANCER', 51, 'C'], ['KRMPUS', 38, 'D']]
+    .map(([name, score, r]) => ({ name, score, r, date: '----', id: 0 }));
+  if (save.best > 0) { save.ranking.push({ name: 'YOU', score: save.best, r: save.bestRank || 'D', date: '----', id: 1 }); }
+  sortRanking();
+}
+function sortRanking() { save.ranking.sort((a, b) => b.score - a.score || a.id - b.id); save.ranking = save.ranking.slice(0, RANK_N); }
+function rankPos(score) { const n = save.ranking.filter(e => e.score >= score).length; return n < RANK_N ? n : -1; }
+const ORD = n => n + (n === 1 ? 'ST' : n === 2 ? 'ND' : n === 3 ? 'RD' : 'TH');
+const MEDAL = ['#f5d26b', '#d8dde6', '#d98b4a'];
+const KEYS_ABC = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', '.', '-', '!', '?', '♥', '★'];
+const KEYS_KANA = [...'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンーッャュョ'];
+const DAKU = { カ: 'ガ', キ: 'ギ', ク: 'グ', ケ: 'ゲ', コ: 'ゴ', サ: 'ザ', シ: 'ジ', ス: 'ズ', セ: 'ゼ', ソ: 'ゾ', タ: 'ダ', チ: 'ヂ', ツ: 'ヅ', テ: 'デ', ト: 'ド', ハ: 'バ', ヒ: 'ビ', フ: 'ブ', ヘ: 'ベ', ホ: 'ボ', ウ: 'ヴ' };
+const HANDAKU = { ハ: 'パ', ヒ: 'ピ', フ: 'プ', ヘ: 'ペ', ホ: 'ポ' };
+
+const NameEntry = {
+  ...BtnMix,
+  enter(a) {
+    this.a = a; this.t = 0; this.time = 30; this.page = 0; this.name = [...(save.lastName || '')].slice(0, NAME_MAX); this.pos = rankPos(Math.round(a.score * 10) / 10); this.pop = []; this.done = false; this.ev = {};
+    const ctl = (x, w, label, sub, fn, glow) => Btn(x, 528, w, 44, label, fn, { kind: glow ? undefined : 'dark', glow, size: 15, sub });
+    this.btns = [
+      ctl(20, 96, 'カナ', 'KANA', () => { this.page ^= 1; this.btns[0].label = this.page ? 'ABC' : 'カナ'; this.btns[0].sub = this.page ? 'ALPHABET' : 'KANA'; }),
+      ctl(126, 96, '◀ けす', 'DELETE', () => this.del()),
+      ctl(232, 108, '決定', 'END', () => this.confirm(), true),
+    ];
+    if (this.page) this.btns[0].label = 'ABC';
+  },
+  keysNow() { return this.page ? [...KEYS_KANA, '゛', '゜'] : KEYS_ABC; },
+  cell(i) { return { x: 20 + (i % 8) * 40, y: 262 + Math.floor(i / 8) * 36, w: 38, h: 33 }; },
+  add(ch) {
+    if (this.done) return;
+    if (ch === '゛' || ch === '゜') { const last = this.name[this.name.length - 1], m = ch === '゛' ? DAKU : HANDAKU; if (last && m[last]) { this.name[this.name.length - 1] = m[last]; tone(1500, .05, 'square', .04); } else SFX.empty(); return; }
+    if (this.name.length >= NAME_MAX) { SFX.empty(); shake = 4; return; }
+    this.name.push(ch); tone(900 + this.name.length * 120, .05, 'square', .05); noise(.03, .1, 4000);
+    const sx = W / 2 + (this.name.length - 1 - (NAME_MAX - 1) / 2) * 44; this.pop.push({ x: sx, y: 212, t: 0 }); burst(sx, 212, [GOLD2, '#fff'], 8, 120, .4, 2);
+  },
+  del() { if (this.done) return; if (this.name.length) { this.name.pop(); tone(400, .05, 'square', .04, -200); } else SFX.empty(); },
+  confirm() {
+    if (this.done) return; this.done = true;
+    const name = this.name.join('') || (G.codename || 'AGENT').slice(0, NAME_MAX);
+    const d = new Date(), date = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    const e = { name, score: Math.round(this.a.score * 10) / 10, r: this.a.rank, ex: !!this.a.ex, date, id: Date.now() };
+    save.ranking.push(e); sortRanking(); save.lastName = name; persist(); G.entered = true;
+    SFX.jingle(); flashFx(.6); shake = 10; burst(W / 2, 212, [GOLD2, '#fff', '#ff3b5c'], 50, 300, .8, 3); ringFx(W / 2, 212, GOLD2, 200, .5, 4);
+    setTimeout(() => go(Ranking, { hl: e.id, from: 'final' }), 900);
+  },
+  update(dt) {
+    const t0 = this.t; this.t += dt;
+    if (!this.done) { const p = this.time; this.time -= dt; if (Math.ceil(p) !== Math.ceil(this.time) && this.time < 10 && this.time > 0) tone(1760, .05, 'square', .04); if (this.time <= 0) { this.time = 0; this.confirm(); } }
+    if (t0 < .05 && this.t >= .05) { SFX.fanfare(); flashFx(.5); shake = 10; }
+    for (const p of this.pop) p.t += dt; this.pop = this.pop.filter(p => p.t < .4);
+  },
+  draw(dt) {
+    const t = this.t;
+    drawAgency(dt, 200);
+    // 虹色にうねる背景ライン（昔のゲーム風）
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 14; i++) { const y = 40 + i * 10 + Math.sin(gT * 3 + i * .5) * 4; cx.fillStyle = `hsla(${(gT * 120 + i * 25) % 360},90%,60%,.08)`; cx.fillRect(0, y, W, 5); }
+    cx.restore();
+    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * .5, rand(-shake, shake) * .5);
+    const k = clamp(t * 4, 0, 1);
+    cx.save(); cx.translate(W / 2, 56); cx.scale(1 + (1 - k) * 2, 1 + (1 - k) * 2); cx.globalAlpha = k;
+    const hue = (gT * 200) % 360; chromaText('NEW RECORD!', 0, 0, 34, 2, SERIF, `hsl(${hue},100%,72%)`, t < .4 ? 1 : 0); cx.restore();
+    if (t > .3) { const q = clamp((t - .3) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(W / 2, 104); cx.scale(1 + (1 - q), 1 + (1 - q)); bigCall(`第${this.pos + 1}位 ランクイン!`, 0, 0, 26, this.pos < 3 ? MEDAL[this.pos] : GOLD2); cx.restore();
+      mono(`SCORE ${this.a.score.toFixed(1)}%   ·   RANK ${this.a.rank}${this.a.ex ? '   ·   EX' : ''}`, W / 2, 136, 10, '#fff'); }
+    // タイマー
+    { const tt = Math.ceil(this.time), warn = this.time < 10; cx.save(); cx.translate(W - 34, 176); cx.strokeStyle = 'rgba(255,255,255,.15)'; cx.lineWidth = 3; circ(0, 0, 16); cx.stroke();
+      cx.strokeStyle = warn ? '#ff3b5c' : GOLD2; cx.beginPath(); cx.arc(0, 0, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.time / 30); cx.stroke(); mono(String(tt), 0, 1, 12, warn && Math.floor(t * 4) % 2 ? '#ff3b5c' : '#fff'); cx.restore();
+      spaced('TIME', W - 34, 200, 6.5, '#8f876f', 1.5); }
+    { const bl = Math.floor(t * 2.5) % 2; cx.save(); cx.globalAlpha = bl ? 1 : .35; spaced('ENTER YOUR NAME', 22, 176, 10, GOLD2, 3, 'left'); cx.restore(); }
+    // 名前の枠
+    for (let i = 0; i < NAME_MAX; i++) {
+      const x = W / 2 + (i - (NAME_MAX - 1) / 2) * 44, y = 212, cur = i === this.name.length && !this.done;
+      bevel(x - 19, y - 22, 38, 44, 6); cx.fillStyle = cur ? 'rgba(179,18,46,.5)' : 'rgba(0,0,0,.6)'; cx.fill(); cx.strokeStyle = cur ? GOLD2 : 'rgba(212,175,55,.35)'; cx.lineWidth = cur ? 2 : 1; cx.stroke();
+      const ch = this.name[i]; const p = this.pop.find(p => Math.abs(p.x - x) < 1); const sc = p ? 1 + (1 - p.t / .4) * .6 : 1;
+      if (ch) { cx.save(); cx.translate(x, y); cx.scale(sc, sc); cx.shadowColor = GOLD2; cx.shadowBlur = 10; serifText(ch, 0, 1, 26, this.done ? `hsl(${(gT * 300 + i * 40) % 360},100%,75%)` : '#fff', 'center', '900'); cx.restore(); }
+      else if (cur && Math.floor(t * 3) % 2) { cx.fillStyle = GOLD2; cx.fillRect(x - 10, y + 12, 20, 3); }
+    }
+    // 文字盤
+    const ks = this.keysNow();
+    ks.forEach((ch, i) => { const c = this.cell(i), hot = this.hot === i && this.hotT > 0;
+      bevel(c.x, c.y, c.w, c.h, 5); cx.fillStyle = hot ? 'rgba(246,224,154,.85)' : 'rgba(20,16,26,.85)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.3)'; cx.lineWidth = 1; cx.stroke();
+      text(ch, c.x + c.w / 2, c.y + c.h / 2 + 1, ch.length > 1 ? 12 : 17, hot ? INK : '#ece6d6'); });
+    if (this.hotT > 0) this.hotT -= dt;
+    this.btns.forEach(b => drawBtn(b, t));
+    cx.restore();
+    text('タップで文字を選び「決定」（キーボードも可）', W / 2, 600, 11, '#8f876f', 'center', 'normal');
+    if (this.done) { cx.fillStyle = `rgba(255,250,230,${Math.max(0, .5 - (t % 1) * 0)})`; }
+  },
+  down(x, y) {
+    const ks = this.keysNow();
+    for (let i = 0; i < ks.length; i++) { const c = this.cell(i); if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) { this.hot = i; this.hotT = .12; this.add(ks[i]); return; } }
+    BtnMix.down.call(this, x, y);
+  },
+  key(code, k) {
+    if (code === 'Backspace') return this.del();
+    if (code === 'Enter') return this.confirm();
+    if (k && k.length === 1 && /[A-Za-z0-9.\-!?]/.test(k)) this.add(k.toUpperCase());
+  },
+};
+
+const Ranking = {
+  ...BtnMix,
+  enter(a = {}) {
+    this.a = a; this.t = 0; this.ev = {};
+    const toTitle = () => go(Title);
+    this.btns = a.from === 'final'
+      ? [Btn(24, 572, 150, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.entered = false; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
+         Btn(186, 572, 150, 50, 'タイトルへ', toTitle, { kind: 'dark', size: 15, sub: 'HEADQUARTERS' })]
+      : [Btn(80, 572, 200, 50, 'タイトルへ', toTitle, { kind: 'dark', size: 15, sub: 'HEADQUARTERS' })];
+  },
+  update(dt) {
+    const t0 = this.t, t = this.t += dt;
+    save.ranking.forEach((e, i) => { const at = .4 + (RANK_N - 1 - i) * .09; if (t0 < at && t >= at) { tone(500 + (RANK_N - i) * 70, .05, 'square', .04); noise(.04, .1, 3000); } });
+    if (t0 < .05 && t >= .05) { noise(.3, .2, 900); tone(90, .3, 'sawtooth', .07, -30); }
+  },
+  draw(dt) {
+    const t = this.t;
+    drawAgency(dt, 140);
+    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 70);
+    for (let i = 0; i < 16; i++) { cx.rotate(Math.PI / 8); const g = cx.createLinearGradient(0, 0, 400, 0); g.addColorStop(0, 'rgba(255,214,120,.12)'); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(400, -20); cx.lineTo(400, 20); cx.fill(); }
+    cx.restore();
+    spaced('TOP SECRET  //  AGENT RECORDS', W / 2, 22, 9, GOLD, 2.5);
+    const k = clamp(t * 5, 0, 1); cx.save(); cx.translate(W / 2, 60); cx.scale(1 + (1 - k) * 1.5, 1 + (1 - k) * 1.5); cx.globalAlpha = k; chromaText('HALL OF FAME', 0, 0, 30, 3, SERIF, goldGrad(-15, 15), t < .3 ? 1 : 0); cx.restore();
+    text('秘密結社 S.A.N.T.A.　歴代エージェント', W / 2, 90, 12, '#c9bd98', 'center', 'normal');
+    spaced('RANK', 30, 112, 7, '#8f876f', 1.5, 'left'); spaced('NAME', 82, 112, 7, '#8f876f', 1.5, 'left'); spaced('SCORE', 262, 112, 7, '#8f876f', 1.5, 'right'); spaced('DATE', 340, 112, 7, '#8f876f', 1.5, 'right');
+    save.ranking.forEach((e, i) => {
+      const at = .4 + (RANK_N - 1 - i) * .09, q = clamp((t - at) * 6, 0, 1); if (q <= 0) return;
+      const y = 140 + i * 42, hl = e.id && e.id === this.a.hl, mc = i < 3 ? MEDAL[i] : '#ece6d6';
+      cx.save(); cx.globalAlpha = q; cx.translate((1 - q) * W, 0);
+      bevel(16, y - 17, W - 32, 36, 8);
+      cx.fillStyle = hl ? `hsla(${(gT * 160) % 360},80%,40%,.55)` : i < 3 ? 'rgba(40,30,10,.75)' : 'rgba(10,8,14,.75)'; cx.fill();
+      cx.strokeStyle = hl ? '#fff' : i < 3 ? mc : 'rgba(212,175,55,.25)'; cx.lineWidth = hl ? 2 : 1; cx.stroke();
+      if (i < 3) { cx.fillStyle = mc; circ(36, y, 12); cx.fill(); cx.fillStyle = 'rgba(0,0,0,.25)'; circ(36, y + 2, 9); cx.fill(); mono(String(i + 1), 36, y + 1, 13, INK); }
+      else mono(ORD(i + 1), 36, y + 1, 11, '#cfc6ad');
+      serifText(e.name, 62, y + 1, 18, hl ? '#fff' : mc, 'left', '900');
+      if (e.ex) { bevel(170, y - 7, 22, 14, 3); cx.fillStyle = CRIM; cx.fill(); mono('EX', 181, y, 7.5, '#fff'); }
+      mono(`${e.score.toFixed(1)}%`, 262, y + 1, 14, '#fff', 'right');
+      serifText(e.r, 282, y + 1, 16, gradeCol[e.r] || '#fff', 'center', '900');
+      if (hl) { cx.save(); cx.globalAlpha = q * (.6 + .4 * Math.sin(gT * 10)); bevel(298, y - 8, 40, 16, 4); cx.fillStyle = '#ff3b5c'; cx.fill(); spaced('NEW', 318, y, 7.5, '#fff', 1.5); cx.restore(); }
+      else mono(e.date === '----' ? '----' : e.date.slice(2), 340, y + 1, 8.5, '#8f876f', 'right');
+      cx.restore();
+    });
+    const bq = clamp((t - 1.5) * 4, 0, 1); this.btns.forEach(b => { cx.save(); cx.globalAlpha = bq; drawBtn(b, t); cx.restore(); });
+  },
+  down(x, y) { if (this.t < 1.5) { this.t = 1.5; return; } BtnMix.down.call(this, x, y); },
+};
+
 const Training = {
   ...BtnMix,
   enter() {
@@ -4826,7 +4984,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 // テスト用フック
-window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training, Alert }, G, MISSIONS, EXTRA };
+window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training, Alert, NameEntry, Ranking }, G, MISSIONS, EXTRA };
 </script>
 </body>
 </html>
