@@ -21,18 +21,23 @@
 //  6つのミニゲームで、今年のクリスマス作戦を完遂せよ。
 // =====================================================================
 
-const W = 360, H = 640;
+let W = 360, H = 640, LAND = false, ROT = false;
 const cv = document.getElementById('c');
 const cx = cv.getContext('2d');
 let scale = 1, DPR = 1;
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2.5);
-  scale = Math.min(innerWidth / W, innerHeight / H);
+  // 横画面モードで端末が縦向きのときは、キャンバスを90度回して表示する
+  ROT = LAND && innerHeight > innerWidth;
+  const aw = ROT ? innerHeight : innerWidth, ah = ROT ? innerWidth : innerHeight;
+  scale = Math.min(aw / W, ah / H);
   cv.style.width = (W * scale) + 'px';
   cv.style.height = (H * scale) + 'px';
+  cv.style.transform = 'translate(-50%, -50%)' + (ROT ? ' rotate(90deg)' : '');
   cv.width = Math.round(W * scale * DPR);
   cv.height = Math.round(H * scale * DPR);
 }
+function setLandscape(on) { if (LAND === on) return; LAND = on; W = on ? 640 : 360; H = on ? 360 : 640; if (typeof vigCanvas !== 'undefined') vigCanvas = null; resize(); }
 addEventListener('resize', resize);
 addEventListener('load', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 100));
@@ -295,6 +300,7 @@ const keys = {};
 const ptrs = new Map();
 function toLocal(e) {
   const r = cv.getBoundingClientRect();
+  if (ROT) return { x: (e.clientY - r.top) / r.height * W, y: (r.right - e.clientX) / r.width * H };
   return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
 }
 cv.addEventListener('pointerdown', e => {
@@ -780,7 +786,7 @@ function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 // ---------------------------------------------------------------- scene mgr
 let scene = { update() {}, draw() {} };
 let fade = 0;
-function go(s, arg) { scene = s; fade = 1; SFX.shutter && SFX.shutter(); parts = []; shake = 0; s.enter && s.enter(arg); }
+function go(s, arg) { if (s !== Play) setLandscape(false); scene = s; fade = 1; SFX.shutter && SFX.shutter(); parts = []; shake = 0; s.enter && s.enter(arg); }
 
 // =====================================================================
 //  MINI GAME 1 : 市場調査（パズル・神経衰弱）
@@ -2246,19 +2252,25 @@ function drawRig(f, opt = {}) {
 }
 
 function Fight(api) {
-  const FL = 392, LIMIT = 60; ctxFL = FL;
+  const FL = LAND ? 296 : 392, LIMIT = 60; ctxFL = FL;
+  const ARB = LAND ? H : ARB, MY = LAND ? 150 : 220;
   const ATK = {
     punch: { s: 0.07, a: 0.1, r: 0.16, rng: 50, dmg: 6, kb: 150, st: 0.3 },
     kick: { s: 0.17, a: 0.12, r: 0.28, rng: 66, dmg: 11, kb: 260, st: 0.42 },
   };
   const mk = (x, face, isP) => ({ x, y: 0, vx: 0, vy: 0, face, hp: 100, hpLag: 100, st: 'idle', t: 0, hit: false, meter: 0, isP, walk: 0, flash: 0, stun: 0, rig: newRig(isP ? 'santa' : 'krampus') });
-  const P = mk(110, 1, true), E = mk(250, -1, false);
+  const P = mk(LAND ? W * .32 : 110, 1, true), E = mk(LAND ? W * .68 : 250, -1, false);
   let overMax = 0, vfx = { fw: 0, last: -1 }, time = LIMIT, proj = [], over = 0, result = '', aiT = 0.6, ai = { l: 0, r: 0, guard: 0 }, combo = 0, comboT = 0, maxCombo = 0, intro = 2.6;
   let hitstop = 0, slow = 0, flashW = 0, cutin = null, winner = null, fx = [], lowQ = false, perfT = 0, perfN = 0, lastNow = 0;
   let windup = null, sfx = null, exform = null, xform = null, hyper = 0, hyperUsed = false, rageOn = false, deer = null, assistCd = 6, negW = 0, speedL = 0;
   const ASSIST_CD = 13, HYPER_T = 12;
   const cam = { x: W / 2, z: 1, kick: 0, ang: 0 };
-  const B = {
+  const B = LAND ? {
+    left: { x: 12, y: 282, w: 62, h: 62, l: '◀' }, right: { x: 82, y: 282, w: 62, h: 62, l: '▶' }, jump: { x: 47, y: 214, w: 62, h: 62, l: '▲' },
+    assist: { x: 152, y: 282, w: 56, h: 62, l: '🦌' },
+    guard: { x: W - 144, y: 214, w: 62, h: 62, l: '🛡' }, sp: { x: W - 74, y: 214, w: 62, h: 62, l: '🎁' },
+    punch: { x: W - 144, y: 282, w: 62, h: 62, l: '👊' }, kick: { x: W - 74, y: 282, w: 62, h: 62, l: '🦵' },
+  } : {
     left: { x: 10, y: 528, w: 70, h: 70, l: '◀' }, right: { x: 88, y: 528, w: 70, h: 70, l: '▶' }, jump: { x: 49, y: 452, w: 70, h: 70, l: '▲' },
     guard: { x: 202, y: 452, w: 70, h: 70, l: '🛡' }, sp: { x: 280, y: 452, w: 70, h: 70, l: '🎁' },
     punch: { x: 202, y: 528, w: 70, h: 70, l: '👊' }, kick: { x: 280, y: 528, w: 70, h: 70, l: '🦵' },
@@ -2527,11 +2539,11 @@ function Fight(api) {
     if (full) spaced('SUPER READY', flip ? x + w - 34 : x + 34, 100, 6.5, palOf(f.rig).aura, 1.5);
   }
   // ---- 背景
-  const BLD = [...Array(14)].map((_, i) => ({ x: i * 36 - 60, w: ri(26, 40), h: ri(90, 210), seed: i }));
+  const BLD = [...Array(Math.ceil((W + 160) / 36))].map((_, i) => ({ x: i * 36 - 60, w: ri(26, 40), h: ri(90, 210), seed: i }));
   function drawStage(z) {
     const g = cx.createLinearGradient(0, 0, 0, FL); g.addColorStop(0, '#030208'); g.addColorStop(.6, '#12061a'); g.addColorStop(1, '#3a0a1c');
     cx.fillStyle = g; cx.fillRect(0, 0, W, FL + 50);
-    for (const s of stars) { cx.globalAlpha = .3 + .5 * Math.abs(Math.sin(gT * 1.5 + s.p)); cx.fillStyle = '#fff'; cx.fillRect(s.x, s.y * .5, s.r, s.r); } cx.globalAlpha = 1;
+    for (const s of stars) { cx.globalAlpha = .3 + .5 * Math.abs(Math.sin(gT * 1.5 + s.p)); cx.fillStyle = '#fff'; cx.fillRect(s.x * W / 360, s.y * .5, s.r, s.r); } cx.globalAlpha = 1;
     const px = (cam.x - W / 2);
     drawMoon(250 - px * .05, 150, 44);
     // サーチライト
@@ -2572,7 +2584,7 @@ function Fight(api) {
     const pal = palOf(c.f.rig);
     cx.save();
     cx.fillStyle = `rgba(0,0,0,${.55 * (1 - out)})`; cx.fillRect(0, 0, W, H);
-    const yc = 210, slide = (1 - e) * W * (c.f.isP ? -1 : 1) + out * W * (c.f.isP ? 1 : -1);
+    const yc = LAND ? 150 : 210, slide = (1 - e) * W * (c.f.isP ? -1 : 1) + out * W * (c.f.isP ? 1 : -1);
     cx.translate(slide, 0);
     cx.beginPath(); cx.moveTo(0, yc - 40); cx.lineTo(W, yc - 70); cx.lineTo(W, yc + 40); cx.lineTo(0, yc + 70); cx.closePath();
     const bg = cx.createLinearGradient(0, 0, W, 0); bg.addColorStop(0, '#000'); bg.addColorStop(.5, c.hyper ? '#8a5a00' : c.f.isP ? '#5e0816' : '#2a0a40'); bg.addColorStop(1, '#000');
@@ -2605,6 +2617,7 @@ function Fight(api) {
       if (sfx) { tx = sfx.o.x; tz = 1.6 - Math.min(.3, sfx.t * .3); }
       if (exform) { tx = E.x; tz = exform.t < 1.3 ? 1.3 + exform.t * .55 : exform.t < 2.6 ? 1.75 : exform.t < 3.6 ? 1.5 : 1.2; }
       if (xform) { tx = P.x; tz = xform.t < 1.3 ? 1.3 + xform.t * .55 : xform.t < 2.6 ? 1.75 : xform.t < 3.6 ? 1.5 : 1.2; }
+      if (LAND) tz = 1 + (tz - 1) * .55;
       cam.x = lerp(cam.x, tx, Math.min(1, rdt * 6)); cam.z = lerp(cam.z, tz, Math.min(1, rdt * 5));
       flashW = Math.max(0, flashW - rdt); negW = Math.max(0, negW - rdt); speedL = Math.max(0, speedL - rdt); cam.ang *= Math.pow(0.02, rdt);
       P.hpLag = Math.max(P.hp, P.hpLag - rdt * (P.st === 'hit' ? 5 : 30)); E.hpLag = Math.max(E.hp, E.hpLag - rdt * (E.st === 'hit' ? 5 : 30));
@@ -2870,7 +2883,7 @@ function Fight(api) {
       const now = performance.now(); if (lastNow) { perfT += Math.min(100, now - lastNow); perfN++; if (perfN >= 45) { if (perfT / perfN > 26) lowQ = true; perfT = 0; perfN = 0; } } lastNow = now;
       const z = cam.z + cam.kick, piv = FL - 70;
       const half = W / (2 * z), camX = clamp(cam.x, half, W - half);
-      cx.save(); cx.beginPath(); cx.rect(0, 0, W, FL + 46); cx.clip();
+      cx.save(); cx.beginPath(); cx.rect(0, 0, W, ARB); cx.clip();
       cx.save(); cx.translate(W / 2, piv); cx.scale(1 + (z - 1) * .3, 1 + (z - 1) * .3); cx.translate(-W / 2, -piv);
       drawStage(z); cx.restore();
       { const vt = vtime(); if (winner && vt > .4) {
@@ -2885,7 +2898,7 @@ function Fight(api) {
           cx.save(); cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = kr;
           for (const ex of [-24, 12]) { const g = cx.createRadialGradient(W / 2 + ex, ey - 26, 1, W / 2 + ex, ey - 26, 34); g.addColorStop(0, 'rgba(255,60,60,.9)'); g.addColorStop(1, 'rgba(255,0,30,0)'); cx.fillStyle = g; circ(W / 2 + ex, ey - 26, 34); cx.fill(); }
           cx.restore();
-          cx.fillStyle = `rgba(40,0,10,${.25 * kr})`; cx.fillRect(0, 0, W, FL + 46);
+          cx.fillStyle = `rgba(40,0,10,${.25 * kr})`; cx.fillRect(0, 0, W, ARB);
         }
         if (isP && vt > .8 && vt < 4.6) { // 月の前をソリが横切る
           const q = (vt - .8) / 3.8, sx = lerp(-80, W + 80, q), sy = 150 - Math.sin(q * Math.PI) * 30;
@@ -3009,15 +3022,15 @@ function Fight(api) {
       drawFx(true);
       cx.restore();
       // 手前の雪
-      cx.fillStyle = '#fff'; for (const s of snow) { cx.globalAlpha = .5 * (s.r / 2.6); circ((s.x - (camX - W / 2) * 1.3 + W * 2) % W, s.y * .7, s.r * 1.3); cx.fill(); } cx.globalAlpha = 1;
+      cx.fillStyle = '#fff'; for (const s of snow) { cx.globalAlpha = .5 * (s.r / 2.6); circ((s.x * W / 360 - (camX - W / 2) * 1.3 + W * 2) % W, s.y * .7 * H / 640, s.r * 1.3); cx.fill(); } cx.globalAlpha = 1;
       cx.restore();
       // 演出レイヤー
-      if (flashW > 0) { cx.fillStyle = `rgba(255,250,240,${Math.min(.8, flashW * 3)})`; cx.fillRect(0, 0, W, FL + 46); }
-      if (slow > 0 && result === 'K.O.') { cx.fillStyle = 'rgba(80,0,20,.18)'; cx.fillRect(0, 0, W, FL + 46); }
+      if (flashW > 0) { cx.fillStyle = `rgba(255,250,240,${Math.min(.8, flashW * 3)})`; cx.fillRect(0, 0, W, ARB); }
+      if (slow > 0 && result === 'K.O.') { cx.fillStyle = 'rgba(80,0,20,.18)'; cx.fillRect(0, 0, W, ARB); }
       // レターボックス（演出中）
       const lb = (intro > 0.9 || cutin || (deer && deer.ph === 'banner') || windup || sfx || xform || exform || (slow > 0 && over)) ? 1 : 0;
       this._lb = lerp(this._lb || 0, lb, 0.2);
-      if (this._lb > .01) { cx.fillStyle = '#000'; cx.fillRect(0, 44, W, 36 * this._lb); cx.fillRect(0, FL + 46 - 30 * this._lb, W, 30 * this._lb); }
+      if (this._lb > .01) { cx.fillStyle = '#000'; cx.fillRect(0, 44, W, 36 * this._lb); cx.fillRect(0, ARB - 30 * this._lb, W, 30 * this._lb); }
       if (intro > 0.9) {
         const isP = intro > 1.7, k = isP ? clamp((2.6 - intro) * 4, 0, 1) : clamp((1.7 - intro) * 4, 0, 1);
         cx.save(); cx.globalAlpha = k; const x0 = isP ? 24 : W - 24, al = isP ? 'left' : 'right';
@@ -3028,7 +3041,7 @@ function Fight(api) {
       if (hyper > 0) {
         const a = .25 + .15 * Math.sin(gT * 8);
         const vg = cx.createRadialGradient(W / 2, FL / 2, FL * .35, W / 2, FL / 2, FL * .85); vg.addColorStop(0, 'rgba(255,200,60,0)'); vg.addColorStop(1, `rgba(255,190,40,${a})`);
-        cx.fillStyle = vg; cx.fillRect(0, 0, W, FL + 46);
+        cx.fillStyle = vg; cx.fillRect(0, 0, W, ARB);
       }
       if (speedL > 0) {
         cx.save(); cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = Math.min(1, speedL * 2) * .55; cx.strokeStyle = '#fff'; cx.lineWidth = 1.5;
@@ -3036,7 +3049,7 @@ function Fight(api) {
         for (let i = 0; i < 40; i++) { const ang = i / 40 * Math.PI * 2 + gT * .5, r0 = 150 + ((i * 53 + gT * 900) % 120); cx.beginPath(); cx.moveTo(cxp + Math.cos(ang) * r0, cyp + Math.sin(ang) * r0); cx.lineTo(cxp + Math.cos(ang) * (r0 + 90), cyp + Math.sin(ang) * (r0 + 90)); cx.stroke(); }
         cx.restore();
       }
-      if (negW > 0) { cx.save(); cx.globalCompositeOperation = 'difference'; cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, FL + 46); cx.restore(); }
+      if (negW > 0) { cx.save(); cx.globalCompositeOperation = 'difference'; cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, ARB); cx.restore(); }
       // 勝利台詞
       { const vt = vtime(); if (winner && vt > .6) {
         const isP = winner === P, k = Math.min(1, (vt - .6) * 6), out = vt > 2.6 ? Math.min(1, (vt - 2.6) * 3) : 0;
@@ -3083,8 +3096,8 @@ function Fight(api) {
       if (exform) {
         const t = exform.t;
         const dk = t < 1.3 ? Math.min(.6, t * .65) : t < 1.4 ? 0 : t < 4.4 ? .4 : .4 * (1 - (t - 4.4) / .4);
-        if (dk > 0) { cx.fillStyle = `rgba(20,0,10,${dk})`; cx.fillRect(0, 0, W, FL + 46); }
-        if (t > 1.3 && t < 1.6) { cx.fillStyle = `rgba(255,20,60,${.7 * (1 - (t - 1.3) / .3)})`; cx.fillRect(0, 0, W, FL + 46); }
+        if (dk > 0) { cx.fillStyle = `rgba(20,0,10,${dk})`; cx.fillRect(0, 0, W, ARB); }
+        if (t > 1.3 && t < 1.6) { cx.fillStyle = `rgba(255,20,60,${.7 * (1 - (t - 1.3) / .3)})`; cx.fillRect(0, 0, W, ARB); }
         if (t < 1.3) { spaced('WARNING  ·  ABYSS ENERGY', W / 2, 120, 9, '#ff4a6a', 2.5); const q = t / 1.3; cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = Math.floor(t * 8) % 2 ? '#ff2a4a' : '#b44cff'; cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`${Math.floor(q * 100)}%`, W / 2, 150, 10, '#fff'); }
         if (t > 1.4 && t < 2.8) { spaced('DEMON ARMOR  ·  BEAST UNLEASHED', W / 2, 120, 8, '#d08cff', 2); const q = clamp((t - 1.4) / 1.1, 0, 1); cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = '#b44cff'; cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`BULK ${Math.floor(100 + q * 280)}%`, W / 2, 150, 10, '#fff'); }
         if (t > 2.65 && t < 3.6) {
@@ -3097,8 +3110,8 @@ function Fight(api) {
       if (xform) {
         const t = xform.t;
         const dk = t < 1.3 ? Math.min(.55, t * .6) : t < 1.4 ? 0 : t < 4.4 ? .35 : .35 * (1 - (t - 4.4) / .4);
-        if (dk > 0) { cx.fillStyle = `rgba(0,0,0,${dk})`; cx.fillRect(0, 0, W, FL + 46); }
-        if (t > 1.3 && t < 1.55) { cx.fillStyle = `rgba(255,252,235,${1 - (t - 1.3) / .25})`; cx.fillRect(0, 0, W, FL + 46); }
+        if (dk > 0) { cx.fillStyle = `rgba(0,0,0,${dk})`; cx.fillRect(0, 0, W, ARB); }
+        if (t > 1.3 && t < 1.55) { cx.fillStyle = `rgba(255,252,235,${1 - (t - 1.3) / .25})`; cx.fillRect(0, 0, W, ARB); }
         // 縦書きの大きな「覚醒」スタンプ
         if (t > 2.65 && t < 3.6) {
           const k = clamp((t - 2.65) / .12, 0, 1), s2 = 2.6 - 1.6 * k, out = clamp((t - 3.35) / .25, 0, 1);
@@ -3106,14 +3119,14 @@ function Fight(api) {
           bigCall('覚', 0, -40, 62, GOLD2); bigCall('醒', 0, 30, 62, GOLD2); cx.restore();
           if (k >= 1 && !xform.banner) { xform.banner = true; shake = 10; noise(.2, .3, 600); }
         }
-        if (t > 2.6 && t < 2.9) { cx.fillStyle = `rgba(255,252,235,${.7 * (1 - (t - 2.6) / .3)})`; cx.fillRect(0, 0, W, FL + 46); }
+        if (t > 2.6 && t < 2.9) { cx.fillStyle = `rgba(255,252,235,${.7 * (1 - (t - 2.6) / .3)})`; cx.fillRect(0, 0, W, ARB); }
         if (t > 1.4 && t < 2.6) { spaced('MECHA ARMOR  ·  MUSCLE OVERLOAD', W / 2, 120, 8, '#9adfff', 2); const q = clamp((t - 1.4) / 1.1, 0, 1); cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = '#9adfff'; cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`BULK ${Math.floor(100 + q * 250)}%`, W / 2, 150, 10, '#fff'); }
         if (t > 3.6 && t < 4.8) drawCutin({ f: P, t: t - 3.6, dur: 1.2, hyper: true, name: 'スーパーサンタ覚醒', sub: 'HYPER MODE  ·  MIRACLE OVERDRIVE' });
         if (t < 1.3) { spaced('MIRACLE ENERGY', W / 2, 120, 9, GOLD2, 3); const q = t / 1.3; cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = goldGrad(132, 138); cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`${Math.floor(q * 100)}%`, W / 2, 150, 10, '#fff'); }
       }
       if (deer && deer.ph === 'banner') {
         const t = deer.t, k = Math.min(1, t / .15), out = Math.max(0, (t - .55) / .15), sl = (1 - Math.pow(1 - k, 3)) - out, yc = 200;
-        cx.fillStyle = `rgba(0,0,0,${.45 * (1 - out)})`; cx.fillRect(0, 0, W, FL + 46);
+        cx.fillStyle = `rgba(0,0,0,${.45 * (1 - out)})`; cx.fillRect(0, 0, W, ARB);
         cx.save(); cx.translate((sl - 1) * W, 0);
         cx.beginPath(); cx.moveTo(0, yc - 36); cx.lineTo(W, yc - 52); cx.lineTo(W, yc + 36); cx.lineTo(0, yc + 52); cx.closePath();
         const bg = cx.createLinearGradient(0, 0, W, 0); bg.addColorStop(0, '#000'); bg.addColorStop(.5, '#1e4a2a'); bg.addColorStop(1, '#000'); cx.fillStyle = bg; cx.fill();
@@ -3129,7 +3142,7 @@ function Fight(api) {
       }
       if (windup || sfx) {
         const isP = (windup ? windup.f : sfx.att).isP, t = windup ? windup.t : sfx.t;
-        cx.fillStyle = isP ? 'rgba(20,6,0,.32)' : 'rgba(16,0,20,.4)'; cx.fillRect(0, 0, W, FL + 46);
+        cx.fillStyle = isP ? 'rgba(20,6,0,.32)' : 'rgba(16,0,20,.4)'; cx.fillRect(0, 0, W, ARB);
         if (sfx) {
           const name = isP ? (hyper > 0 ? 'ミラクル・プレゼント・レイン' : 'プレゼント・ボム') : 'ブラック・コール', y0 = FL + 14;
           const k = Math.min(1, t * 6);
@@ -3147,13 +3160,13 @@ function Fight(api) {
       bevel(W / 2 - 24, 48, 48, 36, 8); cx.fillStyle = 'rgba(0,0,0,.85)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.7)'; cx.lineWidth = 1; cx.stroke();
       mono(String(Math.ceil(time)), W / 2, 67, 22, time < 10 ? '#ff6b6b' : GOLD2);
       if (combo >= 2 && comboT > 0 && !sfx) { cx.save(); cx.translate(70, 130); const s = 1 + Math.max(0, comboT - .75) * 3; cx.scale(s, s); bigCall(`${combo}`, -14, 0, 34); spaced('HITS', 22, 4, 10, GOLD2, 2, 'left', SERIF, '900'); cx.restore(); }
-      if (intro > 0 && intro <= 0.9) bigCall(intro > 0.35 ? 'ROUND 1' : 'FIGHT!', W / 2, 220, intro > 0.35 ? 40 : 52 + (0.35 - intro) * 40);
-      if (over > 0 && result && vtime() < 0) { const s = result === 'K.O.' ? 1 + Math.max(0, (overMax - over) < .4 ? (.4 - (overMax - over)) * 4 : 0) : 1; cx.save(); cx.translate(W / 2, 220); cx.scale(s, s); bigCall(result, 0, 0, result === 'K.O.' ? 68 : 44); cx.restore(); }
+      if (intro > 0 && intro <= 0.9) bigCall(intro > 0.35 ? 'ROUND 1' : 'FIGHT!', W / 2, MY, intro > 0.35 ? 40 : 52 + (0.35 - intro) * 40);
+      if (over > 0 && result && vtime() < 0) { const s = result === 'K.O.' ? 1 + Math.max(0, (overMax - over) < .4 ? (.4 - (overMax - over)) * 4 : 0) : 1; cx.save(); cx.translate(W / 2, MY); cx.scale(s, s); bigCall(result, 0, 0, result === 'K.O.' ? 68 : 44); cx.restore(); }
       // 操作ボタン
-      cx.fillStyle = 'rgba(5,5,8,.95)'; cx.fillRect(0, FL + 46, W, H - FL - 46); cx.fillStyle = goldGrad(FL + 45, FL + 47); cx.fillRect(0, FL + 46, W, 1);
+      cx.fillStyle = 'rgba(5,5,8,.95)'; cx.fillRect(0, ARB, W, H - FL - 46); cx.fillStyle = goldGrad(FL + 45, FL + 47); cx.fillRect(0, ARB, W, 1);
       for (const k in B) {
         const b = B[k], on = held(k), ready = k === 'sp' && P.meter >= 100;
-        cx.globalAlpha = k === 'sp' && !ready ? 0.35 : 1;
+        cx.globalAlpha = (k === 'sp' && !ready ? 0.35 : 1) * (LAND ? .72 * (over > 0 || cutin || xform || exform || windup || sfx || intro > .9 ? 0 : 1) : 1);
         bevel(b.x, b.y, b.w, b.h, 14);
         const bg = cx.createLinearGradient(0, b.y, 0, b.y + b.h); bg.addColorStop(0, on ? '#c9173a' : ready ? '#6a4a0c' : '#1b1b22'); bg.addColorStop(1, on ? '#5e0816' : '#0a0a0e');
         cx.fillStyle = bg; cx.fill();
@@ -3161,12 +3174,14 @@ function Fight(api) {
         if (b.l.length === 1) text(b.l, b.x + b.w / 2, b.y + b.h / 2 + 1, 26, on ? '#fff' : GOLD2); else emo(b.l, b.x + b.w / 2, b.y + b.h / 2, 30);
         cx.globalAlpha = 1;
       }
+      cx.save(); if (LAND && (over > 0 || cutin || xform || exform || windup || sfx || intro > .9)) cx.globalAlpha = 0;
       { const b = B.assist, ready = assistCd <= 0 && !deer;
         if (!ready) { const q = clamp(assistCd / ASSIST_CD, 0, 1); cx.fillStyle = 'rgba(0,0,0,.65)'; cx.fillRect(b.x + 2, b.y + 2, b.w - 4, (b.h - 4) * q); }
         else { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = `rgba(255,90,110,${.5 + .5 * Math.sin(gT * 8)})`; cx.lineWidth = 2; bevel(b.x - 2, b.y - 2, b.w + 4, b.h + 4, 15); cx.stroke(); cx.restore(); }
-        mono(ready ? 'ASSIST' : Math.ceil(assistCd) + 's', b.x + b.w / 2, b.y + 62, 7, ready ? '#ff8aa0' : '#8f876f'); }
-      mono('PUNCH', B.punch.x + 35, B.punch.y + 62, 7, '#8f876f'); mono('KICK', B.kick.x + 35, B.kick.y + 62, 7, '#8f876f');
-      text('ガード(長押し)', B.guard.x + 35, B.guard.y - 8, 9, '#8f876f'); text('必殺(ゲージMAX)', B.sp.x + 35, B.sp.y - 8, 9, '#8f876f');
+        mono(ready ? 'ASSIST' : Math.ceil(assistCd) + 's', b.x + b.w / 2, b.y + b.h - 8, 7, ready ? '#ff8aa0' : '#8f876f'); }
+      mono('PUNCH', B.punch.x + B.punch.w / 2, B.punch.y + B.punch.h - 8, 7, '#8f876f'); mono('KICK', B.kick.x + B.kick.w / 2, B.kick.y + B.kick.h - 8, 7, '#8f876f');
+      text(LAND ? 'ガード' : 'ガード(長押し)', B.guard.x + B.guard.w / 2, B.guard.y - 8, 9, '#8f876f'); text(LAND ? '必殺' : '必殺(ゲージMAX)', B.sp.x + B.sp.w / 2, B.sp.y - 8, 9, '#8f876f');
+      cx.restore();
     },
     down(x, y, id) {
       for (const k in B) if (hit(B[k], x, y)) { touches.set(id, k); if (!HOLD.includes(k)) act(P, k); return; }
@@ -3366,7 +3381,7 @@ const MISSIONS = [
     how: '・敵をタップして射撃（弾は6発）\n・下の RELOAD を押して装填（キーボードは R）\n・大型機は4発、ミサイルも撃ち落とせる\n・🦌 は味方！撃つと積荷が傷む' },
   { id: 'fight', code: 'OP-05', name: '幹部撃退', genre: '格闘', icon: '🥊', date: '12月23日', make: Fight,
     story: '前夜、K.R.A.M.P.U.S. の幹部「ブラックルフ」が北極倉庫に単身潜入！\nプレゼントを奪われる前に、屋上で決着をつけろ。',
-    how: '・◀ ▶ 移動　▲ ジャンプ　🛡 長押しでガード\n・👊 パンチ（速い）　🦵 キック（強い・長い）\n・ゲージMAXで 🎁 必殺プレゼント・ボム\n・🦌 でトナカイのルドルフが突進して援護（時間で再使用）\n・ピンチか6連続ヒットで「スーパーサンタ」に覚醒！\n・キーボード: A/D 移動 W ジャンプ J パンチ K キック S ガード I 必殺 U 援護' },
+    how: '・◀ ▶ 移動　▲ ジャンプ　🛡 長押しでガード\n・👊 パンチ（速い）　🦵 キック（強い・長い）\n・ゲージMAXで 🎁 必殺プレゼント・ボム\n・🦌 でトナカイのルドルフが突進して援護（時間で再使用）\n・ピンチか6連続ヒットで「スーパーサンタ」に覚醒！\n・このミッションは横画面。スマホを横に向けて遊ぼう\n・キーボード: A/D 移動 W ジャンプ J パンチ K キック S ガード I 必殺 U 援護' },
   { id: 'delivery', code: 'OP-06', name: '配達', genre: 'アクション', icon: '🛷', date: '12月24日', make: Delivery,
     story: 'ついに決行の夜。ソリで世界中の家の煙突にプレゼントを届けろ。\n起きている子供に姿を見られたら機密漏洩だ。',
     how: '・画面タップ（スペース）でプレゼントを投下\n・プレゼントは少し後ろへ流れながら落ちる\n・窓が光っている家は子供が起きている。暗くなるのを待て\n・各家の煙突に1つずつ届けよう' },
@@ -3771,7 +3786,7 @@ const Briefing = typeScene(i => {
 
 const Play = {
   enter(i) {
-    bgmHype = 0; hurryG = 0; this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
+    setLandscape(MISSIONS[i].id === 'fight'); bgmHype = 0; hurryG = 0; this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
     this.g = this.m.make({ end: (rate, lines, msg) => { if (this.done) return; this.done = { rate: clamp(rate, 0, 1), lines, msg: msg || 'MISSION END', t: 0, good: rate >= .6 };
       const good = this.done.good; scrFlash = .9; scrFlashCol = good ? '255,250,230' : '255,60,80'; shake = 14;
       noise(.6, .4, 1800); tone(good ? 880 : 220, .5, 'square', .06, good ? 440 : -100); tone(55, .6, 'sawtooth', .08, -20);
@@ -3784,9 +3799,9 @@ const Play = {
     for (const k in keys) keys[k] = false;
     const P = this;
     this.paused.btns = [
-      Btn(52, 420, 256, 56, '作戦再開', () => P.resume(), { glow: true, size: 19, sub: 'RESUME' }),
-      Btn(52, 488, 124, 48, 'やり直す', () => go(Play, P.i), { kind: 'dark', size: 15, sub: 'RETRY' }),
-      Btn(184, 488, 124, 48, '作戦中断', () => { if (!P.paused.abortArm) { P.paused.abortArm = true; P.paused.btns[2].label = 'もう一度で中断'; P.paused.btns[2].sub = 'CONFIRM'; tone(300, .1, 'square', .05); return; } go(G.mode === 'campaign' ? Title : Training); }, { kind: 'dark', size: 15, sub: 'ABORT' }),
+      Btn(LAND ? W / 2 + 20 : 52, LAND ? 168 : 420, 256, 56, '作戦再開', () => P.resume(), { glow: true, size: 19, sub: 'RESUME' }),
+      Btn(LAND ? W / 2 + 20 : 52, LAND ? 234 : 488, 124, 48, 'やり直す', () => go(Play, P.i), { kind: 'dark', size: 15, sub: 'RETRY' }),
+      Btn(LAND ? W / 2 + 152 : 184, LAND ? 234 : 488, 124, 48, '作戦中断', () => { if (!P.paused.abortArm) { P.paused.abortArm = true; P.paused.btns[2].label = 'もう一度で中断'; P.paused.btns[2].sub = 'CONFIRM'; tone(300, .1, 'square', .05); return; } go(G.mode === 'campaign' ? Title : Training); }, { kind: 'dark', size: 15, sub: 'ABORT' }),
     ];
     noise(.35, .3, 2500); tone(880, .1, 'square', .05); tone(440, .25, 'square', .05, -200, .08); shake = 0;
   },
@@ -3812,24 +3827,25 @@ const Play = {
       cx.restore();
     }
     // 回転するリングと PAUSED
-    const cy = 170;
-    cx.save(); cx.translate(W / 2, cy); cx.globalAlpha = k; cx.scale(.6 + .4 * k, .6 + .4 * k);
+    const cy = LAND ? 140 : 170, rx = LAND ? W * .27 : W / 2;
+    cx.save(); cx.translate(rx, cy); cx.globalAlpha = k; cx.scale(.6 + .4 * k, .6 + .4 * k);
     for (let i = 0; i < 3; i++) { cx.save(); cx.rotate(gT * (i % 2 ? -.7 : .9)); cx.setLineDash([10 + i * 6, 6]); cx.strokeStyle = i === 1 ? 'rgba(255,60,90,.6)' : 'rgba(212,175,55,.6)'; cx.lineWidth = 1.5; circ(0, 0, 62 + i * 16); cx.stroke(); cx.restore(); }
     const sg = cx.createRadialGradient(0, 0, 0, 0, 0, 90); sg.addColorStop(0, 'rgba(179,18,46,.35)'); sg.addColorStop(1, 'rgba(179,18,46,0)'); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = sg; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 94, gT * 2, gT * 2 + .8); cx.closePath(); cx.fill(); cx.globalCompositeOperation = 'source-over';
     cx.fillStyle = 'rgba(255,255,255,.9)'; cx.fillRect(-14, -22, 10, 44); cx.fillRect(4, -22, 10, 44);
     cx.restore();
     const gl = (Math.sin(gT * 3) > .97 || t < .25) ? 1 : 0;
-    cx.save(); cx.globalAlpha = k; chromaText('PAUSED', W / 2 + (gl ? rand(-5, 5) : 0), cy + 112, 40, 6, SERIF, goldGrad(cy + 92, cy + 132), gl); cx.restore();
+    cx.save(); cx.globalAlpha = k; chromaText('PAUSED', rx + (gl ? rand(-5, 5) : 0), cy + (LAND ? 104 : 112), 40, 6, SERIF, goldGrad(cy + 84, cy + 132), gl); cx.restore();
     // ミッション情報
     const ck = clamp((t - .12) * 5, 0, 1);
     cx.save(); cx.globalAlpha = ck; cx.translate((1 - ck) * -60, 0);
-    bevel(40, 320, W - 80, 82, 10); cx.fillStyle = 'rgba(10,8,14,.9)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.5)'; cx.lineWidth = 1; cx.stroke(); corners(44, 324, W - 88, 74, 8, CRIM, 1.5);
-    emo(m.icon, 70, 346, 22); mono(`${m.code}  ·  ${m.genre}`, 92, 338, 8.5, GOLD, 'left'); serifText(m.name, 92, 356, 16, '#fff', 'left', '900');
-    const tip = (m.how.split('\n')[0] || '').replace(/^・/, ''); const ls = wrapLines(tip, W - 110, 10.5);
-    ls.slice(0, 2).forEach((l, i) => text(l, 56, 380 + i * 14, 10.5, '#b9ad8c', 'left', 'normal'));
+    const px = LAND ? W / 2 + 20 : 40, py = LAND ? 80 : 320, pw = LAND ? 256 : W - 80;
+    bevel(px, py, pw, 82, 10); cx.fillStyle = 'rgba(10,8,14,.9)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.5)'; cx.lineWidth = 1; cx.stroke(); corners(px + 4, py + 4, pw - 8, 74, 8, CRIM, 1.5);
+    emo(m.icon, px + 30, py + 26, 22); mono(`${m.code}  ·  ${m.genre}`, px + 52, py + 18, 8.5, GOLD, 'left'); serifText(m.name, px + 52, py + 36, 16, '#fff', 'left', '900');
+    const tip = (m.how.split('\n')[0] || '').replace(/^・/, ''); const ls = wrapLines(tip, pw - 30, 10.5);
+    ls.slice(0, 2).forEach((l, i) => text(l, px + 16, py + 60 + i * 14, 10.5, '#b9ad8c', 'left', 'normal'));
     cx.restore();
     pz.btns.forEach((b, i) => { const q = clamp((t - .2 - i * .07) * 6, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30); drawBtn(b, t); cx.restore(); });
-    cx.save(); cx.globalAlpha = k * .6; mono('ESC / P で再開', W / 2, 556, 8, '#8f876f'); cx.restore();
+    cx.save(); cx.globalAlpha = k * .6; mono('ESC / P で再開', LAND ? W / 2 + 148 : W / 2, LAND ? 298 : 556, 8, '#8f876f'); cx.restore();
   },
   update(dt) {
     if (this.cd > 0) {
