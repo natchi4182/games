@@ -2112,15 +2112,15 @@ function Fight(api) {
     fx.push({ k: 'star', x, y, s: big ? 46 : 30, life: .12, max: .12, rot: rand(0, 1) });
     sparks(x, y, cols, big ? 26 : 14, big ? 420 : 300, dir);
   }
-  function fxText(s, x, y, col) { x = clamp(x, 40 + s.length * 6, W - 40 - s.length * 6); fx.push({ k: 'txt', s, x, y, vy: -70, life: .8, max: .8, col }); }
+  function fxText(s, x, y, col) { x = clamp(x, 40 + s.length * 6, W - 40 - s.length * 6); y = Math.max(y, 195); fx.push({ k: 'txt', s, x, y, vy: -70, life: .8, max: .8, col }); }
   function dust(x, y, n = 8) { for (let i = 0; i < n; i++) { const d = i % 2 ? 1 : -1; fx.push({ k: 'dust', x, y, vx: d * rand(30, 110), vy: -rand(10, 50), r: rand(3, 7), life: rand(.35, .6), max: .6 }); } }
 
   function callDeer() {
     if (assistCd > 0 || deer || over || intro > 0 || cutin || xform || exform || windup || sfx || P.st === 'ko') return;
     assistCd = ASSIST_CD; const dir = Math.sign(E.x - P.x) || P.face;
-    deer = { x: dir > 0 ? -70 : W + 70, y: 0, vy: 0, dir, t: 0, hit: false, tr: [] };
-    speedL = .6; melody([[88, .25], [91, .25], [96, .5]], 300, 'square', 0.05); noise(.5, .12, 5000);
-    fxText('ASSIST! ルドルフ', P.x, FL - 160, GOLD2);
+    deer = { ph: 'banner', x: 0, y: 0, rot: 0, dir, t: 0, tr: [], beam: 0 };
+    for (let i = 0; i < 8; i++) tone(1568 + (i % 2) * 523, .09, 'triangle', .05, 0, i * .07);
+    melody([[88, .25], [91, .25], [96, .5]], 300, 'square', 0.05); noise(.5, .12, 6000);
   }
   function act(f, k) {
     if (k === 'assist') { if (f.isP) callDeer(); return; }
@@ -2262,6 +2262,8 @@ function Fight(api) {
       else if (q.k === 'dust') { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.93; q.r += 14 * dt; }
       else if (q.k === 'flame') { q.y += q.vy * dt; q.x += Math.sin(gT * 10 + q.y) * 20 * dt; }
       else if (q.k === 'mote') { q.x += (q.tx - q.x) * Math.min(1, dt * 7); q.y += (q.ty - q.y) * Math.min(1, dt * 7); }
+      else if (q.k === 'shoot') { q.x += q.vx * dt; q.y += q.vy * dt; q.tr.push({ x: q.x, y: q.y }); if (q.tr.length > 18) q.tr.shift(); }
+      else if (q.k === 'twk') { q.y -= 10 * dt; }
       else if (q.k === 'confetti') { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= .97; q.vy = q.vy * .97 + 500 * dt; q.rot += q.vr * dt; }
       else if (q.k === 'gift') { q.y += q.vy * dt; q.rot += dt * 8; if (q.y > q.tx) { q.life = 0; sparks(q.x, q.y, ['#fff', GOLD2, '#ff3b5c'], 10, 200); } }
       else if (q.k === 'rock') { q.y += q.vy * dt; q.vy *= .99; q.rot += q.vr * dt; }
@@ -2283,6 +2285,8 @@ function Fight(api) {
         cx.restore();
       }
       if (!front) continue;
+      if (q.k === 'twk') { cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = a; cx.fillStyle = q.col; const s2 = q.s * (.5 + a * .5); cx.beginPath(); cx.moveTo(q.x, q.y - s2); cx.quadraticCurveTo(q.x, q.y, q.x + s2, q.y); cx.quadraticCurveTo(q.x, q.y, q.x, q.y + s2); cx.quadraticCurveTo(q.x, q.y, q.x - s2, q.y); cx.quadraticCurveTo(q.x, q.y, q.x, q.y - s2); cx.fill(); continue; }
+      if (q.k === 'shoot') { cx.globalCompositeOperation = 'lighter'; q.tr.forEach((t2, i) => { const b2 = i / q.tr.length; cx.globalAlpha = a * b2; cx.fillStyle = i % 3 ? GOLD2 : '#fff'; circ(t2.x, t2.y, 1 + b2 * 3.5); cx.fill(); }); continue; }
       if (q.k === 'confetti') { cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = Math.min(1, a * 2); cx.save(); cx.translate(q.x, q.y); cx.rotate(q.rot); cx.scale(1, Math.abs(Math.sin(q.rot * 2)) + .2); cx.fillStyle = q.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); continue; }
       if (q.k === 'gift') { cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = 1; cx.save(); cx.shadowColor = GOLD2; cx.shadowBlur = 14; drawGift(q.x, q.y, 1.3, q.rot, pick([CRIM, '#2e7a46', '#2a5aa8'])); cx.restore(); continue; }
       if (q.k === 'spike') {
@@ -2409,6 +2413,7 @@ function Fight(api) {
       if (intro > 1.7) { tx = P.x + 20; tz = 1.55; } else if (intro > 0.9) { tx = E.x - 20; tz = 1.55; }
       if (over && result === 'K.O.' && slow > 0) { const l = winner === P ? E : P; tx = l.x; tz = 1.5; }
       if (cutin) { tx = cutin.f.x; tz = 1.35; }
+      if (deer && deer.ph === 'buck') { tx = (deer.x + E.x) / 2; tz = 1.3; }
       if (windup) { tx = windup.f.x + windup.f.face * 20; tz = 1.35 + windup.t * .4; }
       if (sfx) { tx = sfx.o.x; tz = 1.6 - Math.min(.3, sfx.t * .3); }
       if (exform) { tx = E.x; tz = exform.t < 1.3 ? 1.3 + exform.t * .55 : exform.t < 2.6 ? 1.75 : exform.t < 3.6 ? 1.5 : 1.2; }
@@ -2499,6 +2504,11 @@ function Fight(api) {
         }
         return;
       }
+      if (deer && deer.ph === 'banner') {
+        deer.t += rdt; animate(P, rdt * .3); animate(E, rdt * .3);
+        if (deer.t >= .7) { deer.ph = 'dive'; deer.t = 0; deer.sx = P.x - deer.dir * 150; deer.ex = P.x - deer.dir * 10; deer.x = deer.sx; deer.y = 280; SFX.whoosh(); noise(.4, .2, 5000); }
+        return;
+      }
       if (windup) {
         const w = windup, f = w.f; w.t += rdt; f.st = 'throw'; f.t = Math.min(.12, w.t * .3);
         const J = f.rig.W, hx = J.hF.x, hy = J.hF.y - 40;
@@ -2577,17 +2587,34 @@ function Fight(api) {
       proj = proj.filter(p => !p.dead);
       // トナカイ・アシスト
       if (!over && assistCd > 0) assistCd -= sdt;
-      if (deer) {
-        deer.t += sdt; deer.x += deer.dir * 560 * sdt;
-        if (deer.hit) { deer.vy -= 1100 * sdt; deer.y = Math.max(0, deer.y + deer.vy * sdt); }
-        deer.tr.push({ x: deer.x, y: FL - deer.y - 34 }); if (deer.tr.length > 14) deer.tr.shift();
-        if (!deer.hit && Math.abs(deer.x - E.x) < 36 && E.st !== 'ko' && E.y < 90) {
-          deer.hit = true; deer.vy = 460; const wasG = E.st === 'guard' && E.face === -deer.dir;
-          apply(P, E, 9, 300, 0.7, 'deer');
-          if (!wasG && E.st === 'hit') { E.vy = 400; E.stun = 0.8; }
-          fxText('RUDOLPH RUSH!', E.x, FL - 170, '#ff6b8a');
+      if (deer && deer.ph !== 'banner') {
+        const d = deer; d.t += sdt;
+        const sparkle = (n) => { for (let i = 0; i < n; i++) fx.push({ k: 'twk', x: d.x + rand(-40, 40), y: FL - d.y - 30 + rand(-30, 20), life: rand(.3, .7), max: .7, s: rand(3, 8), col: pick([GOLD2, '#fff', '#ff8aa0', '#ffe080']) }); };
+        if (d.ph === 'dive') {
+          const q = Math.min(1, d.t / .38); d.x = lerp(d.sx, d.ex, q); d.y = 280 * Math.pow(1 - q, 2); d.rot = .55 * (1 - q); sparkle(3);
+          if (q >= 1) { d.ph = 'dash'; d.t = 0; shake = 8; dust(d.x, FL, 14); noise(.15, .25, 600); for (let i = 0; i < 2; i++) fx.push({ k: 'ring', x: d.x, y: FL - 4, r: 6, vr: 300 + i * 160, life: .35, max: .35, col: GOLD2 }); }
+        } else if (d.ph === 'dash') {
+          d.x += d.dir * 640 * sdt; d.y = Math.abs(Math.sin(d.t * 18)) * 4; d.rot = 0; sparkle(2); if (Math.random() < .5) dust(d.x - d.dir * 30, FL, 1);
+          if (Math.abs(d.x - E.x) < 40 && E.st !== 'ko' && E.y < 100) {
+            const wasG = E.st === 'guard' && E.face === -d.dir;
+            apply(P, E, 6, 220, .9, 'deer'); if (!wasG && E.st === 'hit') { E.vy = 600; E.stun = 1.3; }
+            hitstop = .1; cam.kick += .06; fxText('ANTLER RUSH!', E.x, FL - 170, GOLD2);
+            d.ph = 'buck'; d.t = 0; d.wasG = wasG;
+          }
+          if (d.x < -140 || d.x > W + 140) { d.ph = 'fly'; d.t = 0; }
+        } else if (d.ph === 'buck') {
+          d.rot = -Math.min(1, d.t / .2) * .55; d.y = Math.min(1, d.t / .2) * 10;
+          if (!d.beamed && d.t >= .26) {
+            d.beamed = true; d.beam = .45; flashW = .15; shake = 12; tone(1200, .35, 'sawtooth', .06, -800); noise(.3, .3, 3000);
+            if (E.st !== 'ko') { apply(P, E, 7, 380, .8, 'deer'); if (E.st === 'hit') E.vy = Math.max(E.vy, 300); fxText('RED NOSE FLASH!', E.x, FL - 150 - E.y, '#ff6b8a'); }
+          }
+          d.beam = Math.max(0, d.beam - sdt);
+          if (d.t > .75) { d.ph = 'fly'; d.t = 0; melody([[84, .25], [88, .25], [91, .25], [96, .75]], 360, 'triangle', 0.05); }
+        } else if (d.ph === 'fly') {
+          d.x += d.dir * 300 * sdt; d.y += (200 + d.t * 700) * sdt; d.rot = -.5; sparkle(4);
+          if (d.y > 420) { fx.push({ k: 'shoot', x: d.dir > 0 ? -20 : W + 20, y: 70, vx: d.dir * 520, vy: 90, life: 1.2, max: 1.2, tr: [] }); deer = null; }
         }
-        if (deer.x < -140 || deer.x > W + 140) deer = null;
+        if (deer) { d.tr.push({ x: d.x, y: d.y, rot: d.rot }); if (d.tr.length > 6) d.tr.shift(); }
       }
       // ハイパーモード（スーパーサンタ）
       if (!hyperUsed && !over && !cutin && !exform && !sfx && !windup && P.st !== 'ko' && (P.hp < 40 || combo >= 6)) {
@@ -2647,15 +2674,24 @@ function Fight(api) {
       const order = (E.st === 'punch' || E.st === 'kick' || E.st === 'throw') && !(P.st === 'punch' || P.st === 'kick') ? [P, E] : [E, P];
       for (const f of order) { if (f.rig.kind === 'krampus') drawEyeTrail(f); drawRig(f); }
       drawTrail(E); drawTrail(P); drawSwirl(E, ATK); drawSwirl(P, ATK);
-      if (deer) {
-        cx.save(); cx.globalCompositeOperation = 'lighter';
-        deer.tr.forEach((q, i) => { const a = i / deer.tr.length; cx.globalAlpha = a * .5; cx.fillStyle = i % 2 ? GOLD2 : '#ff6b8a'; cx.beginPath(); cx.ellipse(q.x, q.y, 10 + a * 26, 4 + a * 10, 0, 0, 7); cx.fill(); });
+      if (deer && deer.ph !== 'banner') {
+        const d = deer, S = 2.1, dy = FL - d.y - 30;
+        // 残像（金色）
+        if (d.ph === 'dash' || d.ph === 'dive') d.tr.forEach((q, i) => { cx.save(); cx.globalAlpha = .12 + i * .05; cx.translate(q.x, FL - q.y - 30); cx.rotate(q.rot * d.dir); cx.filter = 'sepia(1) saturate(4) brightness(1.6)'; drawReindeer(0, 0, S, d.t * 1.6, d.dir, '#ff2a3a'); cx.restore(); });
+        cx.fillStyle = 'rgba(0,0,0,.4)'; cx.beginPath(); cx.ellipse(d.x, FL + 1, 34 * Math.max(.3, 1 - d.y / 300), 6, 0, 0, 7); cx.fill();
+        cx.save(); cx.translate(d.x, dy); cx.rotate(d.rot * d.dir);
+        cx.globalCompositeOperation = 'lighter'; const ag = cx.createRadialGradient(0, 0, 4, 0, 0, 70); ag.addColorStop(0, 'rgba(255,214,74,.35)'); ag.addColorStop(1, 'rgba(255,214,74,0)'); cx.fillStyle = ag; circ(0, 0, 70); cx.fill(); cx.globalCompositeOperation = 'source-over';
+        cx.shadowColor = 'rgba(255,214,74,.9)'; cx.shadowBlur = 18; drawReindeer(0, 0, S, d.ph === 'buck' ? 0 : d.t * 1.6, d.dir, '#ff2a3a');
         cx.restore();
-        const dy = FL - deer.y - 30;
-        cx.fillStyle = 'rgba(0,0,0,.4)'; cx.beginPath(); cx.ellipse(deer.x, FL + 1, 34, 6, 0, 0, 7); cx.fill();
-        cx.save(); cx.shadowColor = 'rgba(255,214,74,.9)'; cx.shadowBlur = 18; drawReindeer(deer.x, dy, 2.1, deer.t * 1.6, deer.dir, '#ff2a3a'); cx.restore();
-        const nx = deer.x + deer.dir * 58, ny = dy - 28;
-        cx.save(); cx.globalCompositeOperation = 'lighter'; const ng = cx.createRadialGradient(nx, ny, 1, nx, ny, 22); ng.addColorStop(0, 'rgba(255,60,80,.95)'); ng.addColorStop(1, 'rgba(255,0,40,0)'); cx.fillStyle = ng; circ(nx, ny, 22); cx.fill(); cx.restore();
+        const nx = d.x + d.dir * (58 * Math.cos(d.rot) + 28 * Math.sin(d.rot)), ny = dy + 58 * Math.sin(d.rot) - 28 * Math.cos(d.rot);
+        cx.save(); cx.globalCompositeOperation = 'lighter'; const nr = 22 + (d.ph === 'buck' && !d.beamed ? d.t * 120 : 0); const ng = cx.createRadialGradient(nx, ny, 1, nx, ny, nr); ng.addColorStop(0, 'rgba(255,60,80,.95)'); ng.addColorStop(1, 'rgba(255,0,40,0)'); cx.fillStyle = ng; circ(nx, ny, nr); cx.fill(); cx.restore();
+        if (d.beam > 0) { // 赤鼻ビーム
+          const k = d.beam / .45, tx = E.x, ty = FL - E.y - 70;
+          cx.save(); cx.globalCompositeOperation = 'lighter';
+          for (const [w2, c2] of [[26 * k, 'rgba(255,0,40,.35)'], [14 * k, 'rgba(255,60,90,.7)'], [5 * k, 'rgba(255,240,240,.95)']]) { cx.strokeStyle = c2; cx.lineWidth = w2; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(nx, ny); cx.lineTo(tx, ty); cx.stroke(); }
+          for (let i = 0; i < 12; i++) { const a2 = i / 12 * Math.PI * 2 + gT * 3; cx.strokeStyle = 'rgba(255,90,110,.6)'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(tx + Math.cos(a2) * 10, ty + Math.sin(a2) * 10); cx.lineTo(tx + Math.cos(a2) * 60 * k, ty + Math.sin(a2) * 60 * k); cx.stroke(); }
+          cx.restore();
+        }
       }
       for (const p of proj) {
         const isP = p.owner === P, col = isP ? GOLD2 : '#b44cff';
@@ -2701,7 +2737,7 @@ function Fight(api) {
       if (flashW > 0) { cx.fillStyle = `rgba(255,250,240,${Math.min(.8, flashW * 3)})`; cx.fillRect(0, 0, W, FL + 46); }
       if (slow > 0 && result === 'K.O.') { cx.fillStyle = 'rgba(80,0,20,.18)'; cx.fillRect(0, 0, W, FL + 46); }
       // レターボックス（演出中）
-      const lb = (intro > 0.9 || cutin || windup || sfx || xform || exform || (slow > 0 && over)) ? 1 : 0;
+      const lb = (intro > 0.9 || cutin || (deer && deer.ph === 'banner') || windup || sfx || xform || exform || (slow > 0 && over)) ? 1 : 0;
       this._lb = lerp(this._lb || 0, lb, 0.2);
       if (this._lb > .01) { cx.fillStyle = '#000'; cx.fillRect(0, 44, W, 36 * this._lb); cx.fillRect(0, FL + 46 - 30 * this._lb, W, 30 * this._lb); }
       if (intro > 0.9) {
@@ -2765,6 +2801,22 @@ function Fight(api) {
         if (t > 1.4 && t < 2.6) { spaced('MECHA ARMOR  ·  MUSCLE OVERLOAD', W / 2, 120, 8, '#9adfff', 2); const q = clamp((t - 1.4) / 1.1, 0, 1); cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = '#9adfff'; cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`BULK ${Math.floor(100 + q * 250)}%`, W / 2, 150, 10, '#fff'); }
         if (t > 3.6 && t < 4.8) drawCutin({ f: P, t: t - 3.6, dur: 1.2, hyper: true, name: 'スーパーサンタ覚醒', sub: 'HYPER MODE  ·  MIRACLE OVERDRIVE' });
         if (t < 1.3) { spaced('MIRACLE ENERGY', W / 2, 120, 9, GOLD2, 3); const q = t / 1.3; cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = goldGrad(132, 138); cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`${Math.floor(q * 100)}%`, W / 2, 150, 10, '#fff'); }
+      }
+      if (deer && deer.ph === 'banner') {
+        const t = deer.t, k = Math.min(1, t / .15), out = Math.max(0, (t - .55) / .15), sl = (1 - Math.pow(1 - k, 3)) - out, yc = 200;
+        cx.fillStyle = `rgba(0,0,0,${.45 * (1 - out)})`; cx.fillRect(0, 0, W, FL + 46);
+        cx.save(); cx.translate((sl - 1) * W, 0);
+        cx.beginPath(); cx.moveTo(0, yc - 36); cx.lineTo(W, yc - 52); cx.lineTo(W, yc + 36); cx.lineTo(0, yc + 52); cx.closePath();
+        const bg = cx.createLinearGradient(0, 0, W, 0); bg.addColorStop(0, '#000'); bg.addColorStop(.5, '#1e4a2a'); bg.addColorStop(1, '#000'); cx.fillStyle = bg; cx.fill();
+        cx.save(); cx.clip(); cx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 18; i++) { const yy = yc - 50 + ((i * 37) % 100), xx = ((i * 97 + t * 1600) % (W + 200)) - 100; cx.fillStyle = i % 2 ? 'rgba(255,214,74,.4)' : 'rgba(255,80,100,.35)'; cx.fillRect(xx, yy, 50 + (i % 4) * 20, 1.5); }
+        cx.globalCompositeOperation = 'source-over'; drawReindeer(72, yc + 26, 2.9, t * 2, 1, '#ff2a3a');
+        cx.globalCompositeOperation = 'lighter'; const ng = cx.createRadialGradient(152, yc - 8, 2, 152, yc - 8, 40); ng.addColorStop(0, 'rgba(255,60,80,.9)'); ng.addColorStop(1, 'rgba(255,0,40,0)'); cx.fillStyle = ng; circ(152, yc - 8, 40); cx.fill();
+        cx.restore();
+        cx.strokeStyle = goldGrad(yc - 52, yc + 52); cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(0, yc - 36); cx.lineTo(W, yc - 52); cx.moveTo(0, yc + 52); cx.lineTo(W, yc + 36); cx.stroke();
+        spaced('ASSIST  ·  RED NOSE RUSH', 252, yc - 22, 7.5, '#8fe0a8', 1.5);
+        bigCall('ルドルフ参上!', 256, yc + 10, 26);
+        cx.restore();
       }
       if (windup || sfx) {
         const isP = (windup ? windup.f : sfx.att).isP, t = windup ? windup.t : sfx.t;
