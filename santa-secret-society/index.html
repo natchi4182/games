@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#05070f">
+<meta name="theme-color" content="#07070a">
 <title>秘密結社 S.A.N.T.A.</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #05070f; overflow: hidden; touch-action: none;
+  html, body { margin: 0; height: 100%; background: #07070a; overflow: hidden; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   canvas { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
     touch-action: none; }
@@ -60,6 +60,8 @@ function wrapLines(s, maxW, sz, w = 'normal') {
     for (const ch of para) {
       if (cx.measureText(line + ch).width > maxW && line) {
         // 行頭禁則（句読点を前の行に残す）
+        const m = line.match(/[A-Za-z0-9.]+$/);
+        if (/[A-Za-z0-9.]/.test(ch) && m && m[0].length < line.length) { out.push(line.slice(0, -m[0].length)); line = m[0] + ch; continue; }
         if ('、。」』）！？ー…'.includes(ch)) { line += ch; out.push(line); line = ''; continue; }
         out.push(line); line = ch;
       } else line += ch;
@@ -191,18 +193,103 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
+// ---------------------------------------------------------------- theme（スパイ映画風: 黒 × 深紅 × 金）
+const INK = '#07070a', CRIM = '#b3122e', CRIM2 = '#5e0816', GOLD = '#d4af37', GOLD2 = '#f6e09a', GOLD3 = '#8a6a1c', PAPER = '#ece4cf';
+const SERIF = '"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP","Noto Serif CJK JP","Times New Roman",serif';
+const MONO = '"SF Mono","Menlo","Consolas","Roboto Mono","Courier New",monospace';
+function goldGrad(y0, y1) {
+  const g = cx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, GOLD2); g.addColorStop(0.5, GOLD); g.addColorStop(1, GOLD3); return g;
+}
+// 字間をあけて描く（タイトル・ラベル用）
+function spaced(s, x, y, sz, col, sp = 2, align = 'center', ff = MONO, w = 'bold') {
+  cx.font = `${w} ${sz}px ${ff}`; cx.fillStyle = col; cx.textBaseline = 'middle'; cx.textAlign = 'left';
+  const ch = [...s], ws = ch.map(c => cx.measureText(c).width);
+  const tot = ws.reduce((a, b) => a + b, 0) + sp * (ch.length - 1);
+  let xx = align === 'center' ? x - tot / 2 : align === 'right' ? x - tot : x;
+  ch.forEach((c, i) => { cx.fillText(c, xx, y); xx += ws[i] + sp; });
+  return tot;
+}
+function serifText(s, x, y, sz, col, align = 'center', w = 'bold') {
+  cx.font = `${w} ${sz}px ${SERIF}`; cx.fillStyle = col; cx.textAlign = align; cx.textBaseline = 'middle'; cx.fillText(s, x, y);
+}
+function mono(s, x, y, sz, col = '#fff', align = 'center', w = 'bold') {
+  cx.font = `${w} ${sz}px ${MONO}`; cx.fillStyle = col; cx.textAlign = align; cx.textBaseline = 'middle'; cx.fillText(s, x, y);
+}
+// 角を斜めに落とした四角（スパイ映画の UI っぽさ）
+function bevel(x, y, w, h, c = 10) {
+  cx.beginPath();
+  cx.moveTo(x + c, y); cx.lineTo(x + w, y); cx.lineTo(x + w, y + h - c); cx.lineTo(x + w - c, y + h);
+  cx.lineTo(x, y + h); cx.lineTo(x, y + c); cx.closePath();
+}
+function corners(x, y, w, h, len = 12, col = GOLD, lw = 2) {
+  cx.strokeStyle = col; cx.lineWidth = lw; cx.beginPath();
+  cx.moveTo(x, y + len); cx.lineTo(x, y); cx.lineTo(x + len, y);
+  cx.moveTo(x + w - len, y); cx.lineTo(x + w, y); cx.lineTo(x + w, y + len);
+  cx.moveTo(x + w, y + h - len); cx.lineTo(x + w, y + h); cx.lineTo(x + w - len, y + h);
+  cx.moveTo(x + len, y + h); cx.lineTo(x, y + h); cx.lineTo(x, y + h - len);
+  cx.stroke();
+}
+function goldRule(y, x0 = 40, x1 = W - 40) {
+  const g = cx.createLinearGradient(x0, 0, x1, 0);
+  g.addColorStop(0, 'rgba(212,175,55,0)'); g.addColorStop(0.5, GOLD); g.addColorStop(1, 'rgba(212,175,55,0)');
+  cx.fillStyle = g; cx.fillRect(x0, y, x1 - x0, 1);
+  const m = (x0 + x1) / 2; cx.fillStyle = GOLD; cx.beginPath(); cx.moveTo(m, y - 4); cx.lineTo(m + 4, y + 0.5); cx.lineTo(m, y + 5); cx.lineTo(m - 4, y + 0.5); cx.fill();
+}
+// ゴム印（評価スタンプ）
+function stamp(x, y, label, sub, col, s = 1, rot = -0.2, r = 36) {
+  cx.save(); cx.translate(x, y); cx.rotate(rot); cx.scale(s, s);
+  cx.globalAlpha *= 0.92;
+  cx.strokeStyle = col; cx.lineWidth = 3.5; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.stroke();
+  cx.lineWidth = 1.5; cx.beginPath(); cx.arc(0, 0, r - 6, 0, 7); cx.stroke();
+  serifText(label, 0, -2, r * 1.05, col, 'center', '900');
+  if (sub) spaced(sub, 0, r * 0.62, 7, col, 1.5);
+  cx.restore();
+}
+function rectStamp(x, y, s, col = CRIM, rot = -0.18, sz = 13) {
+  cx.save(); cx.translate(x, y); cx.rotate(rot);
+  cx.font = `900 ${sz}px ${MONO}`; const w = cx.measureText(s).width + s.length * 2 + 18;
+  cx.strokeStyle = col; cx.lineWidth = 2.5; cx.strokeRect(-w / 2, -sz, w, sz * 2);
+  cx.lineWidth = 1; cx.strokeRect(-w / 2 + 3, -sz + 3, w - 6, sz * 2 - 6);
+  spaced(s, 0, 1, sz, col, 2, 'center', MONO, '900');
+  cx.restore();
+}
+
 // ---------------------------------------------------------------- buttons
 function Btn(x, y, w, h, label, onTap, opt = {}) { return { x, y, w, h, label, onTap, ...opt }; }
 function hit(b, x, y) { return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; }
 function drawBtn(b, t = 0) {
-  const pressed = b._p;
-  const col = b.color || '#c8102e', dark = b.dark || '#7a0a1c';
-  const oy = pressed ? 3 : 0;
-  rr(b.x, b.y + 4, b.w, b.h, 12); cx.fillStyle = dark; cx.fill();
-  rr(b.x, b.y + oy, b.w, b.h, 12); cx.fillStyle = col; cx.fill();
-  cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,255,255,.35)'; cx.stroke();
-  if (b.glow) { cx.globalAlpha = 0.25 + 0.2 * Math.sin(t * 5); rr(b.x - 3, b.y - 3 + oy, b.w + 6, b.h + 6, 14); cx.strokeStyle = '#ffd700'; cx.lineWidth = 3; cx.stroke(); cx.globalAlpha = 1; }
-  text(b.label, b.x + b.w / 2, b.y + b.h / 2 + oy + 1, b.size || 18, b.tc || '#fff');
+  const p = b._p ? 1 : 0;
+  const kind = b.kind || 'primary';
+  const x = b.x, y = b.y + p, w = b.w, h = b.h, c = Math.min(12, h * 0.28);
+  cx.save();
+  if (kind === 'primary') {
+    cx.shadowColor = 'rgba(179,18,46,.55)'; cx.shadowBlur = b.glow ? 14 + 6 * Math.sin(t * 3) : 8;
+    const g = cx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, p ? '#8e0e24' : '#c9173a'); g.addColorStop(1, p ? '#45050f' : '#6e0a1b');
+    bevel(x, y, w, h, c); cx.fillStyle = g; cx.fill(); cx.shadowBlur = 0;
+    cx.lineWidth = 1.5; cx.strokeStyle = goldGrad(y, y + h); cx.stroke();
+    bevel(x + 4, y + 4, w - 8, h - 8, c - 3); cx.lineWidth = 0.7; cx.strokeStyle = 'rgba(246,224,154,.35)'; cx.stroke();
+    if (b.glow) { // 光の筋が流れる
+      cx.save(); bevel(x, y, w, h, c); cx.clip();
+      const sx = x - 60 + ((t * 140) % (w + 200));
+      const sg = cx.createLinearGradient(sx, 0, sx + 50, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,240,200,.28)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.fillStyle = sg; cx.beginPath(); cx.moveTo(sx, y); cx.lineTo(sx + 50, y); cx.lineTo(sx + 30, y + h); cx.lineTo(sx - 20, y + h); cx.fill();
+      cx.restore();
+    }
+  } else if (kind === 'ghost') {
+    bevel(x, y, w, h, c); cx.fillStyle = p ? 'rgba(212,175,55,.18)' : 'rgba(0,0,0,.35)'; cx.fill();
+    cx.lineWidth = 1; cx.strokeStyle = 'rgba(212,175,55,.45)'; cx.stroke();
+  } else { // dark glass
+    const g = cx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, p ? '#1b1b22' : '#18181f'); g.addColorStop(1, '#0a0a0e');
+    bevel(x, y, w, h, c); cx.fillStyle = g; cx.fill();
+    cx.lineWidth = 1.2; cx.strokeStyle = p ? GOLD2 : 'rgba(212,175,55,.7)'; cx.stroke();
+  }
+  cx.restore();
+  const tc = b.tc || (kind === 'primary' ? '#fff' : kind === 'ghost' ? '#d9cfae' : GOLD2);
+  if (b.sub && h >= 44) {
+    text(b.label, x + w / 2, y + h / 2 - 7, b.size || 18, tc);
+    spaced(b.sub, x + w / 2, y + h / 2 + 13, 8, kind === 'primary' ? GOLD2 : GOLD, 2.5);
+  } else if (b.label) text(b.label, x + w / 2, y + h / 2 + 1, b.size || 18, tc);
 }
 // 各シーンで使い回せるボタン処理
 const BtnMix = {
@@ -242,6 +329,8 @@ function drawParts() {
 // ---------------------------------------------------------------- backdrop
 const stars = [...Array(80)].map(() => ({ x: Math.random() * W, y: Math.random() * H * 0.7, r: Math.random() * 1.4 + 0.3, p: Math.random() * 6 }));
 const snow = [...Array(70)].map(() => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 2 + 0.6, v: Math.random() * 25 + 18, p: Math.random() * 6 }));
+const dust = [...Array(46)].map(() => ({ x: Math.random() * W, y: Math.random() * H, v: rand(5, 16), r: rand(0.5, 1.7), p: rand(0, 6) }));
+const skyline = (() => { const a = []; let x = -10; while (x < W + 10) { const w = ri(22, 46), h = ri(40, 130); a.push({ x, w, h, win: [...Array(12)].map(() => Math.random() < 0.18), ant: Math.random() < 0.25 }); x += w + ri(0, 4); } return a; })();
 let gT = 0;
 function drawNight(top = '#060a1c', bot = '#1a1240') {
   const g = cx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, bot);
@@ -258,31 +347,97 @@ function drawSnow(dt, alpha = 0.8) {
   }
   cx.globalAlpha = 1;
 }
-function drawEmblem(x, y, r) {
+// 秘密基地の背景: 漆黒 + 深紅の光 + 細い格子 + 金の粒子
+function drawAgency(dt, glowY = 230) {
+  cx.fillStyle = INK; cx.fillRect(0, 0, W, H);
+  const g = cx.createRadialGradient(W / 2, glowY, 10, W / 2, glowY, 380);
+  g.addColorStop(0, 'rgba(150,14,38,.55)'); g.addColorStop(0.45, 'rgba(70,6,18,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+  cx.fillStyle = 'rgba(212,175,55,.045)';
+  for (let x = 0; x < W; x += 24) cx.fillRect(x, 0, 1, H);
+  for (let y = (gT * 8) % 24; y < H; y += 24) cx.fillRect(0, y, W, 1);
+  for (const d of dust) {
+    d.y -= d.v * dt; d.x += Math.sin(gT * 0.6 + d.p) * 5 * dt;
+    if (d.y < -4) { d.y = H + 4; d.x = Math.random() * W; }
+    cx.globalAlpha = 0.25 + 0.35 * Math.abs(Math.sin(gT + d.p)); cx.fillStyle = GOLD2;
+    cx.beginPath(); cx.arc(d.x, d.y, d.r, 0, 7); cx.fill();
+  }
+  cx.globalAlpha = 1;
+}
+function drawSkyline(base = H, alpha = 1) {
+  cx.globalAlpha = alpha;
+  for (const b of skyline) {
+    cx.fillStyle = '#030305'; cx.fillRect(b.x, base - b.h, b.w, b.h);
+    if (b.ant) { cx.fillRect(b.x + b.w / 2 - 1, base - b.h - 14, 2, 14); cx.fillStyle = Math.floor(gT * 2 + b.x) % 2 ? '#ff2a3a' : '#5a0a12'; cx.fillRect(b.x + b.w / 2 - 1.5, base - b.h - 16, 3, 3); }
+    cx.fillStyle = 'rgba(246,210,120,.55)';
+    b.win.forEach((on, i) => { if (on) cx.fillRect(b.x + 4 + (i % 3) * ((b.w - 8) / 3), base - b.h + 8 + Math.floor(i / 3) * 14, 3, 5); });
+  }
+  cx.globalAlpha = 1;
+}
+function arcText(s, x, y, r, sz, col, start = -Math.PI / 2) {
+  cx.font = `bold ${sz}px ${MONO}`; cx.fillStyle = col; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  const ch = [...s], step = Math.PI * 2 / ch.length;
+  ch.forEach((c, i) => { const a = start + i * step; cx.save(); cx.translate(x + Math.cos(a) * r, y + Math.sin(a) * r); cx.rotate(a + Math.PI / 2); cx.fillText(c, 0, 0); cx.restore(); });
+}
+function drawEmblem(x, y, r, opt = {}) {
   cx.save(); cx.translate(x, y);
-  cx.fillStyle = '#7a0a1c'; cx.beginPath(); cx.arc(0, 3, r, 0, 7); cx.fill();
-  const g = cx.createRadialGradient(-r * .3, -r * .3, 2, 0, 0, r); g.addColorStop(0, '#ff3b4f'); g.addColorStop(1, '#a50d24');
-  cx.fillStyle = g; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill();
-  cx.lineWidth = r * 0.08; cx.strokeStyle = '#ffd700'; cx.beginPath(); cx.arc(0, 0, r * 0.86, 0, 7); cx.stroke();
-  // star
-  cx.fillStyle = '#fff'; cx.beginPath();
-  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr2 = i % 2 ? r * 0.28 : r * 0.62; cx.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2); }
+  if (opt.rot) cx.rotate(opt.rot);
+  const gg = goldGrad(-r, r);
+  if (opt.glow) { cx.shadowColor = 'rgba(200,20,50,.9)'; cx.shadowBlur = r * 0.7; }
+  cx.fillStyle = '#0b0b0f'; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill(); cx.shadowBlur = 0;
+  cx.strokeStyle = gg; cx.lineWidth = Math.max(1.2, r * 0.06); cx.beginPath(); cx.arc(0, 0, r * 0.96, 0, 7); cx.stroke();
+  cx.lineWidth = Math.max(0.8, r * 0.022); cx.beginPath(); cx.arc(0, 0, r * 0.76, 0, 7); cx.stroke();
+  if (opt.ring && r > 30) arcText('✦ S.A.N.T.A. ✦ SECRET AGENCY ', 0, 0, r * 0.86, r * 0.11, gg);
+  else { cx.lineWidth = Math.max(0.6, r * 0.02); cx.beginPath(); for (let i = 0; i < 36; i++) { const a = i * Math.PI / 18; cx.moveTo(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8); cx.lineTo(Math.cos(a) * r * (i % 3 ? 0.86 : 0.91), Math.sin(a) * r * (i % 3 ? 0.86 : 0.91)); } cx.stroke(); }
+  const cg = cx.createRadialGradient(-r * 0.2, -r * 0.25, 1, 0, 0, r * 0.72); cg.addColorStop(0, '#e0213f'); cg.addColorStop(1, '#4a0612');
+  cx.fillStyle = cg; cx.beginPath(); cx.arc(0, 0, r * 0.7, 0, 7); cx.fill();
+  cx.fillStyle = gg; cx.beginPath();
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * 0.21 : r * 0.55; cx.lineTo(Math.cos(a) * q, Math.sin(a) * q); }
   cx.closePath(); cx.fill();
-  text('S', 0, 2, r * 0.5, '#a50d24', 'center', '900');
+  serifText('S', 0, r * 0.03, r * 0.3, '#4a0612', 'center', '900');
   cx.restore();
 }
-function drawPanel(x, y, w, h, col = 'rgba(8,12,30,.88)') {
-  rr(x, y, w, h, 14); cx.fillStyle = col; cx.fill();
-  cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,215,0,.45)'; cx.stroke();
+function drawPanel(x, y, w, h, col = 'rgba(10,10,14,.88)') {
+  bevel(x, y, w, h, 12); cx.fillStyle = col; cx.fill();
+  cx.lineWidth = 1; cx.strokeStyle = 'rgba(212,175,55,.35)'; cx.stroke();
+  corners(x + 4, y + 4, w - 8, h - 8, 10, 'rgba(212,175,55,.8)', 1.5);
 }
 function hud(title, time, right) {
-  cx.fillStyle = 'rgba(0,0,0,.55)'; cx.fillRect(0, 0, W, 44);
-  text(title, 10, 22, 14, '#ffd700', 'left');
+  const g = cx.createLinearGradient(0, 0, 0, 46); g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
+  cx.fillStyle = g; cx.fillRect(0, 0, W, 44);
+  cx.fillStyle = goldGrad(43, 45); cx.fillRect(0, 43, W, 1.5);
+  const sp = title.indexOf(' ');
+  const code = sp > 0 ? title.slice(0, sp) : '', name = sp > 0 ? title.slice(sp + 1) : title;
+  if (code) { cx.fillStyle = CRIM; cx.fillRect(8, 9, 3, 26); mono(code, 16, 15, 9, GOLD, 'left'); }
+  text(name, 16, 30, 13, '#fff', 'left');
   if (time != null) {
-    const t = Math.max(0, time);
-    text(t.toFixed(t < 10 ? 1 : 0), W / 2, 22, 22, t < 6 ? (Math.floor(t * 4) % 2 ? '#ff5050' : '#fff') : '#fff');
+    const t = Math.max(0, time), warn = t < 6 && Math.floor(t * 4) % 2;
+    bevel(W / 2 - 34, 6, 68, 31, 7); cx.fillStyle = warn ? 'rgba(179,18,46,.85)' : 'rgba(0,0,0,.6)'; cx.fill();
+    cx.lineWidth = 1; cx.strokeStyle = 'rgba(212,175,55,.6)'; cx.stroke();
+    mono(t.toFixed(t < 10 ? 1 : 0), W / 2, 22, 20, warn ? '#fff' : (t < 10 ? '#ff6b6b' : GOLD2));
   }
-  if (right) text(right, W - 10, 22, 15, '#fff', 'right');
+  if (right) text(right, W - 10, 22, 14, '#fff', 'right');
+}
+// ゲーム中の大見出し（K.O.! / CHAIN など）
+function bigCall(s, x, y, sz, col1 = GOLD2) {
+  cx.save(); cx.shadowColor = 'rgba(200,20,50,.95)'; cx.shadowBlur = 18;
+  cx.font = `900 ${sz}px ${SERIF}`; cx.lineJoin = 'round'; cx.lineWidth = sz * 0.14; cx.strokeStyle = '#1a0206';
+  cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.strokeText(s, x, y); cx.shadowBlur = 0;
+  cx.fillStyle = col1 === GOLD2 ? goldGrad(y - sz / 2, y + sz / 2) : col1; cx.fillText(s, x, y);
+  cx.restore();
+}
+// 画面全体の仕上げ（周辺減光と走査線）
+let vigCanvas = null, scanPat = null;
+function postFX() {
+  if (!vigCanvas) {
+    vigCanvas = document.createElement('canvas'); vigCanvas.width = W; vigCanvas.height = H;
+    const g = vigCanvas.getContext('2d'), rg = g.createRadialGradient(W / 2, H / 2, H * 0.32, W / 2, H / 2, H * 0.72);
+    rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,0,0,.6)'); g.fillStyle = rg; g.fillRect(0, 0, W, H);
+    const s = document.createElement('canvas'); s.width = 2; s.height = 3; const sg = s.getContext('2d'); sg.fillStyle = 'rgba(0,0,0,.18)'; sg.fillRect(0, 0, 2, 1);
+    scanPat = cx.createPattern(s, 'repeat');
+  }
+  cx.drawImage(vigCanvas, 0, 0, W, H);
+  cx.fillStyle = scanPat; cx.fillRect(0, 0, W, H);
 }
 
 // ---------------------------------------------------------------- save
@@ -294,7 +449,7 @@ function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 // ---------------------------------------------------------------- scene mgr
 let scene = { update() {}, draw() {} };
 let fade = 0;
-function go(s, arg) { scene = s; fade = 1; parts = []; shake = 0; s.enter && s.enter(arg); }
+function go(s, arg) { scene = s; fade = 1; SFX.shutter && SFX.shutter(); parts = []; shake = 0; s.enter && s.enter(arg); }
 
 // =====================================================================
 //  MINI GAME 1 : 市場調査（パズル・神経衰弱）
@@ -321,9 +476,9 @@ function Research(api) {
       if (time <= 0) finish();
     },
     draw() {
-      drawNight('#0a1330', '#17254a');
+      drawNight('#05050a', '#1e0c16');
       hud('OP-01 市場調査', preview > 0 ? LIMIT : time, `照合 ${found}/10`);
-      text(preview > 0 ? '― 傍受した手紙を記憶せよ ―' : '同じ「願い」のカードを2枚そろえろ', W / 2, 74, 14, preview > 0 ? '#ffd700' : '#9fb3d9');
+      text(preview > 0 ? '― 傍受した手紙を記憶せよ ―' : '同じ「願い」のカードを2枚そろえろ', W / 2, 74, 14, preview > 0 ? GOLD2 : '#b9ad8c');
       if (combo > 1) text(`連続照合 ×${combo}`, W / 2, 94, 12, '#ff8');
       for (const c of cards) {
         const p = pos(c);
@@ -334,17 +489,17 @@ function Research(api) {
         cx.translate(p.x + CW / 2 + (c.shake > 0 ? Math.sin(c.shake * 60) * 4 : 0), p.y + CH / 2);
         cx.scale(Math.max(0.02, k), 1);
         if (front) {
-          rr(-CW / 2, -CH / 2, CW, CH, 10); cx.fillStyle = c.done ? '#d9ffe0' : '#fffaf0'; cx.fill();
-          cx.lineWidth = 3; cx.strokeStyle = c.done ? '#2ecc71' : '#e5c07b'; cx.stroke();
+          bevel(-CW / 2, -CH / 2, CW, CH, 9); cx.fillStyle = c.done ? '#e9f3df' : PAPER; cx.fill();
+          cx.lineWidth = c.done ? 2.5 : 1.3; cx.strokeStyle = c.done ? '#3aa864' : GOLD3; cx.stroke();
           emo(c.k, 0, -8, 34);
           text(c.n + 'より', 0, CH / 2 - 13, 11, '#6b4b2a');
           if (c.done) { cx.globalAlpha = 0.85; text('✔', CW / 2 - 12, -CH / 2 + 12, 16, '#2ecc71'); cx.globalAlpha = 1; }
         } else {
-          rr(-CW / 2, -CH / 2, CW, CH, 10); cx.fillStyle = '#8a1022'; cx.fill();
-          cx.lineWidth = 3; cx.strokeStyle = '#ffd700'; cx.stroke();
-          cx.strokeStyle = 'rgba(255,215,0,.3)'; cx.lineWidth = 1; rr(-CW / 2 + 6, -CH / 2 + 6, CW - 12, CH - 12, 6); cx.stroke();
+          bevel(-CW / 2, -CH / 2, CW, CH, 9); { const cg = cx.createLinearGradient(0, -CH / 2, 0, CH / 2); cg.addColorStop(0, '#1d1d25'); cg.addColorStop(1, '#09090c'); cx.fillStyle = cg; } cx.fill();
+          cx.lineWidth = 1.3; cx.strokeStyle = 'rgba(212,175,55,.85)'; cx.stroke();
+          corners(-CW / 2 + 5, -CH / 2 + 5, CW - 10, CH - 10, 8, CRIM, 1.5);
           drawEmblem(0, -6, 17);
-          text('極秘', 0, CH / 2 - 14, 11, '#ffd700');
+          spaced('CLASSIFIED', 0, CH / 2 - 13, 6.5, GOLD, 1);
         }
         cx.restore();
       }
@@ -425,7 +580,7 @@ function Funding(api) {
     },
     draw() {
       // 夜の金融街
-      drawNight('#081022', '#20304f');
+      drawNight('#05060c', '#1d1220');
       for (let i = 0; i < 9; i++) {
         const bx = i * 42 - 6, bh = 110 + ((i * 53) % 90);
         cx.fillStyle = '#0d1a33'; cx.fillRect(bx, PY + 20 - bh, 40, bh);
@@ -615,7 +770,7 @@ function Procure(api) {
         emo(T[t.t], x, y, mk ? 26 + clearT * 30 : 28);
       }
       cx.restore();
-      if (banner > 0) { cx.globalAlpha = Math.min(1, banner * 2); textO(bannerTxt, W / 2, Y0 + R * S / 2, 36, '#ffd700', '#7a0a1c', 6); cx.globalAlpha = 1; }
+      if (banner > 0) { cx.globalAlpha = Math.min(1, banner * 2); bigCall(bannerTxt, W / 2, Y0 + R * S / 2, 36); cx.globalAlpha = 1; }
       text('連鎖でボーナス倍率アップ!', W / 2, Y0 + R * S + 30, 13, '#f5deb3');
     },
     get dbg() { return { g, state, score, R, C }; },
@@ -961,13 +1116,17 @@ function Fight(api) {
     cx.restore();
   }
   function bar(x, w, f, flip, name, col) {
-    cx.fillStyle = '#000'; rr(x - 2, 52, w + 4, 18, 5); cx.fill();
-    const r = f.hp / 100; cx.fillStyle = r > 0.5 ? '#2ecc71' : r > 0.25 ? '#f1c40f' : '#e74c3c';
-    if (flip) rr(x + w * (1 - r), 54, w * r, 14, 4); else rr(x, 54, w * r, 14, 4); cx.fill();
-    text(name, flip ? x + w : x, 80, 11, col, flip ? 'right' : 'left');
-    cx.fillStyle = '#222'; rr(x, 88, w, 6, 3); cx.fill();
-    cx.fillStyle = f.meter >= 100 ? (Math.floor(gT * 8) % 2 ? '#fff' : '#ffd700') : '#d4a017';
-    if (flip) rr(x + w * (1 - f.meter / 100), 88, w * f.meter / 100, 6, 3); else rr(x, 88, w * f.meter / 100, 6, 3); cx.fill();
+    bevel(x - 2, 50, w + 4, 20, 6); cx.fillStyle = 'rgba(0,0,0,.8)'; cx.fill(); cx.strokeStyle = goldGrad(50, 70); cx.lineWidth = 1.2; cx.stroke();
+    const r = f.hp / 100;
+    const hg = cx.createLinearGradient(0, 53, 0, 67);
+    if (r > 0.3) { hg.addColorStop(0, '#f6e09a'); hg.addColorStop(1, '#b88a1e'); } else { hg.addColorStop(0, '#ff6b7d'); hg.addColorStop(1, '#8e0e24'); }
+    cx.fillStyle = hg; if (flip) cx.fillRect(x + 1 + (w - 2) * (1 - r), 53, (w - 2) * r, 14); else cx.fillRect(x + 1, 53, (w - 2) * r, 14);
+    cx.fillStyle = 'rgba(0,0,0,.35)'; for (let i = 1; i < 10; i++) cx.fillRect(x + w * i / 10, 53, 1, 14);
+    mono(name, flip ? x + w : x, 80, 9, col, flip ? 'right' : 'left');
+    cx.fillStyle = '#16161c'; cx.fillRect(x, 88, w, 6);
+    cx.fillStyle = f.meter >= 100 ? (Math.floor(gT * 8) % 2 ? '#fff' : CRIM) : CRIM;
+    if (flip) cx.fillRect(x + w * (1 - f.meter / 100), 88, w * f.meter / 100, 6); else cx.fillRect(x, 88, w * f.meter / 100, 6);
+    cx.strokeStyle = 'rgba(212,175,55,.5)'; cx.lineWidth = 1; cx.strokeRect(x, 88, w, 6);
   }
   return {
     update(dt) {
@@ -993,36 +1152,39 @@ function Fight(api) {
     },
     draw() {
       // 屋上ステージ（北極の倉庫）
-      drawNight('#0b0820', '#2a1a4a');
-      cx.fillStyle = '#f4f1c9'; cx.beginPath(); cx.arc(70, 140, 30, 0, 7); cx.fill();
-      cx.fillStyle = '#120e26';
+      drawNight('#05050a', '#2a0a16');
+      cx.save(); cx.shadowColor = 'rgba(255,240,200,.6)'; cx.shadowBlur = 30; cx.fillStyle = '#f4ecd0'; cx.beginPath(); cx.arc(70, 150, 30, 0, 7); cx.fill(); cx.restore();
+      cx.fillStyle = '#0a0710';
       for (let i = 0; i < 8; i++) { const bh = 90 + ((i * 41) % 80); cx.fillRect(i * 48 - 10, FL - bh, 44, bh); }
       cx.fillStyle = 'rgba(255,230,140,.3)'; for (let i = 0; i < 30; i++) cx.fillRect((i * 67) % W, FL - 30 - ((i * 29) % 120), 5, 7);
-      cx.fillStyle = '#3b3f58'; cx.fillRect(0, FL, W, 46);
+      cx.fillStyle = '#1c1a24'; cx.fillRect(0, FL, W, 46);
       cx.fillStyle = '#e8eef8'; cx.fillRect(0, FL, W, 5);
-      cx.fillStyle = '#2a2d40'; for (let x = 0; x < W; x += 40) cx.fillRect(x, FL + 8, 2, 38);
+      cx.fillStyle = '#121018'; for (let x = 0; x < W; x += 40) cx.fillRect(x, FL + 8, 2, 38);
       text('S.A.N.T.A. 北極倉庫・屋上', W / 2, FL + 28, 11, 'rgba(255,255,255,.4)');
       for (const p of proj) { cx.save(); cx.translate(p.x, FL - p.y); cx.rotate(p.r); emo(p.owner === P ? '🎁' : '🌑', 0, 0, 26); cx.restore(); }
       drawFighter(E, { kind: 'krampus', body: '#1d1d26', trim: '#5b1a8a', pants: '#2b2b38', glove: '#5b1a8a' });
       drawFighter(P, { kind: 'santa', body: '#c8102e', trim: '#111', pants: '#1a1a1a', glove: '#fff', tie: '#111' });
-      bar(12, 140, P, false, 'エージェント（あなた）', '#ffd700');
-      bar(W - 152, 140, E, true, '敵幹部 ブラックルフ', '#c77dff');
-      text(Math.ceil(time), W / 2, 66, 26, time < 10 ? '#ff6b6b' : '#fff');
-      if (combo >= 2 && comboT > 0) textO(`${combo} HIT!`, 70, 120, 22, '#ffd700', '#7a0a1c', 5);
-      if (intro > 0) textO(intro > 0.5 ? 'ROUND 1' : 'FIGHT!', W / 2, 220, 40, '#fff', '#c8102e', 7);
-      if (over && result) textO(result, W / 2, 220, 44, '#ffd700', '#7a0a1c', 8);
+      bar(12, 140, P, false, 'AGENT (YOU)', GOLD2);
+      bar(W - 152, 140, E, true, 'BLACKRUF / K.R.A.M.P.U.S.', '#c77dff');
+      bevel(W / 2 - 24, 48, 48, 36, 8); cx.fillStyle = 'rgba(0,0,0,.8)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.7)'; cx.lineWidth = 1; cx.stroke();
+      mono(String(Math.ceil(time)), W / 2, 67, 22, time < 10 ? '#ff6b6b' : GOLD2);
+      if (combo >= 2 && comboT > 0) bigCall(`${combo} HITS`, 74, 122, 22);
+      if (intro > 0) bigCall(intro > 0.5 ? 'ROUND 1' : 'FIGHT!', W / 2, 220, 42);
+      if (over > 0 && result) bigCall(result, W / 2, 220, 46);
       // controls
-      cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fillRect(0, FL + 46, W, H - FL - 46);
+      cx.fillStyle = 'rgba(5,5,8,.92)'; cx.fillRect(0, FL + 46, W, H - FL - 46); cx.fillStyle = goldGrad(FL + 45, FL + 47); cx.fillRect(0, FL + 46, W, 1);
       for (const k in B) {
         const b = B[k], on = held(k);
         cx.globalAlpha = k === 'sp' && P.meter < 100 ? 0.35 : 1;
-        rr(b.x, b.y, b.w, b.h, 16); cx.fillStyle = on ? '#ffd700' : 'rgba(255,255,255,.14)'; cx.fill();
-        cx.lineWidth = 2; cx.strokeStyle = 'rgba(255,255,255,.4)'; cx.stroke();
-        if (b.l.length === 1) text(b.l, b.x + b.w / 2, b.y + b.h / 2 + 1, 28, on ? '#000' : '#fff'); else emo(b.l, b.x + b.w / 2, b.y + b.h / 2, 30);
+        bevel(b.x, b.y, b.w, b.h, 14);
+        const bg = cx.createLinearGradient(0, b.y, 0, b.y + b.h); bg.addColorStop(0, on ? '#c9173a' : '#1b1b22'); bg.addColorStop(1, on ? '#5e0816' : '#0a0a0e');
+        cx.fillStyle = bg; cx.fill();
+        cx.lineWidth = 1.3; cx.strokeStyle = on ? GOLD2 : 'rgba(212,175,55,.6)'; cx.stroke();
+        if (b.l.length === 1) text(b.l, b.x + b.w / 2, b.y + b.h / 2 + 1, 26, on ? '#fff' : GOLD2); else emo(b.l, b.x + b.w / 2, b.y + b.h / 2, 30);
         cx.globalAlpha = 1;
       }
-      text('パンチ', B.punch.x + 35, B.punch.y + 64, 9, '#aaa'); text('キック', B.kick.x + 35, B.kick.y + 64, 9, '#aaa');
-      text('ガード(長押し)', B.guard.x + 35, B.guard.y - 7, 9, '#aaa'); text('必殺(ゲージMAX)', B.sp.x + 35, B.sp.y - 7, 9, '#aaa');
+      mono('PUNCH', B.punch.x + 35, B.punch.y + 62, 7, '#8f876f'); mono('KICK', B.kick.x + 35, B.kick.y + 62, 7, '#8f876f');
+      text('ガード(長押し)', B.guard.x + 35, B.guard.y - 8, 9, '#8f876f'); text('必殺(ゲージMAX)', B.sp.x + 35, B.sp.y - 8, 9, '#8f876f');
     },
     down(x, y, id) {
       for (const k in B) if (hit(B[k], x, y)) { touches.set(id, k); if (!HOLD.includes(k)) act(P, k); return; }
@@ -1180,7 +1342,9 @@ const MISSIONS = [
 const CODENAMES = ['ルドルフ', 'ダッシャー', 'ダンサー', 'プランサー', 'ヴィクセン', 'コメット', 'キューピッド', 'ドナー', 'ブリッツェン'];
 const G = { mode: 'campaign', idx: 0, results: [], codename: pick(CODENAMES) };
 const gradeOf = r => r >= 0.95 ? 'S' : r >= 0.8 ? 'A' : r >= 0.6 ? 'B' : r >= 0.4 ? 'C' : 'D';
-const gradeCol = { S: '#ffd700', A: '#ff6b6b', B: '#6bc5ff', C: '#a3e635', D: '#999' };
+const gradeCol = { S: '#f5d26b', A: '#ff4d5e', B: '#7fb8ff', C: '#9be36b', D: '#8a8a8a' };
+SFX.stamp = () => { noise(0.18, 0.4, 400); tone(90, 0.2, 'sine', 0.2, -40); };
+SFX.shutter = () => { noise(0.12, 0.12, 900); };
 
 // =====================================================================
 //  SCENES
@@ -1189,30 +1353,66 @@ const Title = {
   ...BtnMix,
   enter() {
     this.t = 0;
+    const sndLabel = () => muted ? '🔇 SOUND OFF' : '🔊 SOUND ON';
     this.btns = [
-      Btn(60, 400, 240, 58, '作戦開始', () => { G.mode = 'campaign'; G.idx = 0; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { glow: true, size: 22 }),
-      Btn(60, 474, 240, 50, '訓練モード（個別ミッション）', () => go(Training), { color: '#1f3a68', dark: '#0f1f3a', size: 15 }),
-      Btn(110, 540, 140, 40, muted ? '🔇 サウンド OFF' : '🔊 サウンド ON', () => { muted = !muted; try { localStorage.setItem('santa_muted', muted ? '1' : '0'); } catch (e) {} this.btns[2].label = muted ? '🔇 サウンド OFF' : '🔊 サウンド ON'; }, { color: '#333', dark: '#111', size: 13 }),
+      Btn(52, 420, 256, 62, '作戦開始', () => { G.mode = 'campaign'; G.idx = 0; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { glow: true, size: 21, sub: 'OPERATION  START' }),
+      Btn(52, 496, 256, 50, '訓練モード', () => go(Training), { kind: 'dark', size: 16, sub: 'TRAINING' }),
+      Btn(120, 560, 120, 30, sndLabel(), () => { muted = !muted; try { localStorage.setItem('santa_muted', muted ? '1' : '0'); } catch (e) {} this.btns[2].label = sndLabel(); }, { kind: 'ghost', size: 11 }),
     ];
   },
   update(dt) { this.t += dt; },
   draw(dt) {
-    drawNight();
-    cx.fillStyle = '#fffbe0'; cx.beginPath(); cx.arc(285, 110, 40, 0, 7); cx.fill();
-    // silhouette sleigh crossing moon
-    const sx = ((this.t * 40) % (W + 200)) - 100;
-    cx.fillStyle = '#05070f'; emo('🦌', sx + 40, 110 + Math.sin(this.t * 2) * 5, 18, 0.9); emo('🛷', sx, 116 + Math.sin(this.t * 2) * 5, 22, 0.9);
-    drawSnow(dt);
-    text('TOP SECRET', W / 2, 168, 12, '#ff5050');
-    cx.strokeStyle = '#ff5050'; cx.lineWidth = 1.5; rr(W / 2 - 50, 158, 100, 20, 4); cx.stroke();
-    drawEmblem(W / 2, 236, 44);
-    textO('秘密結社', W / 2, 300, 22, '#fff', '#7a0a1c', 5);
-    textO('S.A.N.T.A.', W / 2, 340, 46, '#ffd700', '#7a0a1c', 8);
-    text('Secret Agency for Nocturnal Toy Allocation', W / 2, 374, 10, '#cfd8ff', 'center', 'normal');
-    for (const b of this.btns) drawBtn(b, this.t);
-    if (save.best) text(`最高達成率 ${save.best.toFixed(1)}%（ランク ${save.bestRank}）`, W / 2, 608, 12, '#ffd700');
-    else text('全6ミッションの達成率で、あなたの成績が決まる', W / 2, 608, 12, '#9fb3d9', 'center', 'normal');
+    const t = this.t, k = a => clamp((t - a) / 0.6, 0, 1);
+    drawAgency(dt, 210);
+    // サーチライト
+    for (const [ox, sp, ph] of [[60, 0.35, 0], [300, 0.28, 2]]) {
+      const a = -Math.PI / 2 + Math.sin(t * sp + ph) * 0.5;
+      cx.save(); cx.translate(ox, H); cx.rotate(a);
+      const lg = cx.createLinearGradient(0, 0, 560, 0); lg.addColorStop(0, 'rgba(246,224,154,.16)'); lg.addColorStop(1, 'rgba(246,224,154,0)');
+      cx.fillStyle = lg; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(560, -38); cx.lineTo(560, 38); cx.fill(); cx.restore();
+    }
+    // 背景の照準リング
+    cx.save(); cx.translate(W / 2, 205); cx.globalAlpha = 0.18 * k(0);
+    cx.strokeStyle = GOLD; cx.lineWidth = 1;
+    for (const [r, s] of [[96, 0.2], [124, -0.12], [150, 0.07]]) {
+      cx.save(); cx.rotate(t * s); cx.setLineDash([r / 6, r / 10]); cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.stroke(); cx.restore();
+    }
+    cx.setLineDash([]); cx.beginPath(); cx.moveTo(-170, 0); cx.lineTo(-104, 0); cx.moveTo(104, 0); cx.lineTo(170, 0); cx.moveTo(0, -170); cx.lineTo(0, -104); cx.stroke();
+    cx.restore(); cx.globalAlpha = 1;
+    drawSkyline(H, 0.95);
+    drawSnow(dt, 0.35);
+    // 機密テープ
+    cx.fillStyle = CRIM; cx.fillRect(0, 26, W, 20);
+    cx.save(); cx.beginPath(); cx.rect(0, 26, W, 20); cx.clip();
+    const msg = 'TOP SECRET // EYES ONLY // CLASSIFIED // ';
+    cx.font = `900 10px ${MONO}`; const mw = cx.measureText(msg).width + msg.length * 2;
+    for (let x = -((t * 30) % mw); x < W; x += mw) spaced(msg, x, 36, 10, '#ffe9ec', 2, 'left', MONO, '900');
+    cx.restore();
+    cx.fillStyle = '#000'; cx.fillRect(0, 46, W, 2);
+    // エンブレム
+    cx.globalAlpha = k(0.1);
+    drawEmblem(W / 2, 175, 64 + (1 - k(0.1)) * 20, { glow: true, ring: true, rot: Math.sin(t * 0.4) * 0.04 });
+    cx.globalAlpha = k(0.5);
+    spaced('秘 密 結 社', W / 2, 270, 17, '#e8e2d0', 6, 'center', SERIF);
+    cx.globalAlpha = k(0.8);
+    cx.save(); cx.shadowColor = 'rgba(200,20,50,.9)'; cx.shadowBlur = 18;
+    spaced('S.A.N.T.A.', W / 2, 318, 52, goldGrad(292, 344), 3, 'center', SERIF, '900');
+    cx.restore();
+    // 文字の上を光が流れる
+    const sx = ((t * 120) % 700) - 150;
+    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = 0.5 * k(0.8);
+    const sg = cx.createLinearGradient(sx, 0, sx + 40, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,240,200,.45)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+    cx.fillStyle = sg; cx.fillRect(sx, 292, 40, 52); cx.restore();
+    cx.globalAlpha = k(1.0);
+    goldRule(356, 50, W - 50);
+    spaced('SECRET AGENCY FOR NOCTURNAL TOY ALLOCATION', W / 2, 374, 7.5, '#b9ad8c', 1.6);
+    cx.globalAlpha = k(1.2);
+    for (const b of this.btns) drawBtn(b, t);
+    if (save.best) spaced(`BEST ${save.best.toFixed(1)}%  ·  RANK ${save.bestRank}`, W / 2, 612, 10, GOLD, 2);
+    else text('全6ミッションの達成率で、あなたの評価が決まる', W / 2, 612, 11, '#9a937e', 'center', 'normal');
+    cx.globalAlpha = 1;
   },
+  down(x, y) { if (this.t < 1.4) { this.t = 1.4; return; } BtnMix.down.call(this, x, y); },
 };
 
 // タイプライター付き文章パネル
@@ -1221,38 +1421,53 @@ function typeScene(cfg) {
     ...BtnMix,
     enter(arg) {
       this.cfg = typeof cfg === 'function' ? cfg(arg) : cfg; this.t = 0; this.n = 0;
-      this.lines = wrapLines(this.cfg.body, W - 64, 15);
+      this.lines = wrapLines(this.cfg.body, W - 70, 14.5);
       this.total = this.lines.join('').length;
-      this.btns = [Btn(60, 560, 240, 54, this.cfg.btn, () => { if (this.n < this.total) { this.n = this.total; return; } this.cfg.next(); }, { glow: true, size: 19 })];
+      this.btns = [Btn(52, 560, 256, 58, this.cfg.btn, () => { if (this.n < this.total) { this.n = this.total; return; } this.cfg.next(); }, { glow: true, size: 19, sub: this.cfg.sub })];
     },
     update(dt) {
       this.t += dt;
       const prev = Math.floor(this.n);
-      if (this.n < this.total) { this.n = Math.min(this.total, this.n + dt * 38); if (Math.floor(this.n) !== prev && Math.floor(this.n) % 2) SFX.type(); }
+      if (this.n < this.total) { this.n = Math.min(this.total, this.n + dt * 40); if (Math.floor(this.n) !== prev && Math.floor(this.n) % 2) SFX.type(); }
     },
     draw(dt) {
-      drawNight('#04060f', '#141030'); drawSnow(dt, 0.4);
-      this.cfg.head(this.t);
-      drawPanel(16, this.cfg.top || 196, W - 32, (this.cfg.bottom || 540) - (this.cfg.top || 196));
-      let left = Math.floor(this.n), y = (this.cfg.top || 196) + 26;
+      drawAgency(dt, 120);
+      this.cfg.head(this.t, this.n < this.total);
+      const top = this.cfg.top || 196, bot = this.cfg.bottom || 545;
+      drawPanel(14, top, W - 28, bot - top);
+      let left = Math.floor(this.n), y = top + 24;
       for (const l of this.lines) {
         const s = l.slice(0, Math.max(0, left)); left -= l.length;
-        text(s, 32, y, 15, '#e8ecff', 'left', 'normal'); y += 24;
-        if (left < 0) break;
+        if (l.startsWith('【')) { cx.fillStyle = 'rgba(179,18,46,.35)'; if (s) cx.fillRect(28, y - 10, 4, 20); text(s, 38, y, 14, GOLD2, 'left'); }
+        else if (s.startsWith('・')) { text('▸', 30, y, 11, CRIM, 'left'); text(s.slice(1), 44, y, 13.5, '#e2dccb', 'left', 'normal'); }
+        else text(s, 30, y, 14.5, '#ece6d6', 'left', 'normal');
+        y += 23;
+        if (left < 0) { if (Math.floor(this.t * 4) % 2) { cx.fillStyle = GOLD; font(14.5, 'normal'); cx.fillRect(30 + cx.measureText(s).width + 2, y - 31, 7, 14); } break; }
       }
-      for (const b of this.btns) { b.label = this.n < this.total ? '▶ スキップ' : this.cfg.btn; drawBtn(b, this.t); }
+      for (const b of this.btns) { b.label = this.n < this.total ? 'スキップ' : this.cfg.btn; b.sub = this.n < this.total ? 'SKIP' : this.cfg.sub; drawBtn(b, this.t); }
     },
     down(x, y) { BtnMix.down.call(this, x, y); if (!this._pb && this.n < this.total) this.n = this.total; },
   };
 }
 
 const Prologue = typeScene(() => ({
-  btn: 'ブリーフィングへ',
-  top: 220,
-  head(t) {
-    drawEmblem(W / 2, 96, 36);
-    text('― 長官からの暗号通信 ―', W / 2, 156, 14, '#ffd700');
-    text(`コードネーム《${G.codename}》`, W / 2, 186, 18, '#fff');
+  btn: 'ブリーフィングへ', sub: 'PROCEED TO BRIEFING',
+  top: 214,
+  head(t, talking) {
+    spaced('ENCRYPTED TRANSMISSION', W / 2, 26, 10, GOLD, 3);
+    goldRule(40, 30, W - 30);
+    drawEmblem(62, 104, 40, { glow: true });
+    // 音声波形
+    for (let i = 0; i < 22; i++) {
+      const h = talking ? 4 + Math.abs(Math.sin(t * 13 + i * 1.7) * Math.sin(t * 5 + i)) * 26 : 3;
+      cx.fillStyle = i % 5 === 0 ? CRIM : GOLD; cx.fillRect(118 + i * 10, 88 - h / 2, 5, h);
+    }
+    mono('● REC', 118, 120, 9, Math.floor(t * 2) % 2 ? '#ff3b4f' : '#5e0816', 'left');
+    mono('CH-07 / SECURE', 338, 120, 9, '#8f876f', 'right');
+    text('長官からの暗号通信', W / 2, 160, 14, '#cfc6ad');
+    bevel(60, 176, W - 120, 28, 8); cx.fillStyle = 'rgba(179,18,46,.25)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.6)'; cx.lineWidth = 1; cx.stroke();
+    spaced(`CODENAME`, 74, 190, 8, GOLD, 1.5, 'left');
+    serifText(`《${G.codename}》`, W / 2 + 24, 190, 17, '#fff');
   },
   body: `《${G.codename}》、よく来てくれた。\n\n我々、秘密結社 S.A.N.T.A. は、千年以上にわたり世界中の子供たちに「クリスマスの奇跡」を届けてきた。\n\n今年もその夜が近づいている。だが敵対組織 K.R.A.M.P.U.S. が、クリスマスを奪おうと暗躍しているとの情報が入った。\n\n市場調査、資金調達、調達、輸送、そして配達――。君にはこの作戦の全指揮を任せる。\n\n最終的な達成率が、君の評価となる。健闘を祈る。`,
   next: () => go(Briefing, 0),
@@ -1261,14 +1476,30 @@ const Prologue = typeScene(() => ({
 const Briefing = typeScene(i => {
   const m = MISSIONS[i];
   return {
-    btn: 'ミッション開始',
-    top: 172, bottom: 545,
+    btn: 'ミッション開始', sub: 'ENGAGE',
+    top: 176, bottom: 545,
     head(t) {
-      text(G.mode === 'campaign' ? `${m.date}　MISSION ${i + 1} / 6` : `訓練モード　MISSION ${i + 1}`, W / 2, 34, 13, '#9fb3d9');
-      emo(m.icon, W / 2, 80, 44);
-      textO(`${m.code} ${m.name}`, W / 2, 130, 26, '#ffd700', '#7a0a1c', 5);
-      rr(W / 2 - 60, 146, 120, 20, 10); cx.fillStyle = '#c8102e'; cx.fill();
-      text(m.genre, W / 2, 156, 12, '#fff');
+      spaced(`CLASSIFIED DOSSIER  //  ${G.mode === 'campaign' ? m.date : 'TRAINING'}`, W / 2, 22, 9, GOLD, 2);
+      goldRule(36, 20, W - 20);
+      // 写真フレーム
+      const fx = 20, fy = 50, fs = 100;
+      cx.fillStyle = '#0d0d12'; cx.fillRect(fx, fy, fs, fs);
+      cx.strokeStyle = 'rgba(212,175,55,.25)'; cx.lineWidth = 1; cx.strokeRect(fx + 0.5, fy + 0.5, fs - 1, fs - 1);
+      corners(fx - 3, fy - 3, fs + 6, fs + 6, 12, CRIM, 2);
+      emo(m.icon, fx + fs / 2, fy + fs / 2, 48);
+      cx.strokeStyle = 'rgba(246,224,154,.3)'; cx.beginPath(); cx.moveTo(fx + fs / 2, fy + 6); cx.lineTo(fx + fs / 2, fy + 18); cx.moveTo(fx + fs / 2, fy + fs - 6); cx.lineTo(fx + fs / 2, fy + fs - 18); cx.stroke();
+      const sy = fy + ((t * 60) % fs);
+      cx.fillStyle = 'rgba(246,224,154,.18)'; cx.fillRect(fx, sy, fs, 2);
+      mono(`SUBJ-${String(i + 1).padStart(2, '0')}`, fx + fs / 2, fy + fs + 12, 8, '#8f876f');
+      // 右カラム
+      const rx = 136;
+      spaced(`MISSION ${String(i + 1).padStart(2, '0')} / 06`, rx, 62, 11, GOLD, 2, 'left');
+      serifText(m.name, rx, 94, m.name.length > 5 ? 25 : 28, '#fff', 'left', '900');
+      font(11); const gw = cx.measureText(m.genre).width + 22;
+      bevel(rx, 112, gw, 20, 6); cx.fillStyle = CRIM; cx.fill();
+      text(m.genre, rx + gw / 2, 122.5, 11, '#fff');
+      mono(`FILE ${m.code}`, rx + gw + 10, 122, 9, '#8f876f', 'left');
+      rectStamp(292, 156, 'TOP SECRET', CRIM, -0.14, 11);
     },
     body: m.story + '\n\n【操作】\n' + m.how,
     next: () => go(Play, i),
@@ -1286,7 +1517,7 @@ const Play = {
       if (n !== this.last) { this.last = n; if (n > 0) SFX.beep(); else if (n === 0) SFX.go(); }
       return;
     }
-    if (this.done) { this.done.t += dt; if (this.done.t > 1.8) go(Result, { i: this.i, ...this.done }); return; }
+    if (this.done) { this.done.t += dt; if (this.done.t > 1.9) go(Result, { i: this.i, ...this.done }); return; }
     this.g.update(dt);
   },
   draw() {
@@ -1295,18 +1526,34 @@ const Play = {
     this.g.draw(); drawParts();
     cx.restore();
     if (this.cd > 0) {
-      cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fillRect(0, 0, W, H);
-      const n = Math.ceil(this.cd - 0.6);
-      const f = (this.cd - 0.6) % 1;
-      textO(n > 0 ? String(n) : 'START!', W / 2, H / 2 - 20, n > 0 ? 80 + f * 30 : 54, '#fff', '#c8102e', 8);
-      text(`${this.m.code} ${this.m.name}`, W / 2, H / 2 + 50, 16, '#ffd700');
+      cx.fillStyle = 'rgba(4,4,6,.62)'; cx.fillRect(0, 0, W, H);
+      const n = Math.ceil(this.cd - 0.6), f = 1 - ((this.cd - 0.6) % 1 + 1) % 1;
+      const cy = H / 2 - 20;
+      // 照準
+      cx.save(); cx.translate(W / 2, cy);
+      cx.strokeStyle = 'rgba(212,175,55,.8)'; cx.lineWidth = 1.5;
+      cx.save(); cx.rotate(gT * 1.2); cx.setLineDash([14, 8]); cx.beginPath(); cx.arc(0, 0, 92, 0, 7); cx.stroke(); cx.restore();
+      cx.strokeStyle = CRIM; cx.lineWidth = 3; cx.beginPath(); cx.arc(0, 0, 74, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (n > 0 ? f : 1)); cx.stroke();
+      cx.strokeStyle = 'rgba(246,224,154,.6)'; cx.lineWidth = 1; cx.beginPath();
+      cx.moveTo(-130, 0); cx.lineTo(-100, 0); cx.moveTo(100, 0); cx.lineTo(130, 0); cx.moveTo(0, -130); cx.lineTo(0, -100); cx.moveTo(0, 100); cx.lineTo(0, 130); cx.stroke();
+      cx.restore();
+      if (n > 0) { cx.globalAlpha = Math.min(1, f * 3); serifText(String(n), W / 2, cy + 2, 84 - f * 10, GOLD2, 'center', '900'); cx.globalAlpha = 1; }
+      else { cx.save(); cx.shadowColor = CRIM; cx.shadowBlur = 16; spaced('GO', W / 2, cy + 2, 60, GOLD2, 6, 'center', SERIF, '900'); cx.restore(); }
+      spaced(`${this.m.code}  ·  ${this.m.genre}`, W / 2, cy + 130, 10, GOLD, 2.5, 'center', MONO);
+      serifText(this.m.name, W / 2, cy + 156, 22, '#fff', 'center', '900');
     }
     if (this.done) {
-      cx.fillStyle = `rgba(0,0,0,${Math.min(0.55, this.done.t)})`; cx.fillRect(0, 0, W, H);
-      const s = Math.min(1, this.done.t * 4);
-      cx.save(); cx.translate(W / 2, H / 2 - 20); cx.scale(s, s);
-      textO(this.done.msg, 0, 0, this.done.msg.length > 10 ? 30 : 42, '#ffd700', '#7a0a1c', 7);
+      const d = this.done, a = Math.min(1, d.t * 2.5);
+      cx.fillStyle = `rgba(0,0,0,${0.55 * a})`; cx.fillRect(0, 0, W, H);
+      const bh = 70 * a; cx.fillStyle = INK; cx.fillRect(0, 0, W, bh); cx.fillRect(0, H - bh, W, bh);
+      cx.fillStyle = GOLD; cx.fillRect(0, bh, W, 1); cx.fillRect(0, H - bh - 1, W, 1);
+      const cy = H / 2 - 20;
+      cx.save(); cx.globalAlpha = a; cx.shadowColor = 'rgba(200,20,50,.9)'; cx.shadowBlur = 16;
+      const sz = d.msg.length > 12 ? 24 : d.msg.length > 8 ? 30 : 38;
+      spaced(d.msg, W / 2, cy, sz, goldGrad(cy - sz / 2, cy + sz / 2), 3, 'center', SERIF, '900');
       cx.restore();
+      cx.fillStyle = CRIM; const lw = (W - 80) * clamp(d.t * 2 - 0.3, 0, 1); cx.fillRect(W / 2 - lw / 2, cy + 30, lw, 2);
+      cx.globalAlpha = a; spaced('TRANSMITTING REPORT...', W / 2, cy + 50, 9, '#b9ad8c', 2); cx.globalAlpha = 1;
     }
   },
   down(x, y, id) { if (this.cd > 0 || this.done) return; this.g.down && this.g.down(x, y, id); },
@@ -1322,56 +1569,81 @@ const COMMENTS = {
   C: ['危なかったな…気を引き締めろ。', 'ギリギリだ。子供たちの夢がかかっているぞ。'],
   D: ['これでは作戦に支障が出る…！', '厳しい結果だ。だが次がある。'],
 };
+function rateBar(x, y, w, h, r) {
+  bevel(x, y, w, h, 4); cx.fillStyle = '#16161c'; cx.fill();
+  if (r > 0) {
+    cx.save(); bevel(x, y, w, h, 4); cx.clip();
+    const g = cx.createLinearGradient(x, 0, x + w, 0); g.addColorStop(0, CRIM2); g.addColorStop(0.55, CRIM); g.addColorStop(1, GOLD2);
+    cx.fillStyle = g; cx.fillRect(x, y, w * r, h); cx.restore();
+  }
+  cx.fillStyle = 'rgba(0,0,0,.6)'; for (let i = 1; i < 10; i++) cx.fillRect(x + w * i / 10, y, 1, h);
+  bevel(x, y, w, h, 4); cx.strokeStyle = 'rgba(212,175,55,.5)'; cx.lineWidth = 1; cx.stroke();
+}
+function statRow(l, x0, x1, y) {
+  const k = l.indexOf(': ');
+  if (k < 0) { text(l, x0, y, 14, '#fff', 'left'); return; }
+  const a = l.slice(0, k), b = l.slice(k + 2);
+  text(a, x0, y, 13, '#a9a28c', 'left', 'normal');
+  font(14); const bw = cx.measureText(b).width; font(13, 'normal'); const aw = cx.measureText(a).width;
+  cx.fillStyle = 'rgba(212,175,55,.35)'; for (let x = x0 + aw + 8; x < x1 - bw - 8; x += 5) cx.fillRect(x, y + 4, 1.5, 1.5);
+  text(b, x1, y, 14, '#fff', 'right');
+}
 const Result = {
   ...BtnMix,
   enter(a) {
-    this.a = a; this.t = 0; this.shown = 0; this.g = gradeOf(a.rate); this.comment = pick(COMMENTS[this.g]); this.played = false;
+    this.a = a; this.t = 0; this.shown = 0; this.g = gradeOf(a.rate); this.comment = pick(COMMENTS[this.g]); this.played = 0;
     const m = MISSIONS[a.i];
     const prev = save.missions[m.id] || 0;
     this.newBest = a.rate > prev; if (this.newBest) { save.missions[m.id] = a.rate; persist(); }
     if (G.mode === 'campaign') {
       G.results[a.i] = a.rate;
       const last = a.i === MISSIONS.length - 1;
-      this.btns = [Btn(60, 556, 240, 56, last ? '最終評価へ' : '次の作戦へ ▶', () => { if (last) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 20 })];
+      this.btns = [Btn(52, 560, 256, 58, last ? '最終評価へ' : '次の作戦へ', () => { if (last) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 19, sub: last ? 'FINAL DEBRIEF' : 'NEXT OPERATION' })];
     } else {
       this.btns = [
-        Btn(30, 556, 145, 56, 'もう一度', () => go(Briefing, a.i), { size: 18 }),
-        Btn(185, 556, 145, 56, '訓練メニュー', () => go(Training), { color: '#1f3a68', dark: '#0f1f3a', size: 16 }),
+        Btn(24, 560, 150, 56, 'もう一度', () => go(Briefing, a.i), { size: 17, sub: 'RETRY' }),
+        Btn(186, 560, 150, 56, '訓練メニュー', () => go(Training), { kind: 'dark', size: 15, sub: 'TRAINING' }),
       ];
     }
   },
   update(dt) {
     this.t += dt;
     this.shown = Math.min(this.a.rate, this.shown + dt * 0.8);
-    if (!this.played && this.shown >= this.a.rate) { this.played = true; if (this.g === 'S' || this.g === 'A') SFX.jingle(); else if (this.g === 'D') SFX.sad(); else SFX.good(); }
+    if (!this.played && this.shown >= this.a.rate) { this.played = this.t; SFX.stamp(); shake = 6; setTimeout(() => { if (this.g === 'S' || this.g === 'A') SFX.jingle(); else if (this.g === 'D') SFX.sad(); else SFX.good(); }, 250); }
   },
   draw(dt) {
-    drawNight('#04060f', '#141030'); drawSnow(dt, 0.5);
+    drawAgency(dt, 240);
     const m = MISSIONS[this.a.i];
-    text('MISSION REPORT', W / 2, 40, 14, '#9fb3d9');
-    emo(m.icon, W / 2, 86, 40);
-    textO(`${m.code} ${m.name}`, W / 2, 134, 24, '#fff', '#000', 4);
-    drawPanel(20, 160, W - 40, 370);
-    text('達成率', W / 2, 190, 14, '#9fb3d9');
-    text(`${(this.shown * 100).toFixed(1)}%`, W / 2, 232, 48, '#fff');
-    cx.fillStyle = '#222'; rr(40, 266, W - 80, 14, 7); cx.fill();
-    cx.fillStyle = this.shown >= 0.8 ? '#ffd700' : this.shown >= 0.4 ? '#6bc5ff' : '#e74c3c'; rr(40, 266, (W - 80) * this.shown, 14, 7); cx.fill();
+    spaced(`MISSION REPORT  //  ${m.code}`, W / 2, 26, 10, GOLD, 2.5);
+    goldRule(40, 24, W - 24);
+    emo(m.icon, 52, 82, 30);
+    serifText(m.name, 82, 76, 26, '#fff', 'left', '900');
+    mono(`${m.genre}  //  ${m.date}`, 84, 102, 10, '#8f876f', 'left', 'normal');
+    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
+    drawPanel(16, 128, W - 32, 414);
+    spaced('ACHIEVEMENT RATE', 36, 156, 9, GOLD, 2, 'left');
+    mono(`${(this.shown * 100).toFixed(1)}`, 36, 200, 50, '#fff', 'left');
+    font(50); cx.font = `bold 50px ${MONO}`; const nw = cx.measureText(`${(this.shown * 100).toFixed(1)}`).width;
+    mono('%', 40 + nw, 210, 20, GOLD2, 'left');
+    rateBar(36, 240, W - 72, 14, this.shown);
     if (this.played) {
-      const s = Math.min(1, (this.t - this.a.rate / 0.8) * 5 + 0.2);
-      cx.save(); cx.translate(W - 70, 214); cx.scale(Math.max(0.01, s), Math.max(0.01, s)); cx.rotate(-0.2);
-      cx.strokeStyle = gradeCol[this.g]; cx.lineWidth = 4; cx.beginPath(); cx.arc(0, 0, 30, 0, 7); cx.stroke();
-      text(this.g, 0, 2, 40, gradeCol[this.g], 'center', '900');
-      cx.restore();
-      if (this.newBest && save.missions[m.id] === this.a.rate && G.mode === 'training') text('★自己ベスト更新', W / 2, 296, 12, '#ffd700');
+      const k = clamp((this.t - this.played) * 6, 0, 1), s = 2.2 - 1.2 * k;
+      cx.globalAlpha = k; stamp(W - 76, 190, this.g, 'GRADE', gradeCol[this.g], s, -0.22, 38); cx.globalAlpha = 1;
+      if (this.newBest && G.mode === 'training') spaced('★ PERSONAL BEST', W - 76, 240 - 16, 8, GOLD2, 1.5);
     }
-    let y = 322;
-    for (const l of this.a.lines) { text(l, 44, y, 15, '#e8ecff', 'left', 'normal'); y += 28; }
+    let y = 290;
+    for (const l of this.a.lines) { statRow(l, 36, W - 36, y); y += 30; }
     if (this.played) {
-      text('長官より:', 44, 474, 12, '#ffd700', 'left');
-      const ls = wrapLines(`「${this.comment}」`, W - 90, 14);
-      ls.forEach((l, k) => text(l, 44, 498 + k * 20, 14, '#fff', 'left', 'normal'));
+      const k = clamp((this.t - this.played - 0.3) * 3, 0, 1); cx.globalAlpha = k;
+      cx.fillStyle = 'rgba(179,18,46,.18)'; cx.fillRect(30, 432, W - 60, 96);
+      cx.fillStyle = CRIM; cx.fillRect(30, 432, 3, 96);
+      spaced('FROM THE DIRECTOR', 44, 450, 8.5, GOLD, 2, 'left');
+      const ls = wrapLines(`「${this.comment}」`, W - 100, 15);
+      ls.forEach((l, i) => serifText(l, 44, 478 + i * 24, 15, '#f3ecd8', 'left'));
+      cx.globalAlpha = 1;
     }
-    if (this.played) for (const b of this.btns) drawBtn(b, this.t);
+    cx.restore();
+    if (this.played && this.t - this.played > 0.4) for (const b of this.btns) drawBtn(b, this.t);
   },
   down(x, y) { if (!this.played) { this.shown = this.a.rate; return; } BtnMix.down.call(this, x, y); },
 };
@@ -1394,79 +1666,96 @@ const Final = {
     this.newBest = this.total > save.best;
     if (this.newBest) { save.best = this.total; save.bestRank = this.rank.r; persist(); }
     this.btns = [
-      Btn(30, 576, 145, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { size: 16 }),
-      Btn(185, 576, 145, 50, 'タイトルへ', () => go(Title), { color: '#1f3a68', dark: '#0f1f3a', size: 16 }),
+      Btn(24, 574, 150, 52, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
+      Btn(186, 574, 150, 52, 'タイトルへ', () => go(Title), { kind: 'dark', size: 15, sub: 'HEADQUARTERS' }),
     ];
     this.played = false;
   },
   update(dt) {
     this.t += dt;
-    if (!this.played && this.t > 2.6) { this.played = true; if (this.total >= 70) SFX.fanfare(); else SFX.sad(); if (this.total >= 85) for (let i = 0; i < 4; i++) setTimeout(() => burst(rand(60, 300), rand(100, 260), ['#ffd700', '#ff6b6b', '#6bc5ff', '#2ecc71', '#fff'], 40, 260, 1.2, 4), i * 300); }
+    if (!this.played && this.t > 2.6) {
+      this.played = true; SFX.stamp(); shake = 8;
+      setTimeout(() => { if (this.total >= 70) SFX.fanfare(); else SFX.sad(); }, 300);
+      if (this.total >= 85) for (let i = 0; i < 4; i++) setTimeout(() => burst(rand(60, 300), rand(100, 260), [GOLD, GOLD2, '#fff', CRIM], 40, 260, 1.2, 3), 300 + i * 300);
+    }
   },
   draw(dt) {
-    drawNight('#0a1030', '#3a2050');
-    cx.fillStyle = 'rgba(255,200,120,.15)'; cx.beginPath(); cx.arc(W / 2, H + 120, 300, 0, 7); cx.fill();
-    drawSnow(dt);
-    text('12月25日 早朝 ― 最終作戦報告', W / 2, 30, 13, '#9fb3d9');
-    textO('MISSION COMPLETE', W / 2, 62, 26, '#ffd700', '#7a0a1c', 6);
-    drawPanel(16, 86, W - 32, 220);
+    drawAgency(dt, 380);
+    // 夜明けの光
+    const dg = cx.createRadialGradient(W / 2, H + 60, 10, W / 2, H + 60, 340); dg.addColorStop(0, 'rgba(255,190,110,.28)'); dg.addColorStop(1, 'rgba(255,190,110,0)');
+    cx.fillStyle = dg; cx.fillRect(0, 0, W, H);
+    drawSnow(dt, 0.4);
+    spaced('DEC 25  ·  05:00  ·  FINAL REPORT', W / 2, 22, 9, '#b9ad8c', 2);
+    cx.save(); cx.shadowColor = 'rgba(200,20,50,.8)'; cx.shadowBlur = 14;
+    spaced('MISSION COMPLETE', W / 2, 54, 24, goldGrad(42, 66), 2.5, 'center', SERIF, '900');
+    cx.restore();
+    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
+    drawPanel(14, 78, W - 28, 226);
     MISSIONS.forEach((m, i) => {
-      const r = G.results[i] || 0, y = 108 + i * 33;
+      const r = G.results[i] || 0, y = 102 + i * 34;
       const k = clamp((this.t - i * 0.25) * 2, 0, 1);
       cx.globalAlpha = k;
-      emo(m.icon, 34, y, 16);
-      text(m.name, 50, y, 13, '#fff', 'left');
-      cx.fillStyle = '#222'; rr(150, y - 6, 120, 12, 6); cx.fill();
-      cx.fillStyle = gradeCol[gradeOf(r)]; rr(150, y - 6, 120 * r * k, 12, 6); cx.fill();
-      text(`${Math.round(r * 100 * k)}%`, 308, y, 13, '#fff', 'right');
-      text(gradeOf(r), 326, y, 14, gradeCol[gradeOf(r)], 'center', '900');
+      mono(m.code.replace('OP-', ''), 34, y, 10, GOLD, 'center');
+      text(m.name, 50, y, 13, '#ece6d6', 'left');
+      rateBar(150, y - 5, 118, 10, r * k);
+      mono(`${Math.round(r * 100 * k)}%`, 310, y, 12, '#fff', 'right');
+      serifText(gradeOf(r), 328, y, 15, gradeCol[gradeOf(r)], 'center', '900');
       cx.globalAlpha = 1;
     });
     const k2 = clamp((this.t - 1.6) / 1.0, 0, 1);
-    text('総合達成率', W / 2, 330, 14, '#9fb3d9');
-    text(`${(this.total * k2).toFixed(1)}%`, W / 2, 370, 50, '#fff');
+    spaced('TOTAL ACHIEVEMENT', 30, 326, 9, GOLD, 2, 'left');
+    mono(`${(this.total * k2).toFixed(1)}%`, 30, 364, 46, '#fff', 'left');
     if (this.t > 2.6) {
-      const s = Math.min(1, (this.t - 2.6) * 4);
-      cx.save(); cx.translate(W - 62, 362); cx.scale(s, s); cx.rotate(-0.2);
-      cx.strokeStyle = gradeCol[this.rank.r]; cx.lineWidth = 5; cx.beginPath(); cx.arc(0, 0, 32, 0, 7); cx.stroke();
-      text(this.rank.r, 0, 2, 44, gradeCol[this.rank.r], 'center', '900');
-      cx.restore();
-      textO(`称号: ${this.rank.title}`, W / 2, 412, 19, gradeCol[this.rank.r], '#000', 4);
-      text(`笑顔になった子供たち: 約${(this.kids / 1e8).toFixed(1)}億人`, W / 2, 440, 13, '#ffe9b0');
-      drawPanel(16, 456, W - 32, 108, 'rgba(8,12,30,.8)');
-      const ls = wrapLines(this.rank.msg, W - 64, 13);
-      ls.slice(0, 5).forEach((l, i) => text(l, 32, 476 + i * 19, 13, '#fff', 'left', 'normal'));
-      for (const b of this.btns) drawBtn(b, this.t);
-      if (this.newBest) text('★ NEW RECORD', W / 2 + 112, 330, 12, '#ffd700');
+      const k = clamp((this.t - 2.6) * 6, 0, 1);
+      cx.globalAlpha = k; stamp(W - 66, 352, this.rank.r, 'RANK', gradeCol[this.rank.r], 2.2 - 1.2 * k, -0.2, 40); cx.globalAlpha = 1;
+      if (this.newBest) spaced('★ NEW RECORD', 30, 394, 9, GOLD2, 2, 'left');
+      const k3 = clamp((this.t - 2.9) * 3, 0, 1); cx.globalAlpha = k3;
+      goldRule(410, 30, W - 30);
+      spaced('TITLE', W / 2, 424, 8, '#8f876f', 3);
+      serifText(this.rank.title, W / 2, 446, 21, gradeCol[this.rank.r], 'center', '900');
+      text(`笑顔になった子供たち　約 ${(this.kids / 1e8).toFixed(1)} 億人`, W / 2, 472, 12, '#f0d9a8');
+      cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fillRect(22, 486, W - 44, 80); cx.fillStyle = CRIM; cx.fillRect(22, 486, 3, 80);
+      const ls = wrapLines(this.rank.msg, W - 72, 12.5);
+      ls.slice(0, 4).forEach((l, i) => text(l, 34, 501 + i * 18, 12.5, '#ece6d6', 'left', 'normal'));
+      cx.globalAlpha = 1;
     }
+    cx.restore();
+    if (this.t > 3.1) for (const b of this.btns) drawBtn(b, this.t);
     drawParts();
   },
-  down(x, y) { if (this.t < 2.6) { this.t = 2.6; return; } BtnMix.down.call(this, x, y); },
+  down(x, y) { if (this.t < 3.1) { this.t = 3.1; return; } BtnMix.down.call(this, x, y); },
 };
 
 const Training = {
   ...BtnMix,
   enter() {
     this.t = 0;
-    this.btns = MISSIONS.map((m, i) => Btn(24, 110 + i * 68, W - 48, 58, '', () => { G.mode = 'training'; go(Briefing, i); }, { color: '#1a2547', dark: '#0b1228', m }));
-    this.btns.push(Btn(110, 530 + 50, 140, 44, '◀ タイトル', () => go(Title), { color: '#333', dark: '#111', size: 15 }));
+    this.btns = MISSIONS.map((m, i) => Btn(20, 104 + i * 70, W - 40, 60, '', () => { G.mode = 'training'; go(Briefing, i); }, { kind: 'dark', m }));
+    this.btns.push(Btn(110, 534 + 50, 140, 40, '◀ 本部へ戻る', () => go(Title), { kind: 'ghost', size: 13 }));
   },
   update(dt) { this.t += dt; },
   draw(dt) {
-    drawNight('#04060f', '#141030'); drawSnow(dt, 0.4);
-    textO('訓練モード', W / 2, 44, 26, '#ffd700', '#7a0a1c', 5);
-    text('好きなミッションを練習できる', W / 2, 78, 13, '#9fb3d9', 'center', 'normal');
-    for (const b of this.btns) {
+    drawAgency(dt, 100);
+    spaced('TRAINING FACILITY', W / 2, 26, 10, GOLD, 3);
+    goldRule(40, 30, W - 30);
+    serifText('訓練モード', W / 2, 66, 24, '#fff', 'center', '900');
+    text('ファイルを選んで、個別に作戦を訓練せよ', W / 2, 88, 11, '#9a937e', 'center', 'normal');
+    this.btns.forEach((b, i) => {
+      const k = clamp((this.t - i * 0.06) * 5, 0, 1);
+      cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * 30, 0);
       drawBtn(b, this.t);
       if (b.m) {
         const best = save.missions[b.m.id];
-        emo(b.m.icon, b.x + 30, b.y + 29, 26);
-        text(`${b.m.code} ${b.m.name}`, b.x + 58, b.y + 21, 16, '#fff', 'left');
-        text(b.m.genre, b.x + 58, b.y + 41, 11, '#9fb3d9', 'left', 'normal');
-        if (best != null) { text(`${Math.round(best * 100)}%`, b.x + b.w - 44, b.y + 29, 15, '#fff', 'right'); text(gradeOf(best), b.x + b.w - 20, b.y + 29, 20, gradeCol[gradeOf(best)], 'center', '900'); }
-        else text('未プレイ', b.x + b.w - 14, b.y + 29, 12, '#777', 'right');
+        cx.fillStyle = CRIM; cx.fillRect(b.x + 1, b.y + 12, 3, b.h - 24);
+        emo(b.m.icon, b.x + 34, b.y + 30, 24);
+        mono(b.m.code, b.x + 62, b.y + 18, 9, GOLD, 'left');
+        serifText(b.m.name, b.x + 62, b.y + 38, 17, '#fff', 'left', '900');
+        mono(b.m.genre, b.x + 62 + (b.m.name.length * 17) + 10, b.y + 39, 9, '#8f876f', 'left', 'normal');
+        if (best != null) { mono(`${Math.round(best * 100)}%`, b.x + b.w - 46, b.y + 30, 13, '#fff', 'right'); serifText(gradeOf(best), b.x + b.w - 22, b.y + 30, 22, gradeCol[gradeOf(best)], 'center', '900'); }
+        else mono('NO DATA', b.x + b.w - 14, b.y + 30, 9, '#6e6858', 'right');
       }
-    }
+      cx.restore();
+    });
   },
 };
 
@@ -1481,7 +1770,13 @@ function frame(now) {
   scene.update(dt);
   updateParts(dt);
   scene.draw(dt);
-  if (fade > 0) { cx.fillStyle = `rgba(0,0,0,${fade})`; cx.fillRect(0, 0, W, H); fade = Math.max(0, fade - dt * 4); }
+  postFX();
+  if (fade > 0) { // シャッター風の場面転換
+    const e = fade * fade, bh = H / 2 * e;
+    cx.fillStyle = INK; cx.fillRect(0, 0, W, bh); cx.fillRect(0, H - bh, W, bh);
+    cx.fillStyle = GOLD; cx.fillRect(0, bh - 1, W, 1); cx.fillRect(0, H - bh, W, 1);
+    fade = Math.max(0, fade - dt * 3.2);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
