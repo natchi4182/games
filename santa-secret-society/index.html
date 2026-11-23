@@ -3400,11 +3400,12 @@ function typeScene(cfg) {
     update(dt) {
       this.t += dt;
       const prev = Math.floor(this.n);
-      if (this.n < this.total) { this.n = Math.min(this.total, this.n + dt * 40); if (Math.floor(this.n) !== prev && Math.floor(this.n) % 2) SFX.type(); }
+      if (this.cfg.tick) this.cfg.tick(this.t, dt, this);
+      if (this.n < this.total && this.t >= (this.pg ? 0 : (this.cfg.delay || 0))) { this.n = Math.min(this.total, this.n + dt * 40); if (Math.floor(this.n) !== prev && Math.floor(this.n) % 2) SFX.type(); }
     },
     draw(dt) {
       drawAgency(dt, 120);
-      this.cfg.head(this.t, this.n < this.total);
+      this.cfg.head(this.t, this.n < this.total, this);
       const top = this.cfg.top || 196, bot = this.cfg.bottom || 545;
       drawPanel(14, top, W - 28, bot - top);
       let left = Math.floor(this.n), y = top + 24;
@@ -3423,8 +3424,9 @@ function typeScene(cfg) {
         b.sub = this.n < this.total ? 'SKIP' : more ? 'NEXT PAGE' : this.cfg.sub;
         drawBtn(b, this.t);
       }
+      if (this.cfg.over) this.cfg.over(this.t, this);
     },
-    down(x, y) { BtnMix.down.call(this, x, y); if (!this._pb && this.n < this.total) this.n = this.total; },
+    down(x, y) { if (this.cfg.delay && this.t < this.cfg.delay) { this.t = this.cfg.delay; return; } BtnMix.down.call(this, x, y); if (!this._pb && this.n < this.total) this.n = this.total; },
   };
 }
 
@@ -3452,32 +3454,89 @@ const Prologue = typeScene(() => ({
 }));
 
 const Briefing = typeScene(i => {
-  const m = MISSIONS[i];
+  const m = MISSIONS[i], ev = {};
+  const once = (k, t, at) => { if (!ev[k] && t >= at) { ev[k] = 1; return true; } return false; };
   return {
     btn: 'ミッション開始', sub: 'ENGAGE',
-    top: 176, bottom: 545,
-    head(t) {
+    top: 176, bottom: 545, delay: 1.15,
+    tick(t, dt, sc) {
+      if (once('in', t, .02)) { noise(.3, .15, 5000); for (let k = 0; k < 5; k++) tone(1600 + k * 120, .03, 'square', .03, 0, k * .04); }
+      if (once('frame', t, .3)) { noise(.12, .2, 2000); }
+      if (once('title', t, .55)) { tone(90, .3, 'sawtooth', .07, -30); noise(.25, .3, 1200); sc.sh = 8; }
+      if (once('lock', t, .8)) { tone(1760, .08, 'square', .05); tone(2200, .12, 'square', .05, 0, .09); }
+      if (once('stamp', t, 1.0)) { SFX.stamp(); sc.sh = 10; }
+      sc.sh = Math.max(0, (sc.sh || 0) - dt * 40);
+    },
+    head(t, talking, sc) {
+      const sh = sc.sh || 0; cx.save(); if (sh > 0) cx.translate(rand(-sh, sh) * .4, rand(-sh, sh) * .4);
+      // 背景の回転レーダー
+      cx.save(); cx.translate(70, 100); cx.globalCompositeOperation = 'lighter';
+      for (let r = 30; r <= 150; r += 30) { cx.strokeStyle = `rgba(212,175,55,${.12 - r / 2000})`; cx.lineWidth = 1; circ(0, 0, r); cx.stroke(); }
+      const sw = gT * 1.6; const sg = cx.createRadialGradient(0, 0, 0, 0, 0, 150);
+      sg.addColorStop(0, 'rgba(179,18,46,.35)'); sg.addColorStop(1, 'rgba(179,18,46,0)');
+      cx.fillStyle = sg; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 150, sw, sw + .6); cx.closePath(); cx.fill();
+      cx.restore();
+      const hk = clamp((t - .05) * 5, 0, 1);
+      cx.globalAlpha = hk;
       spaced(`CLASSIFIED DOSSIER  //  ${G.mode === 'campaign' ? m.date : 'TRAINING'}`, W / 2, 22, 9, GOLD, 2);
-      goldRule(36, 20, W - 20);
-      // 写真フレーム
-      const fx = 20, fy = 50, fs = 100;
-      cx.fillStyle = '#0d0d12'; cx.fillRect(fx, fy, fs, fs);
-      cx.strokeStyle = 'rgba(212,175,55,.25)'; cx.lineWidth = 1; cx.strokeRect(fx + 0.5, fy + 0.5, fs - 1, fs - 1);
-      corners(fx - 3, fy - 3, fs + 6, fs + 6, 12, CRIM, 2);
-      emo(m.icon, fx + fs / 2, fy + fs / 2, 48);
-      cx.strokeStyle = 'rgba(246,224,154,.3)'; cx.beginPath(); cx.moveTo(fx + fs / 2, fy + 6); cx.lineTo(fx + fs / 2, fy + 18); cx.moveTo(fx + fs / 2, fy + fs - 6); cx.lineTo(fx + fs / 2, fy + fs - 18); cx.stroke();
-      const sy = fy + ((t * 60) % fs);
-      cx.fillStyle = 'rgba(246,224,154,.18)'; cx.fillRect(fx, sy, fs, 2);
-      mono(`SUBJ-${String(i + 1).padStart(2, '0')}`, fx + fs / 2, fy + fs + 12, 8, '#8f876f');
+      const rw = (W - 40) * hk; goldRule(36, W / 2 - rw / 2, W / 2 + rw / 2);
+      cx.globalAlpha = 1;
+      // 写真フレーム（左からスライド）
+      const fk = clamp((t - .3) * 5, 0, 1), fe = 1 - Math.pow(1 - fk, 3);
+      const fx = 20 - (1 - fe) * 150, fy = 50, fs = 100;
+      if (fk > 0) {
+        cx.fillStyle = '#0d0d12'; cx.fillRect(fx, fy, fs, fs);
+        cx.save(); cx.beginPath(); cx.rect(fx, fy, fs, fs); cx.clip();
+        cx.strokeStyle = 'rgba(212,175,55,.12)'; cx.lineWidth = 1; for (let g = 0; g <= fs; g += 12.5) { cx.beginPath(); cx.moveTo(fx + g, fy); cx.lineTo(fx + g, fy + fs); cx.moveTo(fx, fy + g); cx.lineTo(fx + fs, fy + g); cx.stroke(); }
+        const gl = t < .75 ? Math.random() : 0; emo(m.icon, fx + fs / 2 + (gl > .6 ? rand(-6, 6) : 0), fy + fs / 2, 48);
+        if (gl > .5) { cx.fillStyle = 'rgba(255,40,80,.25)'; cx.fillRect(fx, fy + rand(0, fs), fs, rand(3, 12)); }
+        const sy = fy + ((t * 70) % fs); const lg = cx.createLinearGradient(0, sy - 14, 0, sy); lg.addColorStop(0, 'rgba(246,224,154,0)'); lg.addColorStop(1, 'rgba(246,224,154,.3)'); cx.fillStyle = lg; cx.fillRect(fx, sy - 14, fs, 14); cx.fillStyle = 'rgba(255,250,220,.5)'; cx.fillRect(fx, sy, fs, 1.5);
+        cx.restore();
+        cx.strokeStyle = 'rgba(212,175,55,.3)'; cx.lineWidth = 1; cx.strokeRect(fx + .5, fy + .5, fs - 1, fs - 1);
+        // 照準がロックオン
+        const lk = clamp((t - .45) / .35, 0, 1), pad = 3 + (1 - lk) * 26;
+        corners(fx - pad, fy - pad, fs + pad * 2, fs + pad * 2, 12, lk >= 1 ? CRIM : GOLD2, 2);
+        if (lk >= 1) { const bl = Math.floor(t * 4) % 2; mono(bl ? '● TARGET LOCKED' : '○ TARGET LOCKED', fx + fs / 2, fy + fs + 12, 7.5, '#ff4a6a'); }
+        else mono(`SCANNING ${Math.floor(lk * 100)}%`, fx + fs / 2, fy + fs + 12, 7.5, GOLD2);
+      }
       // 右カラム
       const rx = 136;
-      spaced(`MISSION ${String(i + 1).padStart(2, '0')} / 06`, rx, 62, 11, GOLD, 2, 'left');
-      serifText(m.name, rx, 94, m.name.length > 5 ? 25 : 28, '#fff', 'left', '900');
-      font(11); const gw = cx.measureText(m.genre).width + 22;
-      bevel(rx, 112, gw, 20, 6); cx.fillStyle = CRIM; cx.fill();
-      text(m.genre, rx + gw / 2, 122.5, 11, '#fff');
-      mono(`FILE ${m.code}`, rx + gw + 10, 122, 9, '#8f876f', 'left');
-      rectStamp(292, 156, 'TOP SECRET', CRIM, -0.14, 11);
+      { const n = Math.floor(clamp((t - .35) * 40, 0, 20)); const tx = `MISSION ${String(i + 1).padStart(2, '0')} / 06`; spaced(tx.slice(0, n), rx, 62, 11, GOLD, 2, 'left'); }
+      if (t > .55) {
+        const k = clamp((t - .55) * 7, 0, 1), sz = m.name.length > 5 ? 25 : 28;
+        cx.save(); cx.globalAlpha = k; cx.translate(rx, 94); cx.scale(1 + (1 - k) * 1.8, 1 + (1 - k) * 1.8);
+        cx.save(); cx.globalCompositeOperation = 'lighter'; const off = (1 - k) * 8 + (t < .9 ? 1.5 : .8);
+        serifText(m.name, -off, 0, sz, 'rgba(255,30,80,.7)', 'left', '900'); serifText(m.name, off, 0, sz, 'rgba(30,210,255,.7)', 'left', '900'); cx.restore();
+        cx.shadowColor = 'rgba(200,20,50,.9)'; cx.shadowBlur = 12; serifText(m.name, 0, 0, sz, '#fff', 'left', '900');
+        cx.restore();
+        // 光の筋
+        cx.font = `900 ${sz}px ${SERIF}`; const tw = cx.measureText(m.name).width; cx.save(); cx.beginPath(); cx.rect(rx, 78, tw, 32); cx.clip(); cx.globalCompositeOperation = 'lighter'; const sx = rx + ((t * 180) % (tw + 160)) - 60; const g = cx.createLinearGradient(sx, 0, sx + 30, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.5, 'rgba(255,245,210,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = g; cx.fillRect(sx, 78, 30, 32); cx.restore();
+      }
+      if (t > .7) {
+        const k = clamp((t - .7) * 6, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * 40, 0);
+        font(11); const gw = cx.measureText(m.genre).width + 22;
+        bevel(rx, 112, gw, 20, 6); cx.fillStyle = CRIM; cx.fill(); cx.strokeStyle = goldGrad(112, 132); cx.lineWidth = 1; cx.stroke();
+        text(m.genre, rx + gw / 2, 122.5, 11, '#fff');
+        mono(`FILE ${m.code}`, rx + gw + 10, 122, 9, '#8f876f', 'left');
+        cx.restore();
+        // 脅威レベル
+        const lv = [2, 3, 3, 4, 5, 4][i] || 3; spaced('THREAT', rx, 146, 7, '#8f876f', 2, 'left');
+        for (let k2 = 0; k2 < 5; k2++) { const on = k2 < lv && t > .8 + k2 * .06; cx.fillStyle = on ? (k2 >= 3 ? '#ff3b5c' : GOLD) : 'rgba(255,255,255,.1)'; bevel(rx + 44 + k2 * 14, 141, 11, 10, 3); cx.fill(); }
+      }
+      if (t > 1.0) { const k = clamp((t - 1.0) * 7, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(300, 156); cx.scale(2.4 - 1.4 * k, 2.4 - 1.4 * k); rectStamp(0, 0, 'TOP SECRET', CRIM, -0.14, 11); cx.restore(); }
+      cx.restore();
+    },
+    over(t) {
+      if (t < .35) { // 受信演出
+        const a = t < .25 ? 1 : 1 - (t - .25) * 10;
+        cx.fillStyle = `rgba(0,0,0,${.85 * a})`; cx.fillRect(0, 0, W, H);
+        cx.save(); cx.globalAlpha = a; const yb = 300;
+        cx.fillStyle = CRIM; cx.fillRect(0, yb - 14, W * Math.min(1, t * 8), 28);
+        spaced('INCOMING TRANSMISSION', W / 2 + (Math.random() < .3 ? rand(-4, 4) : 0), yb + 1, 12, '#fff', 3, 'center', MONO, '900');
+        for (let k = 0; k < 6; k++) { cx.fillStyle = 'rgba(255,255,255,.15)'; cx.fillRect(0, rand(0, H), W, rand(1, 3)); }
+        cx.restore();
+      }
+      if (t > .55 && t < .7) { cx.fillStyle = `rgba(255,250,235,${(.7 - t) * 3})`; cx.fillRect(0, 0, W, H); }
     },
     body: m.story + '\n\n【操作】\n' + m.how,
     next: () => go(Play, i),
