@@ -3637,68 +3637,145 @@ const Final = {
     const rs = MISSIONS.map((m, i) => G.results[i] || 0);
     this.total = rs.reduce((a, b) => a + b, 0) / rs.length * 100;
     this.rank = RANKS.find(r => this.total >= r.min);
+    this.good = 'SAB'.includes(this.rank.r);
     this.kids = Math.round(this.total / 100 * 2200000000);
     this.newBest = this.total > save.best;
     if (this.newBest) { save.best = this.total; save.bestRank = this.rank.r; persist(); }
     this.btns = [
-      Btn(24, 574, 150, 52, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
-      Btn(186, 574, 150, 52, 'タイトルへ', () => go(Title), { kind: 'dark', size: 15, sub: 'HEADQUARTERS' }),
+      Btn(24, 578, 150, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
+      Btn(186, 578, 150, 50, 'タイトルへ', () => go(Title), { kind: 'dark', size: 15, sub: 'HEADQUARTERS' }),
     ];
-    this.played = false;
+    this.conf = []; this.fw = 0; this.fl = 0; this.coal = []; this.ev = {};
+    const kind = this.good ? 'santa' : 'krampus';
+    this.hero = { x: W / 2, y: 0, vx: 0, vy: 0, face: 1, hp: 100, st: 'idle', t: 0, isP: kind === 'santa', walk: 0, flash: 0, rig: newRig(kind) };
+    if (this.rank.r === 'S') { this.hero.rig.hyper = true; this.hero.rig.bulk = 1; for (const k in this.hero.rig.armor) this.hero.rig.armor[k] = 1; }
+    if (!this.good) { this.hero.rig.rage = true; this.hero.rig.bulk = .6; for (const k in this.hero.rig.armor) this.hero.rig.armor[k] = 1; }
   },
+  once(k, t) { if (!this.ev[k] && this.t >= t) { this.ev[k] = 1; return true; } return false; },
   update(dt) {
-    this.t += dt;
-    if (!this.played && this.t > 2.6) {
-      this.played = true; SFX.stamp(); shake = 8;
-      setTimeout(() => { if (this.total >= 70) SFX.fanfare(); else SFX.sad(); }, 300);
-      if (this.total >= 85) for (let i = 0; i < 4; i++) setTimeout(() => burst(rand(60, 300), rand(100, 260), [GOLD, GOLD2, '#fff', CRIM], 40, 260, 1.2, 3), 300 + i * 300);
+    const t = this.t += dt, R = this.rank.r;
+    MISSIONS.forEach((m, i) => { if (this.once('m' + i, .3 + i * .22)) { noise(.08, .25, 1800); tone(500 + i * 80, .06, 'square', .05); } });
+    if (t > 1.7 && t < 2.8 && Math.floor(t * 30) !== Math.floor((t - dt) * 30)) { noise(.03, .12, 900); tone(300 + (t - 1.7) * 600, .02, 'square', .025); }
+    if (this.once('reveal', 2.85)) {
+      this.fl = 1; shake = 18; SFX.stamp(); noise(.8, .45, 700); tone(55, 1, 'sawtooth', .1, -20);
+      setTimeout(() => this.good ? SFX.fanfare() : SFX.sad(), 250);
+      if (R === 'S') setTimeout(() => SFX.jingle(), 1800);
     }
+    if (this.once('shrink', 3.9)) { SFX.stamp(); shake = 8; }
+    if (this.once('kids', 4.1)) tone(880, .1, 'triangle', .04);
+    if (t > 4.1 && t < 5.1 && Math.floor(t * 24) !== Math.floor((t - dt) * 24)) tone(1200 + Math.random() * 400, .02, 'square', .015);
+    // 演出の粒
+    if (t > 2.85) {
+      if (this.good) {
+        this.fw -= dt;
+        if (this.fw <= 0) { this.fw = R === 'S' ? rand(.12, .28) : R === 'A' ? rand(.3, .5) : rand(.6, .9);
+          const x = rand(30, W - 30), y = rand(60, 280), c = pick([['#ff3b5c', '#ffb0c0'], [GOLD2, '#fff'], ['#4fd18b', '#c8ffd8'], ['#7fb8ff', '#e0f0ff'], ['#ff9a2a', '#ffe0b0']]);
+          burst(x, y, c, R === 'S' ? 46 : 30, 230, 1.1, 3); noise(.25, .1, 900); }
+        if (Math.random() < (R === 'S' ? .9 : R === 'A' ? .5 : .2)) this.conf.push({ x: rand(0, W), y: -10, vx: rand(-30, 30), vy: rand(60, 140), rot: rand(0, 6), vr: rand(-8, 8), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff']) });
+      } else {
+        if (Math.random() < (R === 'D' ? .5 : .25)) this.coal.push({ x: rand(0, W), y: -10, vy: rand(150, 280), rot: rand(0, 6), vr: rand(-5, 5), r: rand(4, 8) });
+      }
+    }
+    for (const c of this.conf) { c.x += c.vx * dt; c.y += c.vy * dt; c.rot += c.vr * dt; c.vx += Math.sin(gT * 3 + c.rot) * 20 * dt; }
+    for (const c of this.coal) { c.y += c.vy * dt; c.rot += c.vr * dt; }
+    this.conf = this.conf.filter(c => c.y < H + 10); this.coal = this.coal.filter(c => c.y < H + 10);
+    this.fl = Math.max(0, this.fl - dt * 2.5);
+    // 主役のポーズ
+    const f = this.hero, rt = t - 2.85;
+    const p = this.good ? (rt < .3 ? PZ({ lean: .4, sF: .3, eF: 2.5, sB: .2, eB: 2.5, hF: .8, kF: 1.3, hB: -.6, kB: 1.2 }) : PZ({ sF: 2.5, eF: .3 + Math.sin(gT * 6) * .1, sB: .4, eB: 2, lean: -.12, head: .1, hF: .3, kF: .12, hB: -.3, kB: .1 }))
+                        : PZ({ sF: 2.85 + Math.sin(gT * 15) * .1, eF: .15, sB: 2.35, eB: .45, lean: -.42, head: -.6 + Math.sin(gT * 30) * .1, hF: .55, kF: .25, hB: -.55, kB: .2 });
+    const k = 1 - Math.exp(-14 * dt); for (const key in f.rig.pose) f.rig.pose[key] += (p[key] - f.rig.pose[key]) * k;
+    ctxFL = 470; solveRig(f, 470, dt); updateCloth(f, dt);
+    if (!f.isP) { f.rig.eyes.push(headLocal(f, 8, -4)); if (f.rig.eyes.length > 12) f.rig.eyes.shift(); }
   },
   draw(dt) {
+    const t = this.t, R = this.rank.r, col = gradeCol[R], good = this.good;
     drawAgency(dt, 380);
-    // 夜明けの光
-    const dg = cx.createRadialGradient(W / 2, H + 60, 10, W / 2, H + 60, 340); dg.addColorStop(0, 'rgba(255,190,110,.28)'); dg.addColorStop(1, 'rgba(255,190,110,0)');
+    const dg = cx.createRadialGradient(W / 2, H + 60, 10, W / 2, H + 60, 360); dg.addColorStop(0, good ? 'rgba(255,190,110,.32)' : 'rgba(160,40,255,.28)'); dg.addColorStop(1, 'rgba(0,0,0,0)');
     cx.fillStyle = dg; cx.fillRect(0, 0, W, H);
-    drawSnow(dt, 0.4);
-    spaced('DEC 25  ·  05:00  ·  FINAL REPORT', W / 2, 22, 9, '#b9ad8c', 2);
-    cx.save(); cx.shadowColor = 'rgba(200,20,50,.8)'; cx.shadowBlur = 14;
-    spaced('MISSION COMPLETE', W / 2, 54, 24, goldGrad(42, 66), 2.5, 'center', SERIF, '900');
-    cx.restore();
-    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
-    drawPanel(14, 78, W - 28, 226);
+    // 回転する放射光（ランク発表後）
+    if (t > 2.85) {
+      const rk = Math.min(1, (t - 2.85) * 2); cx.save(); cx.translate(W / 2, 300); cx.rotate(gT * .15); cx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 20; i++) { cx.rotate(Math.PI / 10); const g = cx.createLinearGradient(0, 0, 520, 0); g.addColorStop(0, good ? `rgba(255,214,120,${.2 * rk})` : `rgba(180,60,255,${.16 * rk})`); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(520, -30); cx.lineTo(520, 30); cx.fill(); }
+      cx.restore();
+    }
+    drawParts();
+    drawSnow(dt, .35);
+    // 夜明けの空をソリが横切る（S/A）
+    if (good && R !== 'B' && t > 3.2) { const q = ((t - 3.2) / 4) % 1, sx = lerp(-80, W + 80, q), sy = 70 + Math.sin(q * Math.PI) * -20;
+      cx.save(); for (let i = 0; i < 3; i++) { cx.save(); cx.translate(sx + 24 + i * 14, sy - 2); cx.scale(.5, .5); drawReindeer(0, 0, 1, gT + i * .3, 1, i === 2 ? '#ff2a3a' : '#2a1a10'); cx.restore(); }
+      cx.fillStyle = CRIM; cx.beginPath(); cx.moveTo(sx - 14, sy - 4); cx.lineTo(sx + 10, sy - 4); cx.quadraticCurveTo(sx + 14, sy + 5, sx + 4, sy + 6); cx.lineTo(sx - 12, sy + 6); cx.closePath(); cx.fill();
+      cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 10; i++) { cx.fillStyle = `rgba(255,214,74,${.7 - i * .07})`; circ(sx - 18 - i * 10, sy + 3 + Math.sin(i + gT * 6) * 2, 1.5); cx.fill(); } cx.restore(); }
+    // ヘッダ
+    spaced('DEC 25  ·  05:00  ·  FINAL REPORT', W / 2, 20, 9, '#b9ad8c', 2);
+    chromaText('MISSION COMPLETE', W / 2, 50, 24, 2.5, SERIF, goldGrad(38, 62), t > 2.85 && t < 3.1 ? 1 : 0);
+    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * .5, rand(-shake, shake) * .5);
+    // ミッション一覧
+    drawPanel(14, 74, W - 28, 216);
     MISSIONS.forEach((m, i) => {
-      const r = G.results[i] || 0, y = 102 + i * 34;
-      const k = clamp((this.t - i * 0.25) * 2, 0, 1);
-      cx.globalAlpha = k;
-      mono(m.code.replace('OP-', ''), 34, y, 10, GOLD, 'center');
-      text(m.name, 50, y, 13, '#ece6d6', 'left');
-      rateBar(150, y - 5, 118, 10, r * k);
-      mono(`${Math.round(r * 100 * k)}%`, 310, y, 12, '#fff', 'right');
-      serifText(gradeOf(r), 328, y, 15, gradeCol[gradeOf(r)], 'center', '900');
-      cx.globalAlpha = 1;
+      const r = G.results[i] || 0, y = 96 + i * 32, k = clamp((t - .3 - i * .22) * 6, 0, 1), fill = clamp((t - .3 - i * .22) * 2.5, 0, 1);
+      if (k <= 0) return;
+      cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * -60, 0);
+      mono(m.code.replace('OP-', ''), 32, y, 10, GOLD, 'center');
+      text(m.name, 48, y, 13, '#ece6d6', 'left');
+      rateBar(146, y - 5, 116, 10, r * fill);
+      mono(`${Math.round(r * 100 * fill)}%`, 302, y, 12, '#fff', 'right');
+      cx.restore();
+      if (fill >= 1) { const g = gradeOf(r), pk = clamp((t - .3 - i * .22 - .4) * 8, 0, 1); cx.save(); cx.translate(325, y); cx.scale(1 + (1 - pk) * 1.5, 1 + (1 - pk) * 1.5); cx.globalAlpha = pk; serifText(g, 0, 0, 16, gradeCol[g], 'center', '900'); cx.restore(); }
     });
-    const k2 = clamp((this.t - 1.6) / 1.0, 0, 1);
-    spaced('TOTAL ACHIEVEMENT', 30, 326, 9, GOLD, 2, 'left');
-    mono(`${(this.total * k2).toFixed(1)}%`, 30, 364, 46, '#fff', 'left');
-    if (this.t > 2.6) {
-      const k = clamp((this.t - 2.6) * 6, 0, 1);
-      cx.globalAlpha = k; stamp(W - 66, 352, this.rank.r, 'RANK', gradeCol[this.rank.r], 2.2 - 1.2 * k, -0.2, 40); cx.globalAlpha = 1;
-      if (this.newBest) spaced('★ NEW RECORD', 30, 394, 9, GOLD2, 2, 'left');
-      const k3 = clamp((this.t - 2.9) * 3, 0, 1); cx.globalAlpha = k3;
-      goldRule(410, 30, W - 30);
-      spaced('TITLE', W / 2, 424, 8, '#8f876f', 3);
-      serifText(this.rank.title, W / 2, 446, 21, gradeCol[this.rank.r], 'center', '900');
-      text(`笑顔になった子供たち　約 ${(this.kids / 1e8).toFixed(1)} 億人`, W / 2, 472, 12, '#f0d9a8');
-      cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fillRect(22, 486, W - 44, 80); cx.fillStyle = CRIM; cx.fillRect(22, 486, 3, 80);
-      const ls = wrapLines(this.rank.msg, W - 72, 12.5);
-      ls.slice(0, 4).forEach((l, i) => text(l, 34, 501 + i * 18, 12.5, '#ece6d6', 'left', 'normal'));
+    // 合計（カウントアップ）
+    const k2 = clamp((t - 1.7) / 1.1, 0, 1), e2 = 1 - Math.pow(1 - k2, 3);
+    spaced('TOTAL ACHIEVEMENT', 28, 310, 9, GOLD, 2, 'left');
+    cx.save(); if (t > 1.7 && t < 2.85) { cx.shadowColor = good ? GOLD2 : '#b44cff'; cx.shadowBlur = 10 + Math.sin(gT * 30) * 6; }
+    mono(`${(this.total * e2).toFixed(1)}%`, 28, 346, 44, '#fff', 'left'); cx.restore();
+    rateBar(28, 372, 200, 8, this.total / 100 * e2);
+    if (t > 3.9) { const k = clamp((t - 3.9) * 6, 0, 1); cx.globalAlpha = k; stamp(W - 64, 340, R, 'RANK', col, 2.2 - 1.2 * k, -.2, 40); cx.globalAlpha = 1; if (this.newBest) { cx.save(); cx.globalAlpha = .6 + .4 * Math.sin(gT * 8); spaced('★ NEW RECORD', 28, 392, 9, GOLD2, 2, 'left'); cx.restore(); } }
+    // 称号・子供の数・長官コメント
+    if (t > 3.95) {
+      const k3 = clamp((t - 3.95) * 3, 0, 1); cx.globalAlpha = k3;
+      goldRule(408, 28, W - 28);
+      spaced('TITLE', W / 2, 421, 8, '#8f876f', 3);
+      cx.save(); cx.translate(W / 2, 442); const ts = 1 + Math.max(0, .15 - (t - 3.95)) * 6; cx.scale(ts, ts); bigCall(this.rank.title, 0, 0, 20, col); cx.restore();
+      const kk = clamp((t - 4.1) / 1, 0, 1), kd = Math.round(this.kids * (1 - Math.pow(1 - kk, 3)));
+      text(`笑顔になった子供たち`, W / 2 - 60, 468, 11, '#c9bd98', 'center', 'normal');
+      mono(`${kd.toLocaleString('en-US')}人`, W / 2 + 62, 468, 13, good ? GOLD2 : '#c77dff');
+      cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fillRect(20, 482, W - 40, 86); cx.fillStyle = good ? CRIM : '#5a1a8a'; cx.fillRect(20, 482, 3, 86);
+      spaced('FROM THE DIRECTOR', 32, 495, 7.5, GOLD, 2, 'left');
+      const ls = wrapLines(this.rank.msg, W - 66, 12); const n = Math.floor((t - 4.3) * 40); let left = n;
+      ls.slice(0, 4).forEach((l, i) => { const s2 = l.slice(0, Math.max(0, left)); left -= l.length; text(s2, 32, 513 + i * 17, 12, '#ece6d6', 'left', 'normal'); });
       cx.globalAlpha = 1;
     }
     cx.restore();
-    if (this.t > 3.1) for (const b of this.btns) drawBtn(b, this.t);
-    drawParts();
+    // 紙吹雪・石炭
+    for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
+    for (const c of this.coal) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); const r = c.r; cx.fillStyle = '#0a0810'; cx.beginPath(); cx.moveTo(-r, -r * .3); cx.lineTo(-r * .3, -r); cx.lineTo(r * .7, -r * .7); cx.lineTo(r, r * .2); cx.lineTo(r * .3, r); cx.lineTo(-r * .8, r * .6); cx.closePath(); cx.fill(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(255,90,30,.5)'; circ(r * .2, r * .3, r * .35); cx.fill(); cx.restore(); }
+    // ランク発表（全画面）
+    if (t > 2.7 && t < 4.0) {
+      const rt = t - 2.85, inK = clamp(rt * 6, 0, 1), out = clamp((t - 3.65) / .35, 0, 1);
+      cx.fillStyle = `rgba(0,0,0,${(t < 2.85 ? (t - 2.7) * 5 : .86) * (1 - out)})`; cx.fillRect(0, 0, W, H);
+      if (rt > 0) {
+        // 主役
+        cx.save(); cx.globalAlpha = 1 - out; const f = this.hero, s = 1.5;
+        cx.translate(W / 2, 600); cx.scale(s, s); cx.translate(-W / 2, -470);
+        drawFlames((f.rig.W.hip.x + f.rig.W.neck.x) / 2, (f.rig.W.hip.y + f.rig.W.neck.y) / 2 - 6, good ? '#ffcc4a' : '#a03cff', 11, 60);
+        if (!f.isP) drawEyeTrail(f); drawRig(f); cx.restore();
+        // 巨大なランク文字
+        const sc = (1 + (1 - inK) * 3) * (1 - out * .6), x = lerp(W / 2, W - 64, out), y = lerp(190, 340, out);
+        cx.save(); cx.globalAlpha = inK * (1 - out * .9); cx.translate(x, y); cx.scale(sc, sc);
+        cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 3; i++) { cx.strokeStyle = col; cx.globalAlpha = inK * (.5 - i * .15) * (1 - out); cx.lineWidth = 3; circ(0, 0, 70 + i * 16 + Math.sin(gT * 6 + i) * 4); cx.stroke(); }
+        cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = inK * (1 - out * .9);
+        chromaText(R, 0, 0, 150, 0, SERIF, R === 'S' ? goldGrad(-70, 70) : col, rt < .15 ? 1 : 0);
+        cx.restore();
+        cx.save(); cx.globalAlpha = inK * (1 - out); spaced('RANK', W / 2, 92, 14, '#fff', 8); bigCall(this.rank.title, W / 2, 292, 24, col); cx.restore();
+        if (rt < .6) { cx.save(); cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 3; i++) { cx.strokeStyle = i ? col : '#fff'; cx.globalAlpha = 1 - rt / .6; cx.lineWidth = 4 - i; circ(W / 2, 190, 30 + rt * (500 + i * 200)); cx.stroke(); } cx.restore(); }
+      }
+      // 発表前のドラムロール文字
+      if (t < 2.85) { cx.save(); cx.globalAlpha = (t - 2.7) * 6; spaced('JUDGEMENT', W / 2, 260, 16, '#fff', 8); cx.restore(); }
+    }
+    if (this.fl > 0) { cx.fillStyle = good ? `rgba(255,250,230,${Math.min(1, this.fl)})` : `rgba(255,40,80,${Math.min(.7, this.fl)})`; cx.fillRect(0, 0, W, H); }
+    if (t > 4.4) this.btns.forEach((b, i) => { const q = clamp((t - 4.4 - i * .1) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30); drawBtn(b, t); cx.restore(); });
   },
-  down(x, y) { if (this.t < 3.1) { this.t = 3.1; return; } BtnMix.down.call(this, x, y); },
+  down(x, y) { if (this.t < 2.85) { this.t = 2.85; return; } if (this.t < 4.4) { this.t = 4.4; for (const k of ['reveal', 'shrink', 'kids']) this.ev[k] = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
 const Training = {
