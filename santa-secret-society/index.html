@@ -4734,86 +4734,148 @@ const HANDAKU = { ハ: 'パ', ヒ: 'ピ', フ: 'プ', ヘ: 'ペ', ホ: 'ポ' };
 const NameEntry = {
   ...BtnMix,
   enter(a) {
-    this.a = a; this.t = 0; this.time = 30; this.page = 0; this.name = [...(save.lastName || '')].slice(0, NAME_MAX); this.pos = rankPos(Math.round(a.score * 10) / 10); this.pop = []; this.done = false; this.ev = {};
+    this.a = a; this.t = 0; this.time = 30; this.page = 0; this.name = [...(save.lastName || '')].slice(0, NAME_MAX); this.pos = rankPos(Math.round(a.score * 10) / 10);
+    this.pop = []; this.rip = []; this.done = false; this.doneT = 0; this.ev = {}; this.sh = 0; this.fl = 0; this.fw = .8; this.conf = []; this.emb = []; this.fly = [];
     const ctl = (x, w, label, sub, fn, glow) => Btn(x, 528, w, 44, label, fn, { kind: glow ? undefined : 'dark', glow, size: 15, sub });
     this.btns = [
-      ctl(20, 96, 'カナ', 'KANA', () => { this.page ^= 1; this.btns[0].label = this.page ? 'ABC' : 'カナ'; this.btns[0].sub = this.page ? 'ALPHABET' : 'KANA'; }),
+      ctl(20, 96, 'カナ', 'KANA', () => { this.page ^= 1; this.btns[0].label = this.page ? 'ABC' : 'カナ'; this.btns[0].sub = this.page ? 'ALPHABET' : 'KANA'; this.flipT = .25; noise(.15, .15, 4000); tone(700, .06, 'square', .04, 300); }),
       ctl(126, 96, '◀ けす', 'DELETE', () => this.del()),
       ctl(232, 108, '決定', 'END', () => this.confirm(), true),
     ];
-    if (this.page) this.btns[0].label = 'ABC';
   },
   keysNow() { return this.page ? [...KEYS_KANA, '゛', '゜'] : KEYS_ABC; },
   cell(i) { return { x: 20 + (i % 8) * 40, y: 262 + Math.floor(i / 8) * 36, w: 38, h: 33 }; },
-  add(ch) {
+  slotX(i) { return W / 2 + (i - (NAME_MAX - 1) / 2) * 44; },
+  add(ch, from) {
     if (this.done) return;
-    if (ch === '゛' || ch === '゜') { const last = this.name[this.name.length - 1], m = ch === '゛' ? DAKU : HANDAKU; if (last && m[last]) { this.name[this.name.length - 1] = m[last]; tone(1500, .05, 'square', .04); } else SFX.empty(); return; }
-    if (this.name.length >= NAME_MAX) { SFX.empty(); shake = 4; return; }
-    this.name.push(ch); tone(900 + this.name.length * 120, .05, 'square', .05); noise(.03, .1, 4000);
-    const sx = W / 2 + (this.name.length - 1 - (NAME_MAX - 1) / 2) * 44; this.pop.push({ x: sx, y: 212, t: 0 }); burst(sx, 212, [GOLD2, '#fff'], 8, 120, .4, 2);
+    if (ch === '゛' || ch === '゜') { const last = this.name[this.name.length - 1], m = ch === '゛' ? DAKU : HANDAKU; if (last && m[last]) { this.name[this.name.length - 1] = m[last]; tone(1500, .05, 'square', .04); const sx = this.slotX(this.name.length - 1); this.pop.push({ x: sx, t: 0 }); burst(sx, 212, [GOLD2, '#fff'], 10, 140, .4, 2); } else { SFX.empty(); this.sh = 4; } return; }
+    if (this.name.length >= NAME_MAX) { SFX.empty(); this.sh = 6; return; }
+    this.name.push(ch); const n = this.name.length; tone(700 + n * 140, .06, 'square', .05); tone(1400 + n * 140, .05, 'triangle', .03, 0, .04); noise(.04, .12, 4000);
+    const sx = this.slotX(n - 1); this.pop.push({ x: sx, t: 0 }); this.sh = 3;
+    burst(sx, 212, [`hsl(${(gT * 200 + n * 50) % 360},100%,70%)`, '#fff', GOLD2], 14, 170, .45, 2.5); ringFx(sx, 212, GOLD2, 40, .3, 2);
+    if (from) this.fly.push({ ch, x0: from.x, y0: from.y, x1: sx, y1: 212, t: 0 });
+    if (n === NAME_MAX) { popCall('MAX!', W / 2, 168, '#ff9aa8', 16, .6); }
   },
-  del() { if (this.done) return; if (this.name.length) { this.name.pop(); tone(400, .05, 'square', .04, -200); } else SFX.empty(); },
+  del() { if (this.done) return; if (this.name.length) { const sx = this.slotX(this.name.length - 1); this.name.pop(); tone(400, .06, 'square', .045, -200); burst(sx, 212, ['#ff6b7d', '#fff'], 10, 120, .35, 2); this.sh = 3; } else { SFX.empty(); this.sh = 4; } },
   confirm() {
-    if (this.done) return; this.done = true;
+    if (this.done) return; this.done = true; this.doneT = 0;
     const name = this.name.join('') || (G.codename || 'AGENT').slice(0, NAME_MAX);
+    if (!this.name.length) this.name = [...name];
     const d = new Date(), date = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
     const e = { name, score: Math.round(this.a.score * 10) / 10, r: this.a.rank, ex: !!this.a.ex, date, id: Date.now() };
     save.ranking.push(e); sortRanking(); save.lastName = name; persist(); G.entered = true;
-    SFX.jingle(); flashFx(.6); shake = 10; burst(W / 2, 212, [GOLD2, '#fff', '#ff3b5c'], 50, 300, .8, 3); ringFx(W / 2, 212, GOLD2, 200, .5, 4);
-    setTimeout(() => go(Ranking, { hl: e.id, from: 'final' }), 900);
+    SFX.stamp(); setTimeout(() => SFX.jingle(), 150); this.fl = 1; this.sh = 18; noise(.7, .4, 700); tone(55, .8, 'sawtooth', .1, -20);
+    for (let i = 0; i < NAME_MAX; i++) { const x = this.slotX(i); burst(x, 212, [`hsl(${i * 60},100%,65%)`, '#fff', GOLD2], 18, 260, .9, 3); }
+    ringFx(W / 2, 212, GOLD2, 260, .6, 5); ringFx(W / 2, 212, '#fff', 180, .4, 3);
+    for (let k = 0; k < 70; k++) this.conf.push(this.mkConf(true));
+    setTimeout(() => go(Ranking, { hl: e.id, from: 'final' }), 1600);
   },
+  mkConf(up) { return { x: up ? W / 2 + rand(-60, 60) : rand(0, W), y: up ? 220 : -10, vx: up ? rand(-280, 280) : rand(-30, 30), vy: up ? rand(-420, -150) : rand(60, 140), rot: rand(0, 6), vr: rand(-10, 10), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff', '#ff9aef']) }; },
+  once(k, at) { if (!this.ev[k] && this.t >= at) { this.ev[k] = 1; return true; } return false; },
   update(dt) {
-    const t0 = this.t; this.t += dt;
-    if (!this.done) { const p = this.time; this.time -= dt; if (Math.ceil(p) !== Math.ceil(this.time) && this.time < 10 && this.time > 0) tone(1760, .05, 'square', .04); if (this.time <= 0) { this.time = 0; this.confirm(); } }
-    if (t0 < .05 && this.t >= .05) { SFX.fanfare(); flashFx(.5); shake = 10; }
-    for (const p of this.pop) p.t += dt; this.pop = this.pop.filter(p => p.t < .4);
+    const t = this.t += dt;
+    if (this.once('flash', .02)) { noise(.4, .2, 5000); }
+    if (this.once('slam', .35)) { SFX.fanfare(); this.fl = .8; this.sh = 16; noise(.6, .4, 800); tone(55, .7, 'sawtooth', .09, -20); ringFx(W / 2, 56, '#fff', 220, .45, 4); for (let k = 0; k < 50; k++) this.conf.push(this.mkConf(true)); }
+    if (this.once('rank', .7)) { SFX.stamp(); this.sh = 10; ringFx(W / 2, 104, this.pos < 3 ? MEDAL[this.pos] : GOLD2, 160, .45, 3); }
+    if (!this.done) { const p = this.time; this.time -= dt; if (Math.ceil(p) !== Math.ceil(this.time) && this.time > 0) { if (this.time < 10) { tone(1760, .05, 'square', .045); tone(60, .15, 'sine', .25, -20); this.beat = 1; } } if (this.time <= 0) { this.time = 0; this.confirm(); } }
+    else this.doneT += dt;
+    this.beat = Math.max(0, (this.beat || 0) - dt * 4);
+    // 花火・紙吹雪・火の粉
+    this.fw -= dt; if (this.fw <= 0) { this.fw = this.done ? rand(.12, .25) : rand(.9, 1.6); const x = rand(30, W - 30), y = rand(30, 150), h = rand(0, 360); burst(x, y, [`hsl(${h},100%,65%)`, `hsl(${(h + 50) % 360},100%,80%)`, '#fff'], 26, 180, .9, 2.5); ringFx(x, y, `hsl(${h},100%,70%)`, 50, .35, 2); noise(.2, .06, 900); }
+    if (Math.random() < .15) this.conf.push(this.mkConf(false));
+    if (Math.random() < .4) this.emb.push({ x: rand(0, W), y: H + 5, vy: rand(-60, -25), vx: rand(-8, 8), life: rand(2, 4), r: rand(.8, 2) });
+    for (const c of this.conf) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy = Math.min(c.vy + 160 * dt, 170); c.rot += c.vr * dt; c.vx += Math.sin(gT * 3 + c.rot) * 30 * dt; } this.conf = this.conf.filter(c => c.y < H + 10);
+    for (const e of this.emb) { e.x += e.vx * dt; e.y += e.vy * dt; e.life -= dt; } this.emb = this.emb.filter(e => e.life > 0);
+    for (const p of this.pop) p.t += dt; this.pop = this.pop.filter(p => p.t < .45);
+    for (const r of this.rip) r.t += dt; this.rip = this.rip.filter(r => r.t < .4);
+    for (const f of this.fly) f.t += dt; this.fly = this.fly.filter(f => f.t < .22);
+    if (this.flipT > 0) this.flipT -= dt; if (this.hotT > 0) this.hotT -= dt;
+    this.sh = Math.max(0, this.sh - dt * 40); this.fl = Math.max(0, this.fl - dt * 2.5);
   },
   draw(dt) {
-    const t = this.t;
+    const t = this.t, hue = (gT * 120) % 360, warn = this.time < 10 && !this.done;
     drawAgency(dt, 200);
-    // 虹色にうねる背景ライン（昔のゲーム風）
-    cx.save(); cx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 14; i++) { const y = 40 + i * 10 + Math.sin(gT * 3 + i * .5) * 4; cx.fillStyle = `hsla(${(gT * 120 + i * 25) % 360},90%,60%,.08)`; cx.fillRect(0, y, W, 5); }
+    // 回転する虹色サンバースト
+    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 80); cx.rotate(gT * .35);
+    for (let i = 0; i < 20; i++) { cx.rotate(Math.PI / 10); const g = cx.createLinearGradient(0, 0, 460, 0); g.addColorStop(0, `hsla(${(hue + i * 18) % 360},100%,60%,${t > .35 ? .16 : 0})`); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(460, -24); cx.lineTo(460, 24); cx.fill(); }
     cx.restore();
-    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * .5, rand(-shake, shake) * .5);
-    const k = clamp(t * 4, 0, 1);
-    cx.save(); cx.translate(W / 2, 56); cx.scale(1 + (1 - k) * 2, 1 + (1 - k) * 2); cx.globalAlpha = k;
-    const hue = (gT * 200) % 360; chromaText('NEW RECORD!', 0, 0, 34, 2, SERIF, `hsl(${hue},100%,72%)`, t < .4 ? 1 : 0); cx.restore();
-    if (t > .3) { const q = clamp((t - .3) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(W / 2, 104); cx.scale(1 + (1 - q), 1 + (1 - q)); bigCall(`第${this.pos + 1}位 ランクイン!`, 0, 0, 26, this.pos < 3 ? MEDAL[this.pos] : GOLD2); cx.restore();
-      mono(`SCORE ${this.a.score.toFixed(1)}%   ·   RANK ${this.a.rank}${this.a.ex ? '   ·   EX' : ''}`, W / 2, 136, 10, '#fff'); }
-    // タイマー
-    { const tt = Math.ceil(this.time), warn = this.time < 10; cx.save(); cx.translate(W - 34, 176); cx.strokeStyle = 'rgba(255,255,255,.15)'; cx.lineWidth = 3; circ(0, 0, 16); cx.stroke();
-      cx.strokeStyle = warn ? '#ff3b5c' : GOLD2; cx.beginPath(); cx.arc(0, 0, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.time / 30); cx.stroke(); mono(String(tt), 0, 1, 12, warn && Math.floor(t * 4) % 2 ? '#ff3b5c' : '#fff'); cx.restore();
-      spaced('TIME', W - 34, 200, 6.5, '#8f876f', 1.5); }
-    { const bl = Math.floor(t * 2.5) % 2; cx.save(); cx.globalAlpha = bl ? 1 : .35; spaced('ENTER YOUR NAME', 22, 176, 10, GOLD2, 3, 'left'); cx.restore(); }
-    // 名前の枠
-    for (let i = 0; i < NAME_MAX; i++) {
-      const x = W / 2 + (i - (NAME_MAX - 1) / 2) * 44, y = 212, cur = i === this.name.length && !this.done;
-      bevel(x - 19, y - 22, 38, 44, 6); cx.fillStyle = cur ? 'rgba(179,18,46,.5)' : 'rgba(0,0,0,.6)'; cx.fill(); cx.strokeStyle = cur ? GOLD2 : 'rgba(212,175,55,.35)'; cx.lineWidth = cur ? 2 : 1; cx.stroke();
-      const ch = this.name[i]; const p = this.pop.find(p => Math.abs(p.x - x) < 1); const sc = p ? 1 + (1 - p.t / .4) * .6 : 1;
-      if (ch) { cx.save(); cx.translate(x, y); cx.scale(sc, sc); cx.shadowColor = GOLD2; cx.shadowBlur = 10; serifText(ch, 0, 1, 26, this.done ? `hsl(${(gT * 300 + i * 40) % 360},100%,75%)` : '#fff', 'center', '900'); cx.restore(); }
-      else if (cur && Math.floor(t * 3) % 2) { cx.fillStyle = GOLD2; cx.fillRect(x - 10, y + 12, 20, 3); }
+    // 虹色にうねるライン（昔のゲーム風）
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 16; i++) { const y = 30 + i * 10 + Math.sin(gT * 3 + i * .5) * 5; cx.fillStyle = `hsla(${(gT * 140 + i * 22) % 360},90%,60%,.09)`; cx.fillRect(0, y, W, 5); }
+    for (const e of this.emb) { cx.fillStyle = `rgba(255,${200 + e.r * 20 | 0},120,${Math.min(1, e.life / 1.5) * .6})`; circ(e.x + Math.sin(gT * 2 + e.y * .05) * 4, e.y, e.r); cx.fill(); }
+    cx.restore();
+    // 残り10秒：赤い脈動
+    if (warn) { const vg = cx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75); vg.addColorStop(0, 'rgba(255,0,40,0)'); vg.addColorStop(1, `rgba(255,0,40,${.15 + .3 * this.beat})`); cx.fillStyle = vg; cx.fillRect(0, 0, W, H); }
+    cx.save(); if (this.sh > 0) cx.translate(rand(-this.sh, this.sh) * .5, rand(-this.sh, this.sh) * .5);
+    // NEW RECORD!（叩きつけ）
+    if (t > .2) {
+      const k = clamp((t - .2) / .15, 0, 1), wob = 1 + Math.sin(gT * 6) * .03;
+      cx.save(); cx.translate(W / 2, 56); cx.scale((1 + (1 - k) * 3) * wob, (1 + (1 - k) * 3) * wob); cx.rotate(Math.sin(gT * 2.5) * .03); cx.globalAlpha = k;
+      chromaText('NEW RECORD!', 0, 0, 36, 2, SERIF, `hsl(${(gT * 220) % 360},100%,72%)`, t < .6 || (gT % 2.4) < .06 ? 1 : 0); cx.restore();
+      // 光の筋
+      cx.save(); cx.beginPath(); cx.rect(40, 36, W - 80, 40); cx.clip(); cx.globalCompositeOperation = 'lighter'; const sx = 40 + ((t * 260) % (W + 100)) - 80; const sg = cx.createLinearGradient(sx, 0, sx + 50, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(.5, 'rgba(255,255,255,.5)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = sg; cx.fillRect(sx, 36, 50, 40); cx.restore();
     }
-    // 文字盤
-    const ks = this.keysNow();
-    ks.forEach((ch, i) => { const c = this.cell(i), hot = this.hot === i && this.hotT > 0;
-      bevel(c.x, c.y, c.w, c.h, 5); cx.fillStyle = hot ? 'rgba(246,224,154,.85)' : 'rgba(20,16,26,.85)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.3)'; cx.lineWidth = 1; cx.stroke();
-      text(ch, c.x + c.w / 2, c.y + c.h / 2 + 1, ch.length > 1 ? 12 : 17, hot ? INK : '#ece6d6'); });
-    if (this.hotT > 0) this.hotT -= dt;
+    if (t > .55) {
+      const q = clamp((t - .55) / .15, 0, 1), mc = this.pos < 3 ? MEDAL[this.pos] : GOLD2;
+      cx.save(); cx.globalAlpha = q; cx.translate(W / 2 + 14, 104); cx.scale(1 + (1 - q) * 2, 1 + (1 - q) * 2); bigCall(`第${this.pos + 1}位 ランクイン!`, 0, 0, 26, mc); cx.restore();
+      // 順位メダル（回転）
+      cx.save(); cx.globalAlpha = q; cx.translate(38, 104); cx.scale(Math.cos(gT * 3), 1); const mg = cx.createRadialGradient(-4, -4, 1, 0, 0, 16); mg.addColorStop(0, '#fff'); mg.addColorStop(.35, mc); mg.addColorStop(1, 'rgba(0,0,0,.6)'); cx.fillStyle = mg; circ(0, 0, 15); cx.fill(); mono(String(this.pos + 1), 0, 1, 15, INK); cx.restore();
+      if (this.pos === 0) { cx.save(); cx.globalAlpha = q; emo('👑', 38, 80 + Math.sin(gT * 3) * 2, 16); cx.restore(); }
+      cx.save(); cx.globalAlpha = q; mono(`SCORE ${this.a.score.toFixed(1)}%   ·   RANK ${this.a.rank}${this.a.ex ? '   ·   EX' : ''}`, W / 2, 136, 10, '#fff'); cx.restore();
+    }
+    // タイマー
+    { const tt = Math.ceil(this.time), pu = warn ? 1 + this.beat * .25 : 1; cx.save(); cx.translate(W - 34, 176); cx.scale(pu, pu);
+      if (warn) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(255,40,70,${.25 + this.beat * .4})`; circ(0, 0, 24); cx.fill(); cx.restore(); }
+      cx.strokeStyle = 'rgba(255,255,255,.15)'; cx.lineWidth = 3; circ(0, 0, 16); cx.stroke();
+      cx.strokeStyle = warn ? '#ff3b5c' : GOLD2; cx.beginPath(); cx.arc(0, 0, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.time / 30); cx.stroke(); mono(String(tt), 0, 1, 12, warn ? '#ff6b7d' : '#fff'); cx.restore();
+      spaced('TIME', W - 34, 200, 6.5, '#8f876f', 1.5); }
+    { const bl = Math.floor(t * 2.5) % 2; cx.save(); cx.globalAlpha = bl ? 1 : .35; spaced('ENTER YOUR NAME', 22, 176, 10, `hsl(${hue},100%,75%)`, 3, 'left'); cx.restore(); }
+    // 名前の枠（文字は波打ち、入力で叩きつけ）
+    for (let i = 0; i < NAME_MAX; i++) {
+      const x = this.slotX(i), cur = i === this.name.length && !this.done, ch = this.name[i], wave = Math.sin(gT * 5 - i * .8) * (this.done ? 6 : 2.5), y = 212 + (ch ? wave : 0);
+      const p = this.pop.find(p => Math.abs(p.x - x) < 1), pk = p ? 1 - p.t / .45 : 0;
+      cx.save(); cx.translate(x, 212); if (pk > 0) cx.scale(1 + pk * .18, 1 + pk * .18);
+      if (cur) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(255,214,120,${.15 + .15 * Math.sin(gT * 8)})`; bevel(-24, -27, 48, 54, 8); cx.fill(); cx.restore(); }
+      bevel(-19, -22, 38, 44, 6); cx.fillStyle = cur ? 'rgba(179,18,46,.55)' : ch ? 'rgba(30,10,30,.75)' : 'rgba(0,0,0,.6)'; cx.fill();
+      cx.strokeStyle = ch ? `hsl(${(gT * 200 + i * 50) % 360},100%,65%)` : cur ? GOLD2 : 'rgba(212,175,55,.35)'; cx.lineWidth = cur || ch ? 2 : 1; cx.stroke();
+      cx.restore();
+      if (ch) { const sc = 1 + pk * 1.2; cx.save(); cx.translate(x, y); cx.scale(sc, sc); cx.shadowColor = `hsl(${(gT * 200 + i * 50) % 360},100%,60%)`; cx.shadowBlur = 12; serifText(ch, 0, 1, 26, this.done ? `hsl(${(gT * 300 + i * 40) % 360},100%,78%)` : '#fff', 'center', '900'); cx.restore(); }
+      else if (cur && Math.floor(t * 3) % 2) { cx.fillStyle = GOLD2; cx.fillRect(x - 10, 224, 20, 3); }
+    }
+    // 文字盤から枠へ飛ぶ文字
+    for (const f of this.fly) { const q = f.t / .22, e = 1 - Math.pow(1 - q, 2); cx.save(); cx.globalAlpha = 1 - q * .3; serifText(f.ch, lerp(f.x0, f.x1, e), lerp(f.y0, f.y1, e) - Math.sin(q * Math.PI) * 40, 18 + q * 8, GOLD2, 'center', '900'); cx.restore(); }
+    // 文字盤（斜めに光が走る／切替でめくれる）
+    const ks = this.keysNow(), flip = this.flipT > 0 ? Math.abs(Math.cos((1 - this.flipT / .25) * Math.PI)) : 1;
+    ks.forEach((ch, i) => { const c = this.cell(i), hot = this.hot === i && this.hotT > 0, diag = (i % 8) + Math.floor(i / 8), sw = Math.max(0, 1 - Math.abs(((gT * 6) % 22) - diag) / 1.5);
+      cx.save(); cx.translate(c.x + c.w / 2, c.y + c.h / 2); cx.scale(1, flip); if (hot) cx.scale(1.15, 1.15);
+      bevel(-c.w / 2, -c.h / 2, c.w, c.h, 5); cx.fillStyle = hot ? 'rgba(246,224,154,.9)' : `rgba(${20 + sw * 60 | 0},${16 + sw * 40 | 0},${26 + sw * 20 | 0},.88)`; cx.fill(); cx.strokeStyle = sw > .2 ? `rgba(246,224,154,${.3 + sw * .6})` : 'rgba(212,175,55,.3)'; cx.lineWidth = 1; cx.stroke();
+      text(ch, 0, 1, ch.length > 1 ? 12 : 17, hot ? INK : '#ece6d6'); cx.restore(); });
+    for (const r of this.rip) { const q = r.t / .4; cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = `rgba(255,214,120,${1 - q})`; cx.lineWidth = 2; circ(r.x, r.y, 10 + q * 30); cx.stroke(); cx.restore(); }
     this.btns.forEach(b => drawBtn(b, t));
     cx.restore();
     text('タップで文字を選び「決定」（キーボードも可）', W / 2, 600, 11, '#8f876f', 'center', 'normal');
-    if (this.done) { cx.fillStyle = `rgba(255,250,230,${Math.max(0, .5 - (t % 1) * 0)})`; }
+    // 紙吹雪
+    for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
+    // 登録完了
+    if (this.done) {
+      const k = clamp(this.doneT * 5, 0, 1);
+      cx.fillStyle = `rgba(0,0,0,${.45 * k})`; cx.fillRect(0, 250, W, 330);
+      cx.save(); cx.translate(W / 2, 360); cx.rotate(-.12); cx.scale(2.6 - 1.6 * k, 2.6 - 1.6 * k); cx.globalAlpha = k; rectStamp(0, 0, 'REGISTERED!', '#ff3b5c', 0, 22); cx.restore();
+      cx.save(); cx.globalAlpha = clamp((this.doneT - .3) * 4, 0, 1); bigCall('ようこそ、殿堂へ', W / 2, 440, 22, GOLD2); spaced('WELCOME TO THE HALL OF FAME', W / 2, 470, 8, '#fff', 2.5); cx.restore();
+    }
+    // 冒頭の暗転
+    if (t < .35) { cx.fillStyle = `rgba(0,0,0,${1 - t / .35})`; cx.fillRect(0, 0, W, H); cx.save(); cx.globalAlpha = 1 - t / .35; spaced('CONGRATULATIONS', W / 2, H / 2, 14, GOLD2, 6); cx.restore(); }
+    if (this.fl > 0) { cx.fillStyle = `rgba(255,250,230,${Math.min(1, this.fl)})`; cx.fillRect(0, 0, W, H); }
   },
   down(x, y) {
     const ks = this.keysNow();
-    for (let i = 0; i < ks.length; i++) { const c = this.cell(i); if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) { this.hot = i; this.hotT = .12; this.add(ks[i]); return; } }
+    for (let i = 0; i < ks.length; i++) { const c = this.cell(i); if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) { this.hot = i; this.hotT = .12; this.rip.push({ x: c.x + c.w / 2, y: c.y + c.h / 2, t: 0 }); this.add(ks[i], { x: c.x + c.w / 2, y: c.y + c.h / 2 }); return; } }
     BtnMix.down.call(this, x, y);
   },
   key(code, k) {
     if (code === 'Backspace') return this.del();
     if (code === 'Enter') return this.confirm();
-    if (k && k.length === 1 && /[A-Za-z0-9.\-!?]/.test(k)) this.add(k.toUpperCase());
+    if (k && k.length === 1 && /[A-Za-z0-9.\-!?]/.test(k)) { const ch = k.toUpperCase(), i = this.keysNow().indexOf(ch); if (i >= 0) { const c = this.cell(i); this.hot = i; this.hotT = .12; this.rip.push({ x: c.x + c.w / 2, y: c.y + c.h / 2, t: 0 }); this.add(ch, { x: c.x + c.w / 2, y: c.y + c.h / 2 }); } else this.add(ch); }
   },
 };
 
