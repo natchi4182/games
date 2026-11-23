@@ -50,6 +50,22 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const ri = (a, b) => Math.floor(rand(a, b + 1));
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const lerp = (a, b, t) => a + (b - a) * t;
+// 季節（実際の日付で判定。?date=12-24 のように指定すると日付を上書きできる）
+const SEASON = (() => {
+  let d = new Date();
+  try { const q = new URLSearchParams(location.search).get('date'); if (q) { const [mm, dd] = q.split(/[-\/]/).map(Number); if (mm && dd) d = new Date(d.getFullYear(), mm - 1, dd); } } catch (e) {}
+  const m = d.getMonth() + 1, day = d.getDate();
+  const ny = m === 1 && day <= 3;
+  // クリスマス飾りの段階 0〜4（近づくほど豪華に）
+  let lv = 0;
+  if (m === 11 && day >= 15) lv = 1;
+  else if (m === 12) lv = day <= 10 ? 2 : day <= 21 ? 3 : day <= 25 ? 4 : 1;
+  const today = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const left = Math.round((new Date(d.getFullYear(), 11, 25) - today) / 864e5);
+  return { m, day, ny, lv: ny ? 0 : lv, left, eve: m === 12 && day === 24, xday: m === 12 && day === 25 };
+})();
+const NY = SEASON.ny;
+const T_ = (xmas, ny) => NY ? ny : xmas;
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic",Meiryo,system-ui,sans-serif';
 function font(sz, w = 'bold') { cx.font = `${w} ${sz}px ${FONT}`; }
@@ -480,7 +496,7 @@ function drawParts() {
 
 // ---------------------------------------------------------------- backdrop
 const stars = [...Array(80)].map(() => ({ x: Math.random() * W, y: Math.random() * H * 0.7, r: Math.random() * 1.4 + 0.3, p: Math.random() * 6 }));
-const snow = [...Array(70)].map(() => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 2 + 0.6, v: Math.random() * 25 + 18, p: Math.random() * 6 }));
+const snow = [...Array(150)].map(() => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 2 + 0.6, v: Math.random() * 25 + 18, p: Math.random() * 6 }));
 const dust = [...Array(46)].map(() => ({ x: Math.random() * W, y: Math.random() * H, v: rand(5, 16), r: rand(0.5, 1.7), p: rand(0, 6) }));
 const skyline = (() => { const a = []; let x = -10; while (x < W + 10) { const w = ri(22, 46), h = ri(40, 130); a.push({ x, w, h, win: [...Array(12)].map(() => Math.random() < 0.18), ant: Math.random() < 0.25 }); x += w + ri(0, 4); } return a; })();
 let gT = 0;
@@ -492,12 +508,141 @@ function drawNight(top = '#060a1c', bot = '#1a1240') {
 }
 function drawSnow(dt, alpha = 0.8) {
   cx.fillStyle = '#fff';
-  for (const s of snow) {
+  const nSnow = 70 + SEASON.lv * 18;
+  for (let i = 0; i < nSnow; i++) { const s = snow[i];
     s.y += s.v * dt; s.x += Math.sin(gT + s.p) * 12 * dt;
     if (s.y > H + 4) { s.y = -4; s.x = Math.random() * W; }
     cx.globalAlpha = alpha * (s.r / 2.6); cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 7); cx.fill();
   }
   cx.globalAlpha = 1;
+}
+// ---------------------------------------------------------------- 季節の飾り（クリスマスが近いほど豪華に／正月はお正月飾り）
+const decoSpark = [...Array(28)].map(() => ({ x: Math.random(), y: Math.random(), p: Math.random() * 6, v: Math.random() * 14 + 6 }));
+function swagY(x, y0, sag, seg) { return y0 + Math.sin(((x % seg + seg) % seg) / seg * Math.PI) * sag; }
+function drawSwag(y0, sag, seg, style) {
+  cx.save();
+  if (style === 'rope') { // しめ縄
+    cx.lineCap = 'round';
+    cx.strokeStyle = '#8a6a32'; cx.lineWidth = 7; cx.beginPath(); for (let x = 0; x <= W; x += 3) cx.lineTo(x, swagY(x, y0, sag, seg)); cx.stroke();
+    cx.strokeStyle = '#e0c27a'; cx.lineWidth = 5; cx.beginPath(); for (let x = 0; x <= W; x += 3) cx.lineTo(x, swagY(x, y0, sag, seg)); cx.stroke();
+    cx.strokeStyle = 'rgba(110,80,30,.8)'; cx.lineWidth = 1.2;
+    for (let x = 0; x <= W; x += 5) { const y = swagY(x, y0, sag, seg); cx.beginPath(); cx.moveTo(x - 2, y - 2.5); cx.lineTo(x + 2, y + 2.5); cx.stroke(); }
+    // 紙垂（しで）
+    for (let x = seg / 2; x < W; x += seg) {
+      const y = swagY(x, y0, sag, seg) + 2, sw = Math.sin(gT * 1.6 + x) * 1.5;
+      cx.fillStyle = '#fdfbf4'; cx.strokeStyle = 'rgba(0,0,0,.25)'; cx.lineWidth = .6;
+      cx.beginPath(); cx.moveTo(x - 4, y); cx.lineTo(x + 4, y); cx.lineTo(x + 4 + sw, y + 7); cx.lineTo(x - 1 + sw, y + 7); cx.lineTo(x + 3 + sw, y + 14); cx.lineTo(x - 2 + sw, y + 14); cx.lineTo(x + 2 + sw * 1.4, y + 22); cx.lineTo(x - 6 + sw, y + 13); cx.lineTo(x - 1 + sw, y + 13); cx.lineTo(x - 5 + sw, y + 6); cx.lineTo(x - 1, y + 6); cx.closePath(); cx.fill(); cx.stroke();
+    }
+    cx.restore(); return;
+  }
+  const lv = style;
+  if (lv >= 2) { // もみの木のガーランド
+    for (let x = -4, i = 0; x <= W + 4; x += 2.5, i++) {
+      const y = swagY(x, y0, sag, seg);
+      cx.strokeStyle = i % 3 ? '#1d5a2e' : '#2f7d44'; cx.lineWidth = 1.4;
+      const a = (i * 2.399) % 6.28; cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + Math.cos(a) * 6, y + Math.sin(a) * 4); cx.stroke();
+    }
+  }
+  cx.strokeStyle = '#0c2414'; cx.lineWidth = 1.2; cx.beginPath(); for (let x = 0; x <= W; x += 4) cx.lineTo(x, swagY(x, y0, sag, seg)); cx.stroke();
+  const LC = ['#ff3b4f', '#ffd24a', '#3ad67a', '#5aa8ff'], step = lv >= 3 ? 14 : 18, chase = Math.floor(gT * 5);
+  cx.globalCompositeOperation = 'lighter';
+  for (let x = 6, i = 0; x < W; x += step, i++) {
+    const y = swagY(x, y0, sag, seg) + 4, c = LC[i % 4];
+    let on = .55 + .45 * Math.sin(gT * 3 + i * 1.7); if (lv >= 4 && (i + chase) % 4 === 0) on = 1.3;
+    const g = cx.createRadialGradient(x, y, 0, x, y, 9); g.addColorStop(0, c); g.addColorStop(1, 'rgba(0,0,0,0)');
+    cx.globalAlpha = .35 * on; cx.fillStyle = g; cx.fillRect(x - 9, y - 9, 18, 18);
+  }
+  cx.globalCompositeOperation = 'source-over';
+  for (let x = 6, i = 0; x < W; x += step, i++) {
+    const y = swagY(x, y0, sag, seg) + 4, c = LC[i % 4];
+    let on = .55 + .45 * Math.sin(gT * 3 + i * 1.7); if (lv >= 4 && (i + chase) % 4 === 0) on = 1.3;
+    cx.globalAlpha = 1; cx.fillStyle = '#1a1a1a'; cx.fillRect(x - 1.2, y - 4.5, 2.4, 2);
+    cx.globalAlpha = .45 + .55 * Math.min(1, on); cx.fillStyle = c; cx.beginPath(); cx.ellipse(x, y, 2.3, 3.2, 0, 0, 7); cx.fill();
+    cx.globalAlpha = .7 * Math.min(1, on); cx.fillStyle = '#fff'; circ(x - .7, y - 1, .8); cx.fill();
+  }
+  cx.restore();
+}
+function drawBauble(x, y, len, r, col, ph) {
+  const a = Math.sin(gT * 1.4 + ph) * .1; cx.save(); cx.translate(x, y); cx.rotate(a);
+  cx.strokeStyle = 'rgba(246,224,154,.6)'; cx.lineWidth = .8; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(0, len); cx.stroke();
+  cx.fillStyle = GOLD; cx.fillRect(-2, len, 4, 3);
+  const g = cx.createRadialGradient(-r * .35, len + 3 + r * .6, 1, 0, len + 3 + r, r * 1.2); g.addColorStop(0, '#fff'); g.addColorStop(.25, col); g.addColorStop(1, '#1a0408');
+  cx.fillStyle = g; circ(0, len + 3 + r, r); cx.fill();
+  cx.strokeStyle = 'rgba(246,224,154,.55)'; cx.lineWidth = .8; cx.beginPath(); cx.ellipse(0, len + 3 + r, r, r * .3, 0, 0, 7); cx.stroke();
+  cx.restore();
+}
+function drawHolly(x, y, flip) {
+  cx.save(); cx.translate(x, y); cx.scale(flip ? -1 : 1, 1);
+  for (const [a, l] of [[-.5, 26], [-1.15, 24], [-.1, 20]]) {
+    cx.save(); cx.rotate(a); const g = cx.createLinearGradient(0, 0, l, 0); g.addColorStop(0, '#0f4a22'); g.addColorStop(1, '#2f8a48'); cx.fillStyle = g;
+    cx.beginPath(); cx.moveTo(0, 0); for (let k = 1; k <= 4; k++) cx.quadraticCurveTo(l * (k - .5) / 4, -8, l * k / 4, -3); cx.lineTo(l, 0); for (let k = 4; k >= 1; k--) cx.quadraticCurveTo(l * (k - .5) / 4, 8, l * (k - 1) / 4, 3); cx.closePath(); cx.fill();
+    cx.strokeStyle = 'rgba(200,255,200,.25)'; cx.lineWidth = .8; cx.beginPath(); cx.moveTo(2, 0); cx.lineTo(l - 2, 0); cx.stroke(); cx.restore();
+  }
+  for (const [bx, by] of [[10, -10], [16, -6], [12, -2]]) { const g = cx.createRadialGradient(bx - 1, by - 1, .5, bx, by, 4); g.addColorStop(0, '#ff8a8a'); g.addColorStop(1, '#a00818'); cx.fillStyle = g; circ(bx, by, 3.6); cx.fill(); }
+  cx.restore();
+}
+function drawKadomatsu(x, y, flip) {
+  cx.save(); cx.translate(x, y); cx.scale(flip ? -1 : 1, 1);
+  // 松
+  cx.strokeStyle = '#1d5a2e'; cx.lineWidth = 1.4; for (let i = 0; i < 30; i++) { const a = -Math.PI / 2 + Math.sin(i * 2.1) * 1.3, r = 10 + (i % 5) * 3, bx = 22 + Math.sin(i) * 8, by = -50 + Math.cos(i * 1.3) * 4; cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx + Math.cos(a) * r, by + Math.sin(a) * r * .6); cx.stroke(); }
+  // 竹（斜めに切った3本）
+  for (const [bx, h, w] of [[14, 74, 10], [26, 92, 11], [38, 66, 10]]) {
+    const g = cx.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0); g.addColorStop(0, '#2f7a3a'); g.addColorStop(.4, '#7fd08a'); g.addColorStop(1, '#1d4a24'); cx.fillStyle = g;
+    cx.beginPath(); cx.moveTo(bx - w / 2, -20); cx.lineTo(bx - w / 2, -h + 6); cx.lineTo(bx + w / 2, -h - 4); cx.lineTo(bx + w / 2, -20); cx.closePath(); cx.fill();
+    cx.fillStyle = '#e8f0c8'; cx.beginPath(); cx.ellipse(bx, -h + 1, w / 2, 3, -.7, 0, 7); cx.fill();
+    cx.fillStyle = 'rgba(0,0,0,.25)'; cx.fillRect(bx - w / 2, -h * .55, w, 1.5);
+  }
+  // 台（わら＋縄）
+  const g = cx.createLinearGradient(0, -26, 0, 0); g.addColorStop(0, '#e0c27a'); g.addColorStop(1, '#8a6a32'); cx.fillStyle = g;
+  cx.beginPath(); cx.moveTo(4, -26); cx.lineTo(48, -26); cx.lineTo(52, 0); cx.lineTo(0, 0); cx.closePath(); cx.fill();
+  cx.strokeStyle = '#5a3a14'; cx.lineWidth = 1.5; for (const yy of [-20, -8]) { cx.beginPath(); cx.moveTo(2, yy); cx.lineTo(50, yy); cx.stroke(); }
+  cx.fillStyle = '#d8102e'; cx.fillRect(20, -24, 12, 3);
+  cx.restore();
+}
+function drawSeasonDeco(dt) {
+  if (scene === Play || LAND) return;
+  if (NY) {
+    drawSwag(4, 7, W / 3, 'rope');
+    cx.save(); cx.translate(-12, H); cx.scale(.68, .68); drawKadomatsu(0, 0, false); cx.restore(); cx.save(); cx.translate(W + 12, H); cx.scale(.68, .68); drawKadomatsu(0, 0, true); cx.restore();
+  } else if (SEASON.lv > 0) {
+    const lv = SEASON.lv;
+    drawSwag(2, lv >= 2 ? 9 : 7, W / (lv >= 3 ? 4 : 3), lv);
+    if (lv >= 3) { drawBauble(9, 4, 20, 5, '#d8102e', 0); drawBauble(24, 8, 34, 4.5, '#d4af37', 1.3); drawBauble(W - 9, 4, 20, 5, '#2f7d44', 2.1); drawBauble(W - 24, 8, 34, 4.5, '#d8102e', 3.4);
+      drawHolly(2, H - 4, false); drawHolly(W - 2, H - 4, true); }
+  } else return;
+  // 金のきらめき（12月下旬・正月）
+  if (NY || SEASON.lv >= 4) {
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    for (const p of decoSpark) { p.y += p.v * dt / H; if (p.y > 1) { p.y = 0; p.x = Math.random(); }
+      const x = p.x * W + Math.sin(gT + p.p) * 8, y = p.y * H, a = .3 + .3 * Math.sin(gT * 4 + p.p * 3);
+      cx.fillStyle = `rgba(255,214,120,${a})`; cx.beginPath(); cx.moveTo(x, y - 3); cx.lineTo(x + .8, y); cx.lineTo(x, y + 3); cx.lineTo(x - .8, y); cx.closePath(); cx.fill(); cx.fillRect(x - 2.5, y - .4, 5, .8); }
+    cx.restore();
+  }
+}
+// ゲーム中の HUD 下に小さな電飾
+function hudDeco() {
+  if (!NY && SEASON.lv < 2) return;
+  const LC = NY ? ['#ff3b4f', '#fff', GOLD2] : ['#ff3b4f', '#ffd24a', '#3ad67a', '#5aa8ff'];
+  for (let x = 8, i = 0; x < W; x += 16, i++) { const on = .5 + .5 * Math.sin(gT * 3 + i * 1.7); cx.globalAlpha = .35 + .5 * on; cx.fillStyle = LC[i % LC.length]; circ(x, 47 + Math.sin(i * 1.3) * .8, 1.6); cx.fill(); }
+  cx.globalAlpha = 1;
+}
+// タイトルの季節バッジ
+function drawSeasonBadge(x, y, a) {
+  let big = '', sub = '';
+  if (NY) { big = '謹賀新年'; sub = 'お年玉作戦 発令中  ·  1/1〜1/3'; }
+  else if (SEASON.lv <= 0) return;
+  else if (SEASON.xday) { big = 'MERRY CHRISTMAS!'; sub = '作戦成功を祝おう'; }
+  else if (SEASON.eve) { big = '今夜決行'; sub = 'CHRISTMAS EVE  ·  OPERATION GO'; }
+  else if (SEASON.left > 0) { big = `クリスマスまで あと ${SEASON.left} 日`; sub = SEASON.left <= 7 ? 'FINAL COUNTDOWN' : 'OPERATION HOLY NIGHT  ·  STANDBY'; }
+  else { big = 'また来年の聖夜に'; sub = 'SEE YOU NEXT CHRISTMAS'; }
+  cx.save(); cx.globalAlpha = a; const pul = 1 + Math.sin(gT * 3) * .02; cx.translate(x, y); cx.scale(pul, pul);
+  cx.font = `900 15px ${SERIF}`; const w = Math.max(cx.measureText(big).width, 150) + 40;
+  bevel(-w / 2, -17, w, 36, 8); cx.fillStyle = NY ? 'rgba(150,8,24,.92)' : SEASON.lv >= 4 ? 'rgba(150,8,24,.92)' : 'rgba(10,50,24,.92)'; cx.fill();
+  cx.strokeStyle = goldGrad(-17, 19); cx.lineWidth = 1.2; cx.stroke();
+  cx.save(); bevel(-w / 2, -17, w, 36, 8); cx.clip(); cx.globalCompositeOperation = 'lighter'; const sx = -w / 2 + ((gT * 120) % (w + 120)) - 60; const sg = cx.createLinearGradient(sx, 0, sx + 40, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(.5, 'rgba(255,230,160,.3)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = sg; cx.fillRect(sx, -17, 40, 36); cx.restore();
+  serifText(big, 0, -4, 15, '#fff', 'center', '900');
+  spaced(sub, 0, 11, 7, GOLD2, 1.5);
+  cx.restore();
 }
 // 秘密基地の背景: 漆黒 + 深紅の光 + 細い格子 + 金の粒子
 function drawAgency(dt, glowY = 230) {
@@ -564,6 +709,7 @@ function hud(title, time, right) {
   const g = cx.createLinearGradient(0, 0, 0, 46); g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
   cx.fillStyle = g; cx.fillRect(0, 0, W, 44);
   cx.fillStyle = goldGrad(43, 45); cx.fillRect(0, 43, W, 1.5);
+  hudDeco();
   const sp = title.indexOf(' ');
   const code = sp > 0 ? title.slice(0, sp) : '', name = sp > 0 ? title.slice(sp + 1) : title;
   if (code) { cx.fillStyle = CRIM; cx.fillRect(8, 9, 3, 26); mono(code, 16, 15, 9, GOLD, 'left'); }
@@ -623,6 +769,16 @@ function gauge(y, r, label) {
 }
 function drawGift(x, y, s = 1, rot = 0, col = CRIM) {
   cx.save(); cx.translate(x, y); cx.rotate(rot); cx.scale(s, s);
+  if (NY) { // ポチ袋（お年玉）
+    const g = cx.createLinearGradient(-8, 0, 8, 0); g.addColorStop(0, col); g.addColorStop(.5, '#ff5a6e'); g.addColorStop(1, col);
+    cx.fillStyle = g; rr(-8, -11, 16, 22, 2); cx.fill();
+    cx.fillStyle = 'rgba(255,255,255,.2)'; cx.fillRect(-8, -11, 2, 22);
+    cx.fillStyle = '#fff6e0'; cx.beginPath(); cx.moveTo(-8, -11); cx.lineTo(8, -11); cx.lineTo(0, -5); cx.closePath(); cx.fill();
+    cx.strokeStyle = GOLD2; cx.lineWidth = 1.6; cx.beginPath(); cx.moveTo(-8, 2); cx.quadraticCurveTo(-3, -1, 0, 2); cx.quadraticCurveTo(3, -1, 8, 2); cx.stroke();
+    cx.beginPath(); cx.ellipse(-2.5, 2, 2.5, 1.6, -.4, 0, 7); cx.ellipse(2.5, 2, 2.5, 1.6, .4, 0, 7); cx.stroke();
+    cx.fillStyle = GOLD2; cx.font = `900 6px ${SERIF}`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('寿', 0, 7);
+    cx.restore(); return;
+  }
   const g = cx.createLinearGradient(0, -8, 0, 9); g.addColorStop(0, col); g.addColorStop(1, '#3a0510');
   cx.fillStyle = g; cx.fillRect(-9, -6, 18, 15);
   cx.fillStyle = col; cx.fillRect(-10.5, -9, 21, 5);
@@ -1122,7 +1278,7 @@ function Procure(api) {
       cx.save(); cx.beginPath(); cx.rect(0, 124, W, 10); cx.clip();
       for (let x = -20 + (gT * 20) % 20; x < W + 20; x += 20) { cx.fillStyle = '#c9a227'; cx.beginPath(); cx.moveTo(x, 124); cx.lineTo(x + 10, 124); cx.lineTo(x, 134); cx.lineTo(x - 10, 134); cx.fill(); }
       cx.restore();
-      hud('OP-03 プレゼント調達', time, `${score}pt`);
+      hud('OP-03 ' + MISSIONS[2].name, time, `${score}pt`);
       const r0 = clamp(score / TARGET, 0, 1);
       gauge(54, r0, `QUOTA  ${Math.floor(r0 * 100)}%`);
       text('隣のおもちゃとスワイプで入れ替え、3つ以上そろえろ', W / 2, 88, 12, '#e8dcc0');
@@ -2312,7 +2468,7 @@ function Fight(api) {
     }
     else if (k === 'sp' && free(f) && !air && f.meter >= 100) {
       f.meter = 0; f.st = 'throw'; f.t = 0;
-      cutin = { f, t: 0, dur: 1.0, name: f.isP ? 'プレゼント・ボム' : 'ブラック・コール', sub: f.isP ? 'SUPER ARTS  ·  GIFT OF JUSTICE' : 'SUPER ARTS  ·  ABYSS ORB' };
+      cutin = { f, t: 0, dur: 1.0, name: f.isP ? T_('プレゼント・ボム', 'お年玉・ボム') : 'ブラック・コール', sub: f.isP ? 'SUPER ARTS  ·  GIFT OF JUSTICE' : 'SUPER ARTS  ·  ABYSS ORB' };
       SFX.fanfare && tone(220, .5, 'sawtooth', .06, 440); noise(.4, .15, 3000);
     }
   }
@@ -3068,7 +3224,7 @@ function Fight(api) {
             cx.fillStyle = 'rgba(255,255,255,.9)'; circ(ox, oy, 4 * ck); cx.fill();
             cx.restore();
           }
-          if (vt > 1.7) { const kc = Math.min(1, (vt - 1.7) * 6); cx.save(); cx.globalAlpha = kc; cx.translate(W / 2 + 30, 330); cx.rotate(-.22); cx.scale(2.2 - 1.2 * kc, 2.2 - 1.2 * kc); rectStamp(0, 0, 'CHRISTMAS CANCELLED', '#ff2a3a', 0, 12); cx.restore(); if (Math.abs(vt - 1.7) < .02) { SFX.stamp(); shake = 10; } }
+          if (vt > 1.7) { const kc = Math.min(1, (vt - 1.7) * 6); cx.save(); cx.globalAlpha = kc; cx.translate(W / 2 + 30, 330); cx.rotate(-.22); cx.scale(2.2 - 1.2 * kc, 2.2 - 1.2 * kc); rectStamp(0, 0, T_('CHRISTMAS CANCELLED', 'NEW YEAR CANCELLED'), '#ff2a3a', 0, 12); cx.restore(); if (Math.abs(vt - 1.7) < .02) { SFX.stamp(); shake = 10; } }
         }
         if (isP) {
         cx.save(); cx.globalCompositeOperation = 'lighter'; const shx = ((vt * 300) % (W + 200)) - 100; const sg = cx.createLinearGradient(shx - 30, 0, shx + 30, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(.5, 'rgba(255,250,220,.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = sg; cx.fillRect(shx - 30, y1 - sz / 2, 60, sz); cx.restore();
@@ -3087,7 +3243,7 @@ function Fight(api) {
         cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * (winner === P ? -60 : 60), 0);
         bevel(12, y0, W - 24, 70, 10); cx.fillStyle = 'rgba(4,3,8,.88)'; cx.fill(); cx.strokeStyle = goldGrad(y0, y0 + 70); cx.lineWidth = 1.2; cx.stroke();
         cx.save(); cx.beginPath(); cx.rect(14, y0 + 2, 74, 66); cx.clip(); drawHead(winner.rig.kind, 52, y0 + 46, -0.1, 2.4, 1, false, (gT * .8) % 1.6 - .3, winner.rig.hyper); cx.restore();
-        const q = winner === P ? (hyperUsed ? 'これが聖夜の奇跡だ。良い子はもう寝る時間だぜ。' : 'メリークリスマス。プレゼントは渡さない……配るものだ。') : 'フハハハ! 今年のクリスマスは中止だ。良い子には……石炭をくれてやる!';
+        const q = winner === P ? (hyperUsed ? T_('これが聖夜の奇跡だ。良い子はもう寝る時間だぜ。', 'これが新春の奇跡だ。初夢でまた会おう。') : T_('メリークリスマス。プレゼントは渡さない……配るものだ。', 'あけましておめでとう。お年玉は渡さない……配るものだ。')) : T_('フハハハ! 今年のクリスマスは中止だ。良い子には……石炭をくれてやる!', 'フハハハ! お正月は中止だ。お年玉は……全部オレのものだ!');
         spaced(winner === P ? `《${G.codename}》` : 'BLACKRUF', 98, y0 + 16, 8, winner === P ? GOLD : '#c77dff', 1.5, 'left');
         const ls = wrapLines(q, W - 130, 13); const n = Math.floor((vtime() - 2.6) * 26);
         let left = n; ls.forEach((l, i) => { const s2 = l.slice(0, Math.max(0, left)); left -= l.length; serifText(s2, 98, y0 + 38 + i * 19, 13, '#f3ecd8', 'left'); });
@@ -3144,13 +3300,13 @@ function Fight(api) {
         const isP = (windup ? windup.f : sfx.att).isP, t = windup ? windup.t : sfx.t;
         cx.fillStyle = isP ? 'rgba(20,6,0,.32)' : 'rgba(16,0,20,.4)'; cx.fillRect(0, 0, W, ARB);
         if (sfx) {
-          const name = isP ? (hyper > 0 ? 'ミラクル・プレゼント・レイン' : 'プレゼント・ボム') : 'ブラック・コール', y0 = FL + 14;
+          const name = isP ? (hyper > 0 ? T_('ミラクル・プレゼント・レイン', 'ミラクル・お年玉・レイン') : T_('プレゼント・ボム', 'お年玉・ボム')) : 'ブラック・コール', y0 = FL + 14;
           const k = Math.min(1, t * 6);
           cx.save(); cx.globalAlpha = k; cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fillRect(0, y0 - 18, W, 36); cx.fillStyle = isP ? GOLD : '#b44cff'; cx.fillRect(0, y0 - 18, W, 1.5); cx.fillRect(0, y0 + 17, W, 1.5);
           spaced('SUPER ARTS', 14, y0 - 8, 7, isP ? GOLD : '#d08cff', 2, 'left');
           bigCall(name, W / 2 + (1 - k) * 80, y0 + 3, name.length > 10 ? 17 : 22, isP ? GOLD2 : '#e0b0ff'); cx.restore();
           if (sfx.n > 0) { cx.save(); cx.translate(W - 56, 140); const s2 = 1 + Math.max(0, .1 - ((t - .12) % .085)) * 4; cx.scale(s2, s2); bigCall(String(sfx.n), 0, 0, 46, isP ? GOLD2 : '#e0b0ff'); spaced('HITS', 0, 30, 9, '#fff', 2); cx.restore(); }
-          if (sfx.boom) { const k2 = clamp((sfx.t - .12 - sfx.hits * .085 - .18) * 5, 0, 1); cx.save(); cx.globalAlpha = k2; cx.translate(W / 2, 190); cx.scale(1.6 - .6 * k2, 1.6 - .6 * k2); bigCall(isP ? 'MERRY CHRISTMAS!' : 'ABYSS!', 0, 0, isP ? 30 : 44, isP ? GOLD2 : '#ff4a6a'); cx.restore(); }
+          if (sfx.boom) { const k2 = clamp((sfx.t - .12 - sfx.hits * .085 - .18) * 5, 0, 1); cx.save(); cx.globalAlpha = k2; cx.translate(W / 2, 190); cx.scale(1.6 - .6 * k2, 1.6 - .6 * k2); bigCall(isP ? T_('MERRY CHRISTMAS!', 'HAPPY NEW YEAR!') : 'ABYSS!', 0, 0, isP ? 30 : 44, isP ? GOLD2 : '#ff4a6a'); cx.restore(); }
         }
       }
       if (cutin) drawCutin();
@@ -3231,7 +3387,7 @@ function Delivery(api) {
   const sy = () => 128 + Math.sin(t * 2.2) * 10;
   function finish() {
     const rate = delivered / N - spotted * 0.02;
-    api.end(rate, [`配達成功: ${delivered} / ${N} 軒`, `子供に目撃: ${spotted} 回`, `ハズレ: ${missed} 個`, `残りプレゼント: ${presents} 個`], 'MERRY CHRISTMAS!');
+    api.end(rate, [`配達成功: ${delivered} / ${N} 軒`, `子供に目撃: ${spotted} 回`, `ハズレ: ${missed} 個`, `残り${T_('プレゼント', 'お年玉')}: ${presents} 個`], T_('MERRY CHRISTMAS!', 'あけましておめでとう!'));
   }
   return {
     update(dt) {
@@ -3356,7 +3512,7 @@ function Delivery(api) {
       const prog = clamp(wx / lastX, 0, 1);
       gauge(54, prog, `ROUTE  ${Math.floor(prog * 100)}%`);
       text('タップで投下 ／ 窓が光る家は子供が起きている', W / 2, 622, 11, '#2a3560');
-      hud('OP-06 配達', null, `🎁×${presents}  配達 ${delivered}/${N}`);
+      hud('OP-06 ' + MISSIONS[5].name, null, `${T_('🎁', '🧧')}×${presents}  配達 ${delivered}/${N}`);
     },
     down() { drop(); },
     key(code) { if (code === 'Space' || code === 'Enter' || code === 'ArrowDown') drop(); },
@@ -3386,6 +3542,18 @@ const MISSIONS = [
     story: 'ついに決行の夜。ソリで世界中の家の煙突にプレゼントを届けろ。\n起きている子供に姿を見られたら機密漏洩だ。',
     how: '・画面タップ（スペース）でプレゼントを投下\n・プレゼントは少し後ろへ流れながら落ちる\n・窓が光っている家は子供が起きている。暗くなるのを待て\n・各家の煙突に1つずつ届けよう' },
 ];
+// 1月1日〜3日は「お年玉配布作戦」
+if (NY) {
+  const NYM = {
+    research: { date: '12月26日', story: '新年、子供たちはお年玉で何を買うつもりなのか？　世界中から傍受した「初夢メモ」の暗号データを解析する。\nメモは一瞬だけ表示される。記憶して、同じ願いのペアを照合せよ。' },
+    funding: { date: '12月28日', story: 'お年玉作戦には莫大な資金が必要だ。世界中の協力者から秘密裏に送られる新札を回収せよ。\nただし敵対組織 K.R.A.M.P.U.S. が爆弾を紛れ込ませている。' },
+    procure: { name: 'ポチ袋調達', date: '12月29日', story: '集めた新札をポチ袋に詰め、おまけの縁起物と一緒に秘密工場で梱包する。ベルトコンベアの品を並べ替えて梱包ラインへ送り込め。' },
+    escort: { date: '12月30日', story: '詰め終えたお年玉を北極基地へ輸送中、K.R.A.M.P.U.S. の襲撃ドローン部隊が現れた！\n輸送トラックを守り抜け。' },
+    fight: { date: '12月31日', story: '大晦日、K.R.A.M.P.U.S. の幹部「ブラックルフ」がお年玉金庫に単身潜入！\n除夜の鐘が鳴り終わる前に、屋上で決着をつけろ。' },
+    delivery: { name: 'お年玉配布', icon: '🧧', date: '1月1日', story: 'あけましておめでとう。ついに決行の朝だ。ソリで世界中の家の煙突にお年玉を届けろ。\n初日の出を待って起きている子供に見られたら機密漏洩だ。' },
+  };
+  for (const m of MISSIONS) { Object.assign(m, NYM[m.id] || {}); m.how = m.how.replace(/プレゼント/g, 'お年玉'); }
+}
 const CODENAMES = ['ルドルフ', 'ダッシャー', 'ダンサー', 'プランサー', 'ヴィクセン', 'コメット', 'キューピッド', 'ドナー', 'ブリッツェン'];
 const G = { mode: 'campaign', idx: 0, results: [], codename: pick(CODENAMES) };
 const gradeOf = r => r >= 0.95 ? 'S' : r >= 0.8 ? 'A' : r >= 0.6 ? 'B' : r >= 0.4 ? 'C' : 'D';
@@ -3514,7 +3682,7 @@ const Title = {
     cx.restore();
     // 機密テープ（上）
     { const tk = k(.0); cx.save(); cx.globalAlpha = tk; cx.fillStyle = CRIM; cx.fillRect(0, 20, W, 18);
-      cx.beginPath(); cx.rect(0, 20, W, 18); cx.clip(); const msg = 'TOP SECRET // EYES ONLY // OPERATION: HOLY NIGHT // ';
+      cx.beginPath(); cx.rect(0, 20, W, 18); cx.clip(); const msg = NY ? 'HAPPY NEW YEAR // EYES ONLY // OPERATION: OTOSHIDAMA // ' : SEASON.lv >= 4 ? 'MERRY CHRISTMAS // TONIGHT IS THE NIGHT // OPERATION: HOLY NIGHT // ' : 'TOP SECRET // EYES ONLY // OPERATION: HOLY NIGHT // ';
       cx.font = `900 9px ${MONO}`; const mw = cx.measureText(msg).width + msg.length * 2; for (let x = -((t * 34) % mw); x < W; x += mw) spaced(msg, x, 29.5, 9, '#ffe9ec', 2, 'left', MONO, '900'); cx.restore(); }
     // オープニング: 起動テキストとカット
     if (t < 2.1) {
@@ -3529,7 +3697,7 @@ const Title = {
     // メニュー
     if (t > 2.35) {
       this.btns.forEach((b, i) => { const q = clamp((t - 2.35 - i * .08) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate((1 - q) * (i % 2 ? 60 : -60), 0); drawBtn(b, t); cx.restore(); });
-      const q = clamp((t - 2.6) * 3, 0, 1); cx.globalAlpha = q;
+      const q = clamp((t - 2.6) * 3, 0, 1); drawSeasonBadge(W / 2, 410, q); cx.globalAlpha = q;
       if (save.best) spaced(`BEST ${save.best.toFixed(1)}%  ·  RANK ${save.bestRank}`, W / 2, 622, 10, GOLD, 2);
       else text('全6ミッションの達成率で、あなたの評価が決まる', W / 2, 622, 11, '#9a937e', 'center', 'normal');
       cx.globalAlpha = 1;
@@ -3688,7 +3856,7 @@ const Prologue = typeScene(() => {
     cx.restore();
     if (t > 1.3 && t < 1.45) { cx.fillStyle = `rgba(200,255,220,${(1.45 - t) * 3})`; cx.fillRect(0, 0, W, H); }
   },
-  body: `《${G.codename}》、よく来てくれた。\n\n我々、秘密結社 S.A.N.T.A. は、千年以上にわたり世界中の子供たちに「クリスマスの奇跡」を届けてきた。\n\n今年もその夜が近づいている。だが敵対組織 K.R.A.M.P.U.S. が、クリスマスを奪おうと暗躍しているとの情報が入った。\n\n市場調査、資金調達、調達、輸送、そして配達――。君にはこの作戦の全指揮を任せる。\n\n最終的な達成率が、君の評価となる。健闘を祈る。`,
+  body: NY ? `《${G.codename}》、あけましておめでとう。\n\nクリスマス作戦の成功で安心している場合ではない。我々 S.A.N.T.A. にはもう一つの使命がある――子供たちへの「お年玉」の配布だ。\n\nだが K.R.A.M.P.U.S. が、お年玉を根こそぎ奪おうと暗躍しているとの情報が入った。\n\n市場調査、資金調達、ポチ袋調達、輸送、そして配布――。君にはこの作戦の全指揮を任せる。\n\n最終的な達成率が、君の評価となる。健闘を祈る。` : `《${G.codename}》、よく来てくれた。\n\n我々、秘密結社 S.A.N.T.A. は、千年以上にわたり世界中の子供たちに「クリスマスの奇跡」を届けてきた。\n\n今年もその夜が近づいている。だが敵対組織 K.R.A.M.P.U.S. が、クリスマスを奪おうと暗躍しているとの情報が入った。\n\n市場調査、資金調達、調達、輸送、そして配達――。君にはこの作戦の全指揮を任せる。\n\n最終的な達成率が、君の評価となる。健闘を祈る。`,
   next: () => go(Briefing, 0),
   };
 });
@@ -4143,7 +4311,7 @@ const RANKS = [
   { min: 95, r: 'S', title: '伝説のサンタクロース', msg: '世界中の子供たちが、最高の笑顔で朝を迎えた。君の名は、結社の歴史に永遠に刻まれるだろう。来年は君が長官だ。' },
   { min: 85, r: 'A', title: '筆頭エージェント', msg: 'ほぼ完璧な作戦だった。子供たちの歓声が北極まで届いている。今夜はゆっくりココアでも飲んでくれ。' },
   { min: 70, r: 'B', title: '一人前のエージェント', msg: '作戦は成功だ。いくつか取りこぼしはあったが、多くの子供たちが喜んでいる。来年はさらに上を目指せ。' },
-  { min: 50, r: 'C', title: '見習いエージェント', msg: 'なんとか夜は明けた…。プレゼントが届かなかった家もある。トナカイたちと共に、一から鍛え直しだ。' },
+  { min: 50, r: 'C', title: '見習いエージェント', msg: T_('なんとか夜は明けた…。プレゼントが届かなかった家もある。', 'なんとか新年は明けた…。お年玉が届かなかった家もある。') + 'トナカイたちと共に、一から鍛え直しだ。' },
   { min: 0, r: 'D', title: '石炭係', msg: 'これは…惨敗だ。K.R.A.M.P.U.S. の高笑いが聞こえる。君には来年、石炭の配達から始めてもらう。' },
 ];
 const Final = {
@@ -4223,7 +4391,7 @@ const Final = {
       cx.fillStyle = CRIM; cx.beginPath(); cx.moveTo(sx - 14, sy - 4); cx.lineTo(sx + 10, sy - 4); cx.quadraticCurveTo(sx + 14, sy + 5, sx + 4, sy + 6); cx.lineTo(sx - 12, sy + 6); cx.closePath(); cx.fill();
       cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 10; i++) { cx.fillStyle = `rgba(255,214,74,${.7 - i * .07})`; circ(sx - 18 - i * 10, sy + 3 + Math.sin(i + gT * 6) * 2, 1.5); cx.fill(); } cx.restore(); }
     // ヘッダ
-    spaced('DEC 25  ·  05:00  ·  FINAL REPORT', W / 2, 20, 9, '#b9ad8c', 2);
+    spaced(T_('DEC 25  ·  05:00', 'JAN 1  ·  07:00') + '  ·  FINAL REPORT', W / 2, 20, 9, '#b9ad8c', 2);
     chromaText('MISSION COMPLETE', W / 2, 50, 24, 2.5, SERIF, goldGrad(38, 62), t > 2.85 && t < 3.1 ? 1 : 0);
     cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * .5, rand(-shake, shake) * .5);
     // ミッション一覧
@@ -4400,6 +4568,7 @@ function frame(now) {
   scene.update(dt);
   updateParts(dt);
   scene.draw(dt);
+  drawSeasonDeco(dt);
   postFX();
   bgmDraw(dt);
   if (fade > 0) { // シャッター風の場面転換
