@@ -3625,64 +3625,124 @@ function statRow(l, x0, x1, y) {
   cx.fillStyle = 'rgba(212,175,55,.35)'; for (let x = x0 + aw + 8; x < x1 - bw - 8; x += 5) cx.fillRect(x, y + 4, 1.5, 1.5);
   text(b, x1, y, 14, '#fff', 'right');
 }
+const GRADE_CALL = { S: 'PERFECT OPERATION', A: 'EXCELLENT', B: 'MISSION CLEAR', C: 'CLOSE CALL', D: 'MISSION FAILED' };
 const Result = {
   ...BtnMix,
   enter(a) {
-    this.a = a; this.t = 0; this.shown = 0; this.g = gradeOf(a.rate); this.comment = pick(COMMENTS[this.g]); this.played = 0;
+    this.a = a; this.t = 0; this.g = gradeOf(a.rate); this.comment = pick(COMMENTS[this.g]); this.ev = {};
+    this.conf = []; this.coal = []; this.fw = 0; this.fl = 0; this.sh = 0;
+    this.cStart = .35 + a.lines.length * .14 + .15; this.cDur = .5 + a.rate * .9; this.R = this.cStart + this.cDur + .25;
     const m = MISSIONS[a.i];
     const prev = save.missions[m.id] || 0;
     this.newBest = a.rate > prev; if (this.newBest) { save.missions[m.id] = a.rate; persist(); }
     if (G.mode === 'campaign') {
       G.results[a.i] = a.rate;
       const last = a.i === MISSIONS.length - 1;
-      this.btns = [Btn(52, 560, 256, 58, last ? '最終評価へ' : '次の作戦へ', () => { if (last) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 19, sub: last ? 'FINAL DEBRIEF' : 'NEXT OPERATION' })];
+      this.btns = [Btn(52, 566, 256, 56, last ? '最終評価へ' : '次の作戦へ', () => { if (last) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 19, sub: last ? 'FINAL DEBRIEF' : 'NEXT OPERATION' })];
     } else {
       this.btns = [
-        Btn(24, 560, 150, 56, 'もう一度', () => go(Briefing, a.i), { size: 17, sub: 'RETRY' }),
-        Btn(186, 560, 150, 56, '訓練メニュー', () => go(Training), { kind: 'dark', size: 15, sub: 'TRAINING' }),
+        Btn(24, 566, 150, 54, 'もう一度', () => go(Briefing, a.i), { size: 17, sub: 'RETRY' }),
+        Btn(186, 566, 150, 54, '訓練メニュー', () => go(Training), { kind: 'dark', size: 15, sub: 'TRAINING' }),
       ];
     }
   },
+  once(k, at) { if (!this.ev[k] && this.t >= at) { this.ev[k] = 1; return true; } return false; },
   update(dt) {
-    this.t += dt;
-    this.shown = Math.min(this.a.rate, this.shown + dt * 0.8);
-    if (!this.played && this.shown >= this.a.rate) { this.played = this.t; SFX.stamp(); shake = 6; setTimeout(() => { if (this.g === 'S' || this.g === 'A') SFX.jingle(); else if (this.g === 'D') SFX.sad(); else SFX.good(); }, 250); }
+    const t = this.t += dt, g = this.g, R = this.R, good = 'SAB'.includes(g);
+    if (this.once('head', .05)) { noise(.2, .2, 3000); tone(90, .25, 'sawtooth', .06, -30); this.sh = 6; }
+    this.a.lines.forEach((_, i) => { if (this.once('l' + i, .35 + i * .14)) { noise(.06, .2, 2200); tone(700 + i * 90, .05, 'square', .04); } });
+    if (t > this.cStart && t < this.cStart + this.cDur && Math.floor(t * 28) !== Math.floor((t - dt) * 28)) { noise(.03, .12, 900); tone(300 + (t - this.cStart) / this.cDur * 900, .02, 'square', .025); }
+    if (this.once('done', this.cStart + this.cDur)) { tone(1400, .12, 'square', .05); }
+    if (this.once('reveal', R)) {
+      this.fl = 1; this.sh = 16; SFX.stamp(); noise(.6, .4, 800); tone(55, .8, 'sawtooth', .09, -20);
+      setTimeout(() => { if (g === 'S' || g === 'A') SFX.jingle(); else if (g === 'D') SFX.sad(); else SFX.good(); }, 220);
+      if (g === 'D') { noise(.5, .45, 3000); tone(2400, .2, 'square', .04, -2000); }
+    }
+    if (this.once('settle', R + .9)) { SFX.stamp(); this.sh = 7; }
+    if (t > R) {
+      if (good) {
+        this.fw -= dt;
+        if (this.fw <= 0 && g !== 'B') { this.fw = g === 'S' ? rand(.15, .3) : rand(.35, .6); const c = pick([['#ff3b5c', '#ffb0c0'], [GOLD2, '#fff'], ['#4fd18b', '#c8ffd8'], ['#7fb8ff', '#e0f0ff']]); burst(rand(30, W - 30), rand(60, 300), c, g === 'S' ? 40 : 28, 220, 1, 3); noise(.2, .08, 900); }
+        if (Math.random() < (g === 'S' ? .8 : g === 'A' ? .4 : .12)) this.conf.push({ x: rand(0, W), y: -10, vx: rand(-30, 30), vy: rand(60, 140), rot: rand(0, 6), vr: rand(-8, 8), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff']) });
+      } else if (Math.random() < (g === 'D' ? .45 : .15)) this.coal.push({ x: rand(0, W), y: -10, vy: rand(150, 280), rot: rand(0, 6), vr: rand(-5, 5), r: rand(4, 7) });
+    }
+    for (const c of this.conf) { c.x += c.vx * dt; c.y += c.vy * dt; c.rot += c.vr * dt; c.vx += Math.sin(gT * 3 + c.rot) * 20 * dt; }
+    for (const c of this.coal) { c.y += c.vy * dt; c.rot += c.vr * dt; }
+    this.conf = this.conf.filter(c => c.y < H + 10); this.coal = this.coal.filter(c => c.y < H + 10);
+    this.fl = Math.max(0, this.fl - dt * 2.5); this.sh = Math.max(0, this.sh - dt * 30);
   },
   draw(dt) {
+    const t = this.t, g = this.g, R = this.R, col = gradeCol[g], good = 'SAB'.includes(g), m = MISSIONS[this.a.i];
     drawAgency(dt, 240);
-    const m = MISSIONS[this.a.i];
-    spaced(`MISSION REPORT  //  ${m.code}`, W / 2, 26, 10, GOLD, 2.5);
-    goldRule(40, 24, W - 24);
-    emo(m.icon, 52, 82, 30);
-    serifText(m.name, 82, 76, 26, '#fff', 'left', '900');
-    mono(`${m.genre}  //  ${m.date}`, 84, 102, 10, '#8f876f', 'left', 'normal');
-    cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
-    drawPanel(16, 128, W - 32, 414);
-    spaced('ACHIEVEMENT RATE', 36, 156, 9, GOLD, 2, 'left');
-    mono(`${(this.shown * 100).toFixed(1)}`, 36, 200, 50, '#fff', 'left');
-    font(50); cx.font = `bold 50px ${MONO}`; const nw = cx.measureText(`${(this.shown * 100).toFixed(1)}`).width;
-    mono('%', 40 + nw, 210, 20, GOLD2, 'left');
-    rateBar(36, 240, W - 72, 14, this.shown);
-    if (this.played) {
-      const k = clamp((this.t - this.played) * 6, 0, 1), s = 2.2 - 1.2 * k;
-      cx.globalAlpha = k; stamp(W - 76, 190, this.g, 'GRADE', gradeCol[this.g], s, -0.22, 38); cx.globalAlpha = 1;
-      if (this.newBest && G.mode === 'training') spaced('★ PERSONAL BEST', W - 76, 240 - 16, 8, GOLD2, 1.5);
+    if (t > R) { // 回転する放射光
+      const rk = Math.min(1, (t - R) * 2), n = g === 'S' ? 20 : 14; cx.save(); cx.translate(W - 76, 200); cx.rotate(gT * .2); cx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < n; i++) { cx.rotate(Math.PI * 2 / n); const gg = cx.createLinearGradient(0, 0, 460, 0); gg.addColorStop(0, good ? `rgba(255,214,120,${(g === 'S' ? .22 : .13) * rk})` : `rgba(180,40,90,${.12 * rk})`); gg.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = gg; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(460, -26); cx.lineTo(460, 26); cx.fill(); }
+      cx.restore();
     }
-    let y = 290;
-    for (const l of this.a.lines) { statRow(l, 36, W - 36, y); y += 30; }
-    if (this.played) {
-      const k = clamp((this.t - this.played - 0.3) * 3, 0, 1); cx.globalAlpha = k;
-      cx.fillStyle = 'rgba(179,18,46,.18)'; cx.fillRect(30, 432, W - 60, 96);
-      cx.fillStyle = CRIM; cx.fillRect(30, 432, 3, 96);
-      spaced('FROM THE DIRECTOR', 44, 450, 8.5, GOLD, 2, 'left');
-      const ls = wrapLines(`「${this.comment}」`, W - 100, 15);
-      ls.forEach((l, i) => serifText(l, 44, 478 + i * 24, 15, '#f3ecd8', 'left'));
-      cx.globalAlpha = 1;
+    drawParts();
+    cx.save(); const sh = this.sh; if (sh > 0) cx.translate(rand(-sh, sh) * .4, rand(-sh, sh) * .4);
+    // ヘッダ
+    const hk = clamp(t * 5, 0, 1);
+    cx.globalAlpha = hk; spaced(`MISSION REPORT  //  ${m.code}`, W / 2, 26, 10, GOLD, 2.5); goldRule(40, W / 2 - (W / 2 - 24) * hk, W / 2 + (W / 2 - 24) * hk); cx.globalAlpha = 1;
+    { const k = clamp((t - .08) * 6, 0, 1); cx.save(); cx.translate(52, 82); cx.scale(1 + (1 - k) * 1.5, 1 + (1 - k) * 1.5); cx.globalAlpha = k; emo(m.icon, 0, 0, 30); cx.restore(); }
+    { const k = clamp((t - .12) * 6, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * 60, 0);
+      cx.save(); cx.globalCompositeOperation = 'lighter'; const off = 1 + (1 - k) * 6; serifText(m.name, 82 - off, 76, 26, 'rgba(255,30,80,.6)', 'left', '900'); serifText(m.name, 82 + off, 76, 26, 'rgba(30,210,255,.6)', 'left', '900'); cx.restore();
+      serifText(m.name, 82, 76, 26, '#fff', 'left', '900'); mono(`${m.genre}  //  ${m.date}`, 84, 102, 10, '#8f876f', 'left', 'normal'); cx.restore(); }
+    drawPanel(16, 128, W - 32, 420);
+    // 達成率カウントアップ
+    const cq = clamp((t - this.cStart) / this.cDur, 0, 1), shown = this.a.rate * (1 - Math.pow(1 - cq, 3));
+    spaced('ACHIEVEMENT RATE', 36, 156, 9, GOLD, 2, 'left');
+    cx.save(); if (cq > 0 && cq < 1) { cx.shadowColor = GOLD2; cx.shadowBlur = 8 + Math.sin(gT * 30) * 6; }
+    const num = `${(shown * 100).toFixed(1)}`; mono(num, 36, 200, 50, '#fff', 'left'); cx.font = `bold 50px ${MONO}`; const nw = cx.measureText(num).width; mono('%', 40 + nw, 210, 20, GOLD2, 'left'); cx.restore();
+    rateBar(36, 240, W - 72, 14, shown);
+    if (cq > 0 && cq < 1) { cx.save(); cx.globalCompositeOperation = 'lighter'; const bx = 36 + (W - 72) * shown; const bg = cx.createRadialGradient(bx, 247, 1, bx, 247, 24); bg.addColorStop(0, 'rgba(255,240,200,.9)'); bg.addColorStop(1, 'rgba(255,200,80,0)'); cx.fillStyle = bg; circ(bx, 247, 24); cx.fill(); cx.restore(); }
+    if (t > R + .9) { const k = clamp((t - R - .9) * 6, 0, 1); cx.globalAlpha = k; stamp(W - 76, 190, g, 'GRADE', col, 2.2 - 1.2 * k, -0.22, 38); cx.globalAlpha = 1;
+      if (this.newBest && G.mode === 'training') { cx.save(); cx.globalAlpha = .6 + .4 * Math.sin(gT * 8); spaced('★ PERSONAL BEST', W - 76, 226, 8, GOLD2, 1.5); cx.restore(); } }
+    // 成績の行
+    this.a.lines.forEach((l, i) => { const k = clamp((t - .35 - i * .14) * 6, 0, 1); if (k <= 0) return; cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * 80, 0); statRow(l, 36, W - 36, 290 + i * 30); cx.restore(); });
+    // 長官のコメント
+    if (t > R + 1.0) {
+      const k = clamp((t - R - 1.0) * 4, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(0, (1 - k) * 20);
+      cx.fillStyle = good ? 'rgba(179,18,46,.2)' : 'rgba(90,26,138,.25)'; cx.fillRect(30, 432, W - 60, 100); cx.fillStyle = good ? CRIM : '#8a3ae0'; cx.fillRect(30, 432, 3, 100);
+      drawEmblem(58, 470, 16); spaced('FROM THE DIRECTOR', 84, 446, 8.5, GOLD, 2, 'left');
+      const ls = wrapLines(`「${this.comment}」`, W - 130, 15); let left = Math.floor((t - R - 1.1) * 30);
+      ls.forEach((l, i) => { const s2 = l.slice(0, Math.max(0, left)); left -= l.length; serifText(s2, 84, 474 + i * 24, 15, '#f3ecd8', 'left'); });
+      cx.restore();
     }
     cx.restore();
-    if (this.played && this.t - this.played > 0.4) for (const b of this.btns) drawBtn(b, this.t);
+    for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
+    for (const c of this.coal) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); const r = c.r; cx.fillStyle = '#0a0810'; cx.beginPath(); cx.moveTo(-r, -r * .3); cx.lineTo(-r * .3, -r); cx.lineTo(r * .7, -r * .7); cx.lineTo(r, r * .2); cx.lineTo(r * .3, r); cx.lineTo(-r * .8, r * .6); cx.closePath(); cx.fill(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(255,90,30,.5)'; circ(r * .2, r * .3, r * .35); cx.fill(); cx.restore(); }
+    // 判定（全画面）
+    if (t > R - .15 && t < R + 1.0) {
+      const rt = t - R, inK = clamp(rt * 7, 0, 1), out = clamp((t - R - .65) / .35, 0, 1);
+      cx.fillStyle = `rgba(0,0,0,${(rt < 0 ? (rt + .15) * 5 : .78) * (1 - out)})`; cx.fillRect(0, 0, W, H);
+      if (rt < 0) { cx.save(); cx.globalAlpha = (rt + .15) * 7; spaced('GRADING...', W / 2, 260, 14, '#fff', 6); cx.restore(); }
+      else {
+        const sc = (1 + (1 - inK) * 3) * (1 - out * .65), x = lerp(W / 2, W - 76, out), y = lerp(250, 190, out);
+        cx.save(); cx.translate(x, y); cx.scale(sc, sc);
+        cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 3; i++) { cx.strokeStyle = col; cx.globalAlpha = inK * (.5 - i * .14) * (1 - out); cx.lineWidth = 3; circ(0, 0, 62 + i * 15 + Math.sin(gT * 6 + i) * 4); cx.stroke(); }
+        cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = inK * (1 - out * .9);
+        chromaText(g, 0, 0, 130, 0, SERIF, g === 'S' ? goldGrad(-60, 60) : col, rt < .12 ? 1 : 0);
+        cx.restore();
+        cx.save(); cx.globalAlpha = inK * (1 - out); const ck = clamp((rt - .1) * 8, 0, 1); cx.translate(W / 2, 352); cx.scale(1 + (1 - ck) * 1.5, 1 + (1 - ck) * 1.5); cx.globalAlpha *= ck;
+        bevel(-120, -16, 240, 32, 8); cx.fillStyle = good ? 'rgba(179,18,46,.92)' : 'rgba(40,10,60,.92)'; cx.fill(); cx.strokeStyle = goldGrad(-16, 16); cx.lineWidth = 1.2; cx.stroke();
+        spaced(GRADE_CALL[g], 0, 1, 13, '#fff', 3); cx.restore();
+        if (rt < .6) { cx.save(); cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 3; i++) { cx.strokeStyle = i ? col : '#fff'; cx.globalAlpha = 1 - rt / .6; cx.lineWidth = 4 - i; circ(W / 2, 250, 30 + rt * (500 + i * 200)); cx.stroke(); } cx.restore(); }
+        if (g === 'D' && rt > .05) { // 画面のヒビ
+          const ck2 = Math.min(1, (rt - .05) * 8); let sd = 7; const rnd = () => (sd = (sd * 9301 + 49297) % 233280) / 233280; cx.save(); cx.globalAlpha = 1 - out;
+          for (let i = 0; i < 12; i++) { const ang = i / 12 * Math.PI * 2 + rnd() * .3; let px = W / 2 + 40, py = 300; cx.beginPath(); cx.moveTo(px, py); for (let k2 = 0; k2 < 5; k2++) { const r = (30 + rnd() * 50) * ck2; px += Math.cos(ang + (rnd() - .5) * .7) * r; py += Math.sin(ang + (rnd() - .5) * .7) * r; cx.lineTo(px, py); } cx.strokeStyle = 'rgba(0,0,0,.7)'; cx.lineWidth = 3; cx.stroke(); cx.strokeStyle = 'rgba(255,255,255,.85)'; cx.lineWidth = 1; cx.stroke(); }
+          cx.restore();
+        }
+      }
+    }
+    if (this.fl > 0) { cx.fillStyle = good ? `rgba(255,250,230,${Math.min(1, this.fl)})` : `rgba(255,40,80,${Math.min(.6, this.fl)})`; cx.fillRect(0, 0, W, H); }
+    if (t > R + 1.1) this.btns.forEach((b, i) => { const q = clamp((t - R - 1.1 - i * .1) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30); drawBtn(b, t); cx.restore(); });
   },
-  down(x, y) { if (!this.played) { this.shown = this.a.rate; return; } BtnMix.down.call(this, x, y); },
+  down(x, y) {
+    if (this.t < this.R - .15) { this.t = this.R - .15; for (const k in this.ev) this.ev[k] = 1; this.a.lines.forEach((_, i) => this.ev['l' + i] = 1); this.ev.head = this.ev.done = 1; return; }
+    if (this.t < this.R + 1.1) { if (this.t < this.R) this.t = this.R; else { this.t = this.R + 1.1; this.ev.settle = 1; } return; }
+    BtnMix.down.call(this, x, y);
+  },
 };
 
 const RANKS = [
