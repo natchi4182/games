@@ -211,6 +211,8 @@ const TRACKS = {
     // Jingle Bells（パブリックドメイン）
     lead: [[4,_,_,_,4,_,_,_,4,_,_,_,_,_,_,_],[4,_,_,_,4,_,_,_,4,_,_,_,_,_,_,_],[4,_,_,_,7,_,_,_,0,_,_,_,_,_,2,_],[4,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
            [5,_,_,_,5,_,_,_,5,_,_,_,_,_,5,_],[5,_,_,_,4,_,_,_,4,_,4,_,4,_,_,_],[4,_,_,_,2,_,_,_,2,_,_,_,4,_,_,_],[2,_,_,_,_,_,_,_,7,_,_,_,_,_,_,_]] },
+  defuse: { name: 'Countdown Protocol', bpm: 140, key: 50, prog: [[0, 'm'], [1, 'M'], [0, 'm'], [6, 'd']],
+    kick: 'x.....x...x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', bass: 'x.x.x.x.x.x.x.x.', arp: 0, pad: 1, lead: 'auto' },
   report: { name: 'Mission Report', bpm: 104, key: 60, prog: [[0, 'M7'], [7, 'M'], [9, 'm7'], [5, 'M7']],
     kick: 'x.......x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', bass: 'x..x..x.x..x..x.', arp: 2, pad: 1, lead: null, soft: 1 },
   victory: { name: 'Holy Night Victory', bpm: 132, key: 60, prog: [[0, 'M'], [5, 'M'], [7, 'M'], [0, 'M']],
@@ -3520,6 +3522,177 @@ function Delivery(api) {
 }
 
 // =====================================================================
+//  EXTRA MISSION : 時限爆弾解除（成績優秀者のみ発令）
+// =====================================================================
+function Defuse(api) {
+  const NB = 5, TIME = 60, DX = W / 2, DY = 268, DR = 72;
+  const WC = [['赤', '#ff3046', '#6a0a14'], ['青', '#3a8cff', '#0c2a6a'], ['黄', '#ffd23a', '#6a4a08'], ['緑', '#3ad67a', '#0a4a22'], ['白', '#f2f2f2', '#6a6a6a']];
+  let t = 0, time = TIME, bomb = 0, phase = 'dial', locks = 0, ang = -Math.PI / 2, spd = 2.4, dir = 1, zA = 0, zW = .8;
+  let wires = [], order = '', target = -1, inkCol = '#fff', defused = 0, mistakes = 0, endT = -1, boomed = false, clearT = 0, lid = 0, lockFlash = 0, errFlash = 0, okFlash = 0, introT = .8, sparks = [];
+  const wx = k => DX + (k - (wires.length - 1) / 2) * 54;
+  function newZone() {
+    zW = Math.max(.34, .8 - bomb * .08 - locks * .05); spd = 2.3 + bomb * .42 + locks * .22;
+    if (bomb >= 2 && Math.random() < .5) dir *= -1;
+    zA = ang + dir * rand(1.8, 4.2);
+  }
+  function makeWires() {
+    const n = bomb < 2 ? 4 : 5;
+    wires = shuffle([0, 1, 2, 3, 4]).slice(0, n).map(c => ({ c, cut: 0, ct: 0 }));
+    const nm = k => WC[wires[k].c][0];
+    const R = [
+      () => { const k = ri(0, n - 1); return [`${nm(k)}の線を切れ`, k]; },
+      () => { const k = ri(0, n - 1); return [`左から${k + 1}番目を切れ`, k]; },
+      () => { const k = ri(0, n - 1); return [`右から${n - k}番目を切れ`, k]; },
+      () => { const k = ri(0, n - 2); return [`${nm(k)}の右隣を切れ`, k + 1]; },
+      () => { const k = ri(1, n - 1); return [`${nm(k)}の左隣を切れ`, k - 1]; },
+      () => { const ex = ri(0, n - 1), k = ex === n - 1 ? n - 2 : n - 1; return [`${nm(ex)}以外で一番右を切れ`, k]; },
+      () => { const ex = ri(0, n - 1), k = ex === 0 ? 1 : 0; return [`${nm(ex)}以外で一番左を切れ`, k]; },
+    ];
+    const r = (bomb === 0 ? R.slice(0, 2) : bomb === 1 ? R.slice(0, 5) : R)[ri(0, bomb === 0 ? 1 : bomb === 1 ? 4 : R.length - 1)]();
+    order = r[0]; target = r[1];
+    // 後半は文字色でひっかける
+    inkCol = bomb >= 3 ? WC[pick(wires.filter((w, i) => i !== target)).c][1] : '#fff';
+  }
+  function newBomb() { phase = 'dial'; locks = 0; lid = 0; introT = .7; ang = -Math.PI / 2; newZone(); tone(220, .12, 'square', .05); tone(330, .12, 'square', .05, 0, .1); }
+  newZone();
+  function finish() {
+    const tb = defused === NB ? .2 * clamp(time / 15, 0, 1) : 0;
+    const rate = clamp(defused / NB * .8 + tb - mistakes * .02, 0, 1);
+    api.end(rate, [`解除: ${defused} / ${NB} 個`, `ミス: ${mistakes} 回`, `残り時間: ${Math.max(0, time).toFixed(1)} 秒`], defused === NB ? 'BOMB DEFUSED!' : 'KABOOM...');
+  }
+  function penalty(sec, x, y) {
+    time -= sec; mistakes++; errFlash = 1; shake = 12; SFX.bad(); noise(.25, .3, 2500); flashFx(.35, '255,40,60');
+    popCall(`-${sec}秒`, x, y, '#ff6b7d', 22, .8);
+  }
+  function tapDial() {
+    if (phase !== 'dial' || introT > 0) return;
+    let d = ((ang - zA) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+    if (Math.abs(d) <= zW / 2) {
+      locks++; lockFlash = 1; shake = 5; tone(1200 + locks * 200, .08, 'square', .06); noise(.08, .2, 4000);
+      const lx = DX + (locks - 2) * 30; burst(lx, DY + DR + 26, ['#7fffb0', '#fff'], 14, 160); ringFx(DX, DY, '#7fffb0', DR + 30, .35);
+      popCall(Math.abs(d) < zW * .15 ? 'PERFECT!' : 'LOCK!', DX, DY - DR - 22, Math.abs(d) < zW * .15 ? GOLD2 : '#7fffb0', 20, .6);
+      if (Math.abs(d) < zW * .15) time = Math.min(TIME, time + .5);
+      if (locks >= 3) { phase = 'wire'; makeWires(); SFX.reload(); tone(90, .3, 'sawtooth', .07, -30); }
+      else { dir *= bomb >= 1 ? -1 : 1; newZone(); }
+    } else { penalty(3, DX, DY - DR - 22); dir *= -1; }
+  }
+  function cut(k) {
+    if (phase !== 'wire' || lid < .9 || k < 0 || k >= wires.length || wires[k].cut) return;
+    const w = wires[k]; w.cut = 1; w.ct = 0; SFX.whoosh(); noise(.1, .3, 5000); tone(2400, .04, 'square', .04);
+    const y = 506;
+    if (k === target) {
+      defused++; phase = 'clear'; clearT = 1.0; okFlash = 1; shake = 10; flashFx(.5, '120,255,170');
+      burst(wx(k), y, ['#7fffb0', '#fff', GOLD2], 40, 260); ringFx(DX, 300, '#7fffb0', 200, .5, 4); ringFx(DX, 300, '#fff', 120, .35, 3);
+      popCall(defused === NB ? 'ALL CLEAR!' : 'DEFUSED!', DX, 250, '#7fffb0', 34, 1);
+      SFX.good(); melody([[79, .25], [84, .5]], 400, 'square', .06);
+    } else {
+      for (let i = 0; i < 18; i++) sparks.push({ x: wx(k), y, vx: rand(-160, 160), vy: rand(-220, -40), life: rand(.3, .6) });
+      penalty(5, wx(k), y - 40);
+    }
+  }
+  return {
+    update(dt) {
+      t += dt; lockFlash = Math.max(0, lockFlash - dt * 3); errFlash = Math.max(0, errFlash - dt * 3); okFlash = Math.max(0, okFlash - dt * 2);
+      for (const s of sparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 500 * dt; s.life -= dt; } sparks = sparks.filter(s => s.life > 0);
+      for (const w of wires) w.ct += dt;
+      if (endT >= 0) { endT -= dt; if (endT < 0) { endT = 0; finish(); } return; }
+      if (introT > 0) introT -= dt;
+      if (phase !== 'clear') time -= dt;
+      if (phase === 'dial' && introT <= 0) ang += spd * dir * dt;
+      if (phase === 'wire') lid = Math.min(1, lid + dt * 3.5);
+      if (phase === 'clear') { clearT -= dt; if (clearT <= 0) { bomb++; if (bomb >= NB) { endT = 1.2; SFX.jingle && SFX.jingle(); } else newBomb(); } }
+      if (Math.floor(time) !== Math.floor(time + dt) && time > 0 && phase !== 'clear') tone(time < 10 ? 1760 : 1320, .04, 'square', .035);
+      if (time <= 0 && endT < 0) { // 爆発
+        time = 0; boomed = true; endT = 2; shake = 34; flashFx(1, '255,200,120');
+        for (let i = 0; i < 6; i++) setTimeout(() => { boomFx(rand(40, W - 40), rand(150, 500), 2); SFX.boom(); }, i * 120);
+        boomFx(DX, DY, 3); noise(1.2, .5, 500); tone(40, 1.2, 'sawtooth', .12, -20);
+      }
+    },
+    draw() {
+      // 地下の爆弾処理室
+      const bg = cx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#120a10'); bg.addColorStop(1, '#05040a'); cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+      cx.strokeStyle = 'rgba(255,255,255,.035)'; cx.lineWidth = 1; for (let y = 60; y < H; y += 24) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+      // 回転灯
+      cx.save(); cx.globalCompositeOperation = 'lighter';
+      for (const [lx, ph] of [[18, 0], [W - 18, Math.PI]]) { const a = gT * 4 + ph; const g = cx.createRadialGradient(lx, 56, 0, lx, 56, 260); g.addColorStop(0, 'rgba(255,40,40,.35)'); g.addColorStop(1, 'rgba(255,40,40,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(lx, 56); cx.arc(lx, 56, 260, a, a + .5); cx.closePath(); cx.fill(); cx.fillStyle = `rgba(255,60,60,${.6 + .4 * Math.sin(gT * 8)})`; circ(lx, 56, 5); cx.fill(); }
+      cx.restore();
+      cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * .5, rand(-shake, shake) * .5);
+      // 爆弾ケース
+      const cg = cx.createLinearGradient(0, 70, 0, 600); cg.addColorStop(0, '#3a3a44'); cg.addColorStop(1, '#16161c');
+      bevel(22, 70, W - 44, 530, 16); cx.fillStyle = cg; cx.fill(); cx.strokeStyle = errFlash > 0 ? `rgba(255,60,80,${.5 + errFlash * .5})` : okFlash > 0 ? `rgba(120,255,170,${.5 + okFlash * .5})` : 'rgba(212,175,55,.45)'; cx.lineWidth = 2; cx.stroke();
+      for (const [bx, by] of [[36, 84], [W - 36, 84], [36, 586], [W - 36, 586]]) { cx.fillStyle = '#8a8a94'; circ(bx, by, 4); cx.fill(); cx.strokeStyle = '#333'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(bx - 3, by); cx.lineTo(bx + 3, by); cx.stroke(); }
+      // 黄黒の警告帯
+      cx.save(); cx.beginPath(); cx.rect(34, 94, W - 68, 10); cx.clip(); for (let x = 20 - (gT * 20) % 20; x < W; x += 20) { cx.fillStyle = '#ffcc1a'; cx.beginPath(); cx.moveTo(x, 94); cx.lineTo(x + 10, 94); cx.lineTo(x, 104); cx.lineTo(x - 10, 104); cx.fill(); } cx.restore();
+      // 液晶タイマー
+      bevel(70, 112, W - 140, 52, 8); cx.fillStyle = '#070205'; cx.fill(); cx.strokeStyle = 'rgba(255,60,80,.4)'; cx.lineWidth = 1; cx.stroke();
+      const tt = Math.max(0, time), warn = tt < 10, blink = warn && Math.floor(t * 6) % 2;
+      cx.save(); cx.shadowColor = okFlash > 0 ? '#7fffb0' : '#ff2040'; cx.shadowBlur = 14;
+      mono(`${String(Math.floor(tt / 60)).padStart(2, '0')}:${(tt % 60).toFixed(2).padStart(5, '0')}`, DX, 140, 34, phase === 'clear' ? '#7fffb0' : blink ? '#ff9aa8' : '#ff2a44');
+      cx.restore();
+      spaced('BOMB', 84, 124, 7, '#ff6b7d', 1.5, 'left');
+      for (let i = 0; i < NB; i++) { const st = i < defused ? 2 : i === bomb ? 1 : 0; cx.fillStyle = st === 2 ? '#3ad67a' : st === 1 ? (Math.floor(t * 4) % 2 ? '#ff3046' : '#6a0a14') : '#2a2a30'; circ(84 + i * 9 + 4, 154, 3); cx.fill(); }
+      spaced(phase === 'clear' ? 'SAFE' : 'ARMED', W - 84, 124, 7, phase === 'clear' ? '#7fffb0' : '#ff6b7d', 1.5, 'right');
+      // ダイヤル錠
+      cx.save(); cx.translate(DX, DY);
+      const dg = cx.createRadialGradient(-20, -20, 10, 0, 0, DR + 14); dg.addColorStop(0, '#5a5a66'); dg.addColorStop(1, '#1a1a22'); cx.fillStyle = dg; circ(0, 0, DR + 12); cx.fill();
+      cx.strokeStyle = 'rgba(212,175,55,.6)'; cx.lineWidth = 2; circ(0, 0, DR + 12); cx.stroke();
+      for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2; cx.strokeStyle = i % 5 ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.6)'; cx.lineWidth = i % 5 ? 1 : 2; cx.beginPath(); cx.moveTo(Math.cos(a) * (DR - (i % 5 ? 4 : 8)), Math.sin(a) * (DR - (i % 5 ? 4 : 8))); cx.lineTo(Math.cos(a) * DR, Math.sin(a) * DR); cx.stroke(); }
+      if (phase === 'dial') {
+        cx.save(); cx.globalCompositeOperation = 'lighter'; const za = .5 + .3 * Math.sin(t * 10);
+        cx.strokeStyle = `rgba(60,255,140,${za})`; cx.lineWidth = 14; cx.beginPath(); cx.arc(0, 0, DR - 14, zA - zW / 2, zA + zW / 2); cx.stroke();
+        cx.strokeStyle = `rgba(255,230,120,${za})`; cx.lineWidth = 14; cx.beginPath(); cx.arc(0, 0, DR - 14, zA - zW * .075, zA + zW * .075); cx.stroke(); cx.restore();
+      }
+      // 針
+      const na = phase === 'dial' ? ang : zA;
+      cx.save(); cx.rotate(na); cx.shadowColor = '#ff2040'; cx.shadowBlur = 10; cx.strokeStyle = '#ff3046'; cx.lineWidth = 4; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(-10, 0); cx.lineTo(DR - 6, 0); cx.stroke(); cx.restore();
+      const hg = cx.createRadialGradient(-4, -4, 1, 0, 0, 16); hg.addColorStop(0, '#fff6d0'); hg.addColorStop(1, '#8a6a20'); cx.fillStyle = hg; circ(0, 0, 14); cx.fill();
+      if (lockFlash > 0) { cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(120,255,170,${lockFlash * .4})`; circ(0, 0, DR + 12); cx.fill(); }
+      cx.restore();
+      // ロック表示
+      for (let i = 0; i < 3; i++) { const on = i < locks || phase !== 'dial'; const lx = DX + (i - 1) * 30, ly = DY + DR + 26; bevel(lx - 11, ly - 7, 22, 14, 4); cx.fillStyle = on ? '#3ad67a' : '#2a1014'; cx.fill(); if (on) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(120,255,170,.35)'; circ(lx, ly, 14); cx.fill(); cx.restore(); } }
+      // 指令ストリップ
+      bevel(36, 384, W - 72, 34, 6); cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.4)'; cx.lineWidth = 1; cx.stroke();
+      if (phase === 'dial') { spaced('STAGE 1 · DIAL LOCK', 48, 394, 6.5, GOLD, 1.5, 'left'); text('緑のゾーンで針を止めろ（タップ）', DX, 407, 12.5, '#e2dccb', 'center', 'normal'); }
+      else if (phase === 'wire') { spaced('STAGE 2 · CUT THE WIRE', 48, 394, 6.5, GOLD, 1.5, 'left'); cx.save(); cx.shadowColor = 'rgba(0,0,0,.9)'; cx.shadowBlur = 4; text('▶ ' + order, DX, 408, 15, inkCol); cx.restore(); }
+      else text(defused >= NB ? '全弾解除！' : '解除成功 ── 次の爆弾へ', DX, 401, 14, '#7fffb0');
+      // 配線パネル
+      bevel(36, 426, W - 72, 160, 8); cx.fillStyle = '#0c0c12'; cx.fill(); cx.strokeStyle = 'rgba(255,255,255,.12)'; cx.stroke();
+      cx.fillStyle = '#2a2a30'; cx.fillRect(48, 436, W - 96, 12); cx.fillRect(48, 564, W - 96, 12);
+      wires.forEach((w, k) => {
+        const x = wx(k), [, c, d] = WC[w.c], wv = Math.sin(k * 2.1) * 10;
+        const draw = (y0, y1) => { cx.strokeStyle = d; cx.lineWidth = 9; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(x, y0); cx.bezierCurveTo(x + wv, y0 + 40, x - wv, y1 - 40, x, y1); cx.stroke(); cx.strokeStyle = c; cx.lineWidth = 6; cx.stroke(); cx.strokeStyle = 'rgba(255,255,255,.35)'; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(x - 1.5, y0); cx.bezierCurveTo(x + wv - 1.5, y0 + 40, x - wv - 1.5, y1 - 40, x - 1.5, y1); cx.stroke(); };
+        if (!w.cut) draw(442, 570);
+        else { const o = Math.min(1, w.ct * 4) * 8; cx.save(); cx.beginPath(); cx.rect(36, 426, W - 72, 72 - o); cx.clip(); draw(442, 570); cx.restore(); cx.save(); cx.beginPath(); cx.rect(36, 514 + o, W - 72, 80); cx.clip(); draw(442, 570); cx.restore();
+          cx.fillStyle = '#e0a060'; cx.fillRect(x - 2, 496 - o, 4, 4); cx.fillRect(x - 2, 514 + o, 4, 4); }
+        cx.fillStyle = '#c9a85a'; circ(x, 442, 5); cx.fill(); circ(x, 570, 5); cx.fill();
+        mono(String(k + 1), x, 588 - 2, 8, '#6a6a74');
+      });
+      // カバー（ダイヤル解除で開く）
+      if (lid < 1) { const ly = 426 - lid * 170; cx.save(); cx.beginPath(); cx.rect(36, 426, W - 72, 160); cx.clip();
+        const lg = cx.createLinearGradient(0, ly, 0, ly + 160); lg.addColorStop(0, '#4a4a54'); lg.addColorStop(1, '#22222a'); cx.fillStyle = lg; cx.fillRect(36, ly, W - 72, 160);
+        for (let x = 50; x < W - 40; x += 24) { cx.fillStyle = 'rgba(0,0,0,.3)'; cx.fillRect(x, ly + 10, 12, 140); }
+        bevel(DX - 50, ly + 62, 100, 36, 6); cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fill(); spaced('LOCKED', DX, ly + 80, 10, '#ff6b7d', 3); cx.restore(); }
+      // 火花
+      for (const s of sparks) { cx.fillStyle = `rgba(255,${180 + Math.random() * 70},80,${s.life * 2})`; cx.fillRect(s.x, s.y, 2.5, 2.5); }
+      cx.restore();
+      if (introT > 0 && phase === 'dial' && endT < 0) { const k = clamp(introT / .7, 0, 1); cx.save(); cx.globalAlpha = k; bigCall(`BOMB ${bomb + 1} / ${NB}`, DX, DY, 30, '#ff6b7d'); cx.restore(); }
+      if (boomed) { cx.fillStyle = `rgba(255,120,40,${clamp(endT / 2, 0, 1) * .4})`; cx.fillRect(0, 0, W, H); cx.save(); cx.translate(DX, 300); const s = 1 + (2 - endT) * .1; cx.scale(s, s); bigCall('KABOOM!!', 0, 0, 46, '#ff4a2a'); cx.restore(); }
+      text(phase === 'wire' ? '指示どおりの線をタップ（1〜5キー）' : 'タップ / スペースで針を止める', DX, 622, 11, '#8f876f', 'center', 'normal');
+      hud('OP-EX 爆弾解除', time, `💣 ${defused}/${NB}`);
+    },
+    down(x, y) {
+      if (phase === 'dial') tapDial();
+      else if (phase === 'wire' && y > 426 && y < 600) { let best = -1, bd = 28; wires.forEach((w, k) => { const d = Math.abs(x - wx(k)); if (d < bd) { bd = d; best = k; } }); cut(best); }
+    },
+    key(code) {
+      if (phase === 'dial' && (code === 'Space' || code === 'Enter')) tapDial();
+      const m = /^Digit([1-5])$/.exec(code); if (m) cut(+m[1] - 1);
+    },
+    dbg: { get phase() { return phase; }, get target() { return target; }, get zone() { return [zA, ang]; }, set ang(v) { ang = v; }, get defused() { return defused; }, set time(v) { time = v; } },
+  };
+}
+
+// =====================================================================
 //  MISSIONS
 // =====================================================================
 const MISSIONS = [
@@ -3554,6 +3727,14 @@ if (NY) {
   };
   for (const m of MISSIONS) { Object.assign(m, NYM[m.id] || {}); m.how = m.how.replace(/プレゼント/g, 'お年玉'); }
 }
+// 成績優秀者だけに発令される追加ミッション
+const EXTRA = { id: 'defuse', code: 'OP-EX', name: '爆弾解除', genre: 'パズル', icon: '💣', date: T_('12月25日', '1月2日'), make: Defuse, extra: true,
+  story: T_('作戦成功の直後、北極本部の地下で K.R.A.M.P.U.S. が仕掛けた時限爆弾が見つかった！\n君の腕を見込んで追加任務を命ずる。制限時間内に5つの爆弾をすべて解除せよ。',
+            'お年玉作戦の成功直後、北極本部の地下で K.R.A.M.P.U.S. が仕掛けた時限爆弾が見つかった！\n君の腕を見込んで追加任務を命ずる。制限時間内に5つの爆弾をすべて解除せよ。'),
+  how: '・ダイヤルの針が緑のゾーンに来たらタップ（3回でロック解除）\n・黄色の中心で止めると PERFECT（+0.5秒）\n・カバーが開いたら、指示どおりの線をタップして切断\n・失敗すると制限時間が減る。文字の色にだまされるな\n・成績は最終評価にボーナスとして加算される' };
+const EX_I = MISSIONS.length, EX_NEED = .7;
+const MS = i => MISSIONS[i] || EXTRA;
+const mainAvg = () => MISSIONS.reduce((a, m, k) => a + (G.results[k] || 0), 0) / MISSIONS.length;
 const CODENAMES = ['ルドルフ', 'ダッシャー', 'ダンサー', 'プランサー', 'ヴィクセン', 'コメット', 'キューピッド', 'ドナー', 'ブリッツェン'];
 const G = { mode: 'campaign', idx: 0, results: [], codename: pick(CODENAMES) };
 const gradeOf = r => r >= 0.95 ? 'S' : r >= 0.8 ? 'A' : r >= 0.6 ? 'B' : r >= 0.4 ? 'C' : 'D';
@@ -3863,7 +4044,7 @@ const Prologue = typeScene(() => {
 
 
 const Briefing = typeScene(i => {
-  const m = MISSIONS[i], ev = {};
+  const m = MS(i), ev = {};
   const once = (k, t, at) => { if (!ev[k] && t >= at) { ev[k] = 1; return true; } return false; };
   return {
     btn: 'ミッション開始', sub: 'ENGAGE',
@@ -3910,7 +4091,7 @@ const Briefing = typeScene(i => {
       }
       // 右カラム
       const rx = 136;
-      { const n = Math.floor(clamp((t - .35) * 40, 0, 20)); const tx = `MISSION ${String(i + 1).padStart(2, '0')} / 06`; spaced(tx.slice(0, n), rx, 62, 11, GOLD, 2, 'left'); }
+      { const n = Math.floor(clamp((t - .35) * 40, 0, 20)); const tx = m.extra ? 'EXTRA MISSION' : `MISSION ${String(i + 1).padStart(2, '0')} / 06`; spaced(tx.slice(0, n), rx, 62, 11, GOLD, 2, 'left'); }
       if (t > .55) {
         const k = clamp((t - .55) * 7, 0, 1), sz = m.name.length > 5 ? 25 : 28;
         cx.save(); cx.globalAlpha = k; cx.translate(rx, 94); cx.scale(1 + (1 - k) * 1.8, 1 + (1 - k) * 1.8);
@@ -3929,7 +4110,7 @@ const Briefing = typeScene(i => {
         mono(`FILE ${m.code}`, rx + gw + 10, 122, 9, '#8f876f', 'left');
         cx.restore();
         // 脅威レベル
-        const lv = [2, 3, 3, 4, 5, 4][i] || 3; spaced('THREAT', rx, 146, 7, '#8f876f', 2, 'left');
+        const lv = [2, 3, 3, 4, 5, 4, 5][i] || 3; spaced('THREAT', rx, 146, 7, '#8f876f', 2, 'left');
         for (let k2 = 0; k2 < 5; k2++) { const on = k2 < lv && t > .8 + k2 * .06; cx.fillStyle = on ? (k2 >= 3 ? '#ff3b5c' : GOLD) : 'rgba(255,255,255,.1)'; bevel(rx + 44 + k2 * 14, 141, 11, 10, 3); cx.fill(); }
       }
       if (t > 1.0) { const k = clamp((t - 1.0) * 7, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(300, 156); cx.scale(2.4 - 1.4 * k, 2.4 - 1.4 * k); rectStamp(0, 0, 'TOP SECRET', CRIM, -0.14, 11); cx.restore(); }
@@ -3954,7 +4135,7 @@ const Briefing = typeScene(i => {
 
 const Play = {
   enter(i) {
-    setLandscape(MISSIONS[i].id === 'fight'); bgmHype = 0; hurryG = 0; this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
+    setLandscape(MS(i).id === 'fight'); this.snap = null; bgmHype = 0; hurryG = 0; this.i = i; this.m = MS(i); this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
     this.g = this.m.make({ end: (rate, lines, msg) => { if (this.done) return; this.done = { rate: clamp(rate, 0, 1), lines, msg: msg || 'MISSION END', t: 0, good: rate >= .6 };
       const good = this.done.good; scrFlash = .9; scrFlashCol = good ? '255,250,230' : '255,60,80'; shake = 14;
       noise(.6, .4, 1800); tone(good ? 880 : 220, .5, 'square', .06, good ? 440 : -100); tone(55, .6, 'sawtooth', .08, -20);
@@ -4090,11 +4271,14 @@ const Play = {
     cx.restore();
   },
   draw() {
+    // 停止中（ポーズ・終了演出）は画面を一度だけ撮っておき、フィルターは1回だけかける（重いフィルターを毎描画に掛けない）
+    const needF = this.paused || (this.done && !(this.done.t < 1.2 && this.done.good));
+    if (needF) { if (!this.snap && cv.width && cv.height) { this.g.draw(); const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; c.getContext('2d').drawImage(cv, 0, 0); this.snap = c; } } else this.snap = null;
     cx.save();
     if (shake > 0) cx.translate(rand(-shake, shake) * 0.6, rand(-shake, shake) * 0.6);
     if (this.paused) { const k = Math.min(1, this.paused.t * 5); cx.filter = `grayscale(${.8 * k}) blur(${2 * k}px)`; }
     if (this.done) { const z = 1 + Math.min(1, this.done.t * 1.5) * .1, r = (this.done.good ? -1 : 1) * Math.min(1, this.done.t * 1.5) * .04; cx.translate(W / 2, H / 2); cx.rotate(r); cx.scale(z, z); cx.translate(-W / 2, -H / 2); if (this.done.t < 1.2) cx.filter = this.done.good ? 'none' : 'grayscale(.7) contrast(1.2)'; else cx.filter = 'blur(2px) brightness(.7)'; }
-    this.g.draw(); cx.filter = 'none'; drawParts();
+    if (this.snap) cx.drawImage(this.snap, 0, 0, W, H); else this.g.draw(); cx.filter = 'none'; drawParts();
     if (scrFlash > 0) { cx.fillStyle = `rgba(${scrFlashCol},${Math.min(1, scrFlash)})`; cx.fillRect(-20, -20, W + 40, H + 40); scrFlash = Math.max(0, scrFlash - 1 / 30); }
     cx.restore();
     if (this.cd > 0) this.drawCountdown();
@@ -4194,13 +4378,14 @@ const Result = {
     this.a = a; this.t = 0; this.g = gradeOf(a.rate); this.comment = pick(COMMENTS[this.g]); this.ev = {};
     this.conf = []; this.coal = []; this.fw = 0; this.fl = 0; this.sh = 0;
     this.cStart = .35 + a.lines.length * .14 + .15; this.cDur = .5 + a.rate * .9; this.R = this.cStart + this.cDur + .25;
-    const m = MISSIONS[a.i];
+    const m = MS(a.i);
     const prev = save.missions[m.id] || 0;
     this.newBest = a.rate > prev; if (this.newBest) { save.missions[m.id] = a.rate; persist(); }
     if (G.mode === 'campaign') {
       G.results[a.i] = a.rate;
-      const last = a.i === MISSIONS.length - 1;
-      this.btns = [Btn(52, 566, 256, 56, last ? '最終評価へ' : '次の作戦へ', () => { if (last) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 19, sub: last ? 'FINAL DEBRIEF' : 'NEXT OPERATION' })];
+      const last = a.i === MISSIONS.length - 1, isEx = a.i === EX_I, exOn = last && mainAvg() >= EX_NEED;
+      this.exOn = exOn;
+      this.btns = [Btn(52, 566, 256, 56, exOn ? '緊急指令 受信' : last || isEx ? '最終評価へ' : '次の作戦へ', () => { if (exOn) go(Alert); else if (last || isEx) go(Final); else go(Briefing, a.i + 1); }, { glow: true, size: 19, sub: exOn ? 'EMERGENCY ORDER' : last || isEx ? 'FINAL DEBRIEF' : 'NEXT OPERATION' })];
     } else {
       this.btns = [
         Btn(24, 566, 150, 54, 'もう一度', () => go(Briefing, a.i), { size: 17, sub: 'RETRY' }),
@@ -4234,7 +4419,7 @@ const Result = {
     this.fl = Math.max(0, this.fl - dt * 2.5); this.sh = Math.max(0, this.sh - dt * 30);
   },
   draw(dt) {
-    const t = this.t, g = this.g, R = this.R, col = gradeCol[g], good = 'SAB'.includes(g), m = MISSIONS[this.a.i];
+    const t = this.t, g = this.g, R = this.R, col = gradeCol[g], good = 'SAB'.includes(g), m = MS(this.a.i);
     drawAgency(dt, 240);
     if (t > R) { // 回転する放射光
       const rk = Math.min(1, (t - R) * 2), n = g === 'S' ? 20 : 14; cx.save(); cx.translate(W - 76, 200); cx.rotate(gT * .2); cx.globalCompositeOperation = 'lighter';
@@ -4318,8 +4503,8 @@ const Final = {
   ...BtnMix,
   enter() {
     this.t = 0;
-    const rs = MISSIONS.map((m, i) => G.results[i] || 0);
-    this.total = rs.reduce((a, b) => a + b, 0) / rs.length * 100;
+    this.ex = G.results[EX_I]; this.bonus = this.ex != null ? this.ex * 8 : 0;
+    this.total = Math.min(100, mainAvg() * 100 + this.bonus);
     this.rank = RANKS.find(r => this.total >= r.min);
     this.good = 'SAB'.includes(this.rank.r);
     this.kids = Math.round(this.total / 100 * 2200000000);
@@ -4397,7 +4582,7 @@ const Final = {
     // ミッション一覧
     drawPanel(14, 74, W - 28, 216);
     MISSIONS.forEach((m, i) => {
-      const r = G.results[i] || 0, y = 96 + i * 32, k = clamp((t - .3 - i * .22) * 6, 0, 1), fill = clamp((t - .3 - i * .22) * 2.5, 0, 1);
+      const r = G.results[i] || 0, y = 96 + i * (this.ex != null ? 29 : 32), k = clamp((t - .3 - i * .22) * 6, 0, 1), fill = clamp((t - .3 - i * .22) * 2.5, 0, 1);
       if (k <= 0) return;
       cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * -60, 0);
       mono(m.code.replace('OP-', ''), 32, y, 10, GOLD, 'center');
@@ -4407,6 +4592,11 @@ const Final = {
       cx.restore();
       if (fill >= 1) { const g = gradeOf(r), pk = clamp((t - .3 - i * .22 - .4) * 8, 0, 1); cx.save(); cx.translate(325, y); cx.scale(1 + (1 - pk) * 1.5, 1 + (1 - pk) * 1.5); cx.globalAlpha = pk; serifText(g, 0, 0, 16, gradeCol[g], 'center', '900'); cx.restore(); }
     });
+    if (this.ex != null) { const i = 6, y = 96 + i * 29, k = clamp((t - .3 - i * .22) * 6, 0, 1), fill = clamp((t - .3 - i * .22) * 2.5, 0, 1);
+      if (k > 0) { cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * -60, 0); cx.fillStyle = 'rgba(179,18,46,.25)'; cx.fillRect(22, y - 12, W - 44, 24);
+        mono('EX', 32, y, 10, '#ff6b7d', 'center'); text(EXTRA.name, 48, y, 13, '#ffd0d6', 'left'); rateBar(146, y - 5, 116, 10, this.ex * fill); mono(`${Math.round(this.ex * 100 * fill)}%`, 302, y, 12, '#fff', 'right');
+        if (fill >= 1) mono(`+${this.bonus.toFixed(1)}`, 330, y, 10, GOLD2, 'center'); cx.restore(); } }
+    else if (G.mode === 'campaign' && t > 1.6) { cx.save(); cx.globalAlpha = .55 + .2 * Math.sin(gT * 3); mono('EXTRA MISSION : 平均70%以上で緊急指令が発令', W / 2, 280, 8, '#ff9aa8'); cx.restore(); }
     // 合計（カウントアップ）
     const k2 = clamp((t - 1.7) / 1.1, 0, 1), e2 = 1 - Math.pow(1 - k2, 3);
     spaced('TOTAL ACHIEVEMENT', 28, 310, 9, GOLD, 2, 'left');
@@ -4462,11 +4652,66 @@ const Final = {
   down(x, y) { if (this.t < 2.85) { this.t = 2.85; return; } if (this.t < 4.4) { this.t = 4.4; for (const k of ['reveal', 'shrink', 'kids']) this.ev[k] = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
+// 緊急指令（成績優秀時のみ）
+const Alert = {
+  ...BtnMix,
+  enter() {
+    this.t = 0; this.ev = {}; this.avg = mainAvg(); this.sh = 0;
+    if (!save.exUnlocked) { save.exUnlocked = true; persist(); }
+    this.btns = [Btn(52, 560, 256, 58, '緊急出動', () => go(Briefing, EX_I), { glow: true, size: 20, sub: 'SCRAMBLE' })];
+  },
+  once(k, at) { if (!this.ev[k] && this.t >= at) { this.ev[k] = 1; return true; } return false; },
+  update(dt) {
+    const t0 = this.t, t = this.t += dt;
+    if (t < 3 && Math.floor(t0 * 2) !== Math.floor(t * 2)) { const hi = Math.floor(t * 2) % 2; tone(hi ? 960 : 720, .45, 'sawtooth', .045, hi ? -200 : 200); }
+    if (this.once('slam', .35)) { this.sh = 16; noise(.5, .4, 900); tone(55, .6, 'sawtooth', .09, -20); }
+    if (this.once('cond', 1.0)) { tone(1320, .08, 'square', .05); tone(1760, .12, 'square', .05, 0, .1); }
+    if (this.once('stamp', 1.5)) { SFX.stamp(); this.sh = 10; flashFx(.4, '255,60,80'); }
+    this.sh = Math.max(0, this.sh - dt * 30);
+  },
+  draw(dt) {
+    const t = this.t;
+    drawAgency(dt, 300);
+    const pu = .5 + .5 * Math.sin(t * Math.PI * 2);
+    cx.fillStyle = `rgba(200,0,30,${.12 + .14 * pu})`; cx.fillRect(0, 0, W, H);
+    // 回転する赤いサーチライト
+    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 0);
+    for (const ph of [0, Math.PI]) { const a = Math.PI / 2 + Math.sin(t * 2.4 + ph) * .9; const g = cx.createRadialGradient(0, 0, 0, 0, 0, 700); g.addColorStop(0, 'rgba(255,40,60,.45)'); g.addColorStop(1, 'rgba(255,40,60,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 700, a - .18, a + .18); cx.closePath(); cx.fill(); }
+    cx.restore();
+    cx.save(); if (this.sh > 0) cx.translate(rand(-this.sh, this.sh) * .5, rand(-this.sh, this.sh) * .5);
+    // 警告帯
+    for (const yb of [58, 516]) { cx.save(); cx.beginPath(); cx.rect(0, yb, W, 16); cx.clip(); cx.fillStyle = '#111'; cx.fillRect(0, yb, W, 16); for (let x = -20 + ((t * 40) % 32) * (yb < 100 ? 1 : -1); x < W + 32; x += 32) { cx.fillStyle = '#ffcc1a'; cx.beginPath(); cx.moveTo(x, yb); cx.lineTo(x + 16, yb); cx.lineTo(x, yb + 16); cx.lineTo(x - 16, yb + 16); cx.fill(); } cx.restore(); }
+    spaced('PRIORITY ALPHA  //  DIRECTOR ONLY', W / 2, 24, 9, '#ff9aa8', 2.5);
+    const k = clamp((t - .2) / .2, 0, 1);
+    if (k > 0) { cx.save(); cx.translate(W / 2, 120); const sc = 1 + (1 - k) * 2.5; cx.scale(sc, sc); cx.globalAlpha = k; chromaText('EMERGENCY', 0, 0, 40, 4, SERIF, '#fff', t < .6 || Math.random() < .05 ? 1 : 0); cx.restore();
+      cx.save(); cx.globalAlpha = k; serifText('緊 急 指 令', W / 2, 160, 20, '#ffd0d6', 'center', '900'); cx.restore(); }
+    // 爆弾アイコン（脈動）
+    if (t > .5) { const q = clamp((t - .5) * 4, 0, 1), s2 = (1 + .08 * pu) * q; cx.save(); cx.translate(W / 2, 250);
+      cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 3; i++) { cx.strokeStyle = `rgba(255,60,80,${(.5 - i * .15) * q})`; cx.lineWidth = 2; circ(0, 0, 44 + i * 14 + pu * 6); cx.stroke(); }
+      cx.globalCompositeOperation = 'source-over'; cx.scale(s2, s2); emo('💣', 0, 0, 56); cx.restore(); }
+    // 条件達成パネル
+    if (t > .9) { const q = clamp((t - .9) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate((1 - q) * -50, 0);
+      drawPanel(30, 318, W - 60, 74);
+      spaced('CAMPAIGN EVALUATION', 46, 334, 7.5, GOLD, 2, 'left');
+      text('全6作戦の平均達成率', 46, 356, 12, '#e2dccb', 'left', 'normal');
+      mono(`${(this.avg * 100 * clamp((t - .9) * 2, 0, 1)).toFixed(1)}%`, W - 46, 356, 20, '#fff', 'right');
+      rateBar(46, 372, W - 92, 7, this.avg); cx.fillStyle = GOLD2; cx.fillRect(46 + (W - 92) * EX_NEED - 1, 368, 2, 15);
+      mono('70%', 46 + (W - 92) * EX_NEED, 390, 7, GOLD2); cx.restore(); }
+    if (t > 1.5) { const q = clamp((t - 1.5) * 7, 0, 1); cx.save(); cx.translate(W - 82, 318); cx.scale(2.2 - 1.2 * q, 2.2 - 1.2 * q); cx.globalAlpha = q; rectStamp(0, 0, 'UNLOCKED', '#4fd18b', -.16, 12); cx.restore(); }
+    if (t > 1.7) { const n = Math.floor((t - 1.7) * 40); const msg = '本部地下で K.R.A.M.P.U.S. の時限爆弾を発見。\n優秀な君にしか頼めない追加任務だ。\n成功すれば最終評価にボーナスを与える。'; let left = n;
+      msg.split('\n').forEach((l, i) => { text(l.slice(0, Math.max(0, left)), W / 2, 424 + i * 22, 13, '#ece6d6', 'center', 'normal'); left -= l.length; }); }
+    cx.restore();
+    if (t > 2.2) this.btns.forEach(b => { const q = clamp((t - 2.2) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30); drawBtn(b, t); cx.restore(); });
+  },
+  down(x, y) { if (this.t < 2.2) { this.t = 2.2; for (const k of ['slam', 'cond', 'stamp']) this.ev[k] = 1; return; } BtnMix.down.call(this, x, y); },
+};
+
 const Training = {
   ...BtnMix,
   enter() {
     this.t = 0; this.ev = {}; this.sel = null; this.selT = 0;
-    this.btns = MISSIONS.map((m, i) => Btn(20, 150 + i * 66, W - 40, 58, '', () => { this.sel = i; this.selT = 0; SFX.go(); noise(.3, .2, 4000); }, { kind: 'dark', m }));
+    const list = save.exUnlocked ? [...MISSIONS, EXTRA] : MISSIONS, gap = list.length > 6 ? 61 : 66;
+    this.btns = list.map((m, i) => Btn(20, 150 + i * gap, W - 40, 58, '', () => { this.sel = i; this.selT = 0; SFX.go(); noise(.3, .2, 4000); }, { kind: 'dark', m }));
     this.btns.push(Btn(110, 552 + 40, 140, 36, '◀ 本部へ戻る', () => go(Title), { kind: 'ghost', size: 13 }));
     const vals = MISSIONS.map(m => save.missions[m.id]).filter(v => v != null);
     this.cleared = vals.length; this.avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
@@ -4581,7 +4826,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 // テスト用フック
-window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training }, G, MISSIONS };
+window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training, Alert }, G, MISSIONS, EXTRA };
 </script>
 </body>
 </html>
