@@ -2090,7 +2090,7 @@ function Fight(api) {
   const P = mk(110, 1, true), E = mk(250, -1, false);
   let time = LIMIT, proj = [], over = 0, result = '', aiT = 0.6, ai = { l: 0, r: 0, guard: 0 }, combo = 0, comboT = 0, maxCombo = 0, intro = 2.6;
   let hitstop = 0, slow = 0, flashW = 0, cutin = null, winner = null, fx = [], lowQ = false, perfT = 0, perfN = 0, lastNow = 0;
-  let exform = null, xform = null, hyper = 0, hyperUsed = false, rageOn = false, deer = null, assistCd = 6, negW = 0, speedL = 0;
+  let windup = null, sfx = null, exform = null, xform = null, hyper = 0, hyperUsed = false, rageOn = false, deer = null, assistCd = 6, negW = 0, speedL = 0;
   const ASSIST_CD = 13, HYPER_T = 12;
   const cam = { x: W / 2, z: 1, kick: 0, ang: 0 };
   const B = {
@@ -2116,7 +2116,7 @@ function Fight(api) {
   function dust(x, y, n = 8) { for (let i = 0; i < n; i++) { const d = i % 2 ? 1 : -1; fx.push({ k: 'dust', x, y, vx: d * rand(30, 110), vy: -rand(10, 50), r: rand(3, 7), life: rand(.35, .6), max: .6 }); } }
 
   function callDeer() {
-    if (assistCd > 0 || deer || over || intro > 0 || cutin || xform || exform || P.st === 'ko') return;
+    if (assistCd > 0 || deer || over || intro > 0 || cutin || xform || exform || windup || sfx || P.st === 'ko') return;
     assistCd = ASSIST_CD; const dir = Math.sign(E.x - P.x) || P.face;
     deer = { x: dir > 0 ? -70 : W + 70, y: 0, vy: 0, dir, t: 0, hit: false, tr: [] };
     speedL = .6; melody([[88, .25], [91, .25], [96, .5]], 300, 'square', 0.05); noise(.5, .12, 5000);
@@ -2124,7 +2124,7 @@ function Fight(api) {
   }
   function act(f, k) {
     if (k === 'assist') { if (f.isP) callDeer(); return; }
-    if (over || intro > 0 || cutin || xform || exform) return;
+    if (over || intro > 0 || cutin || xform || exform || windup || sfx) return;
     const air = f.y > 0;
     if (k === 'jump' && free(f) && !air) { f.vy = 540; f.st = 'idle'; f.rig.flip = true; SFX.jump(); dust(f.x, FL, 6); }
     else if ((k === 'punch' || k === 'kick') && (free(f) || (air && f.st === 'idle'))) {
@@ -2140,7 +2140,9 @@ function Fight(api) {
   }
   function fire(f) {
     const ys = f.isP && hyper > 0 ? [40, 72, 104] : [72];
-    for (const y of ys) proj.push({ x: f.x + f.face * 34, y, vx: f.face * (300 + (y - 72) * 0.5), owner: f, r: y * .1, tr: [], big: ys.length > 1 }); SFX.jump(); noise(.2, .2, 1800);
+    ys.forEach((y, i) => proj.push({ x: f.x + f.face * 34, y, vx: f.face * (340 + (y - 72) * 0.5), owner: f, r: y * .1, tr: [], big: ys.length > 1, sp: i === Math.floor(ys.length / 2), sz: 1 }));
+    SFX.jump(); noise(.4, .3, 1800); tone(f.isP ? 220 : 110, .4, 'sawtooth', .07, f.isP ? 660 : -60); shake = 10; cam.kick += .08; speedL = .5;
+    const hx = f.x + f.face * 30; for (let i = 0; i < 2; i++) fx.push({ k: 'ring', x: hx, y: FL - 72, r: 8, vr: 400 + i * 200, life: .35, max: .35, col: f.isP ? GOLD2 : '#b44cff' });
   }
   function apply(att, o, dmg, kb, st, kind) {
     const dir = Math.sign(o.x - att.x) || att.face;
@@ -2260,6 +2262,8 @@ function Fight(api) {
       else if (q.k === 'dust') { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.93; q.r += 14 * dt; }
       else if (q.k === 'flame') { q.y += q.vy * dt; q.x += Math.sin(gT * 10 + q.y) * 20 * dt; }
       else if (q.k === 'mote') { q.x += (q.tx - q.x) * Math.min(1, dt * 7); q.y += (q.ty - q.y) * Math.min(1, dt * 7); }
+      else if (q.k === 'confetti') { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= .97; q.vy = q.vy * .97 + 500 * dt; q.rot += q.vr * dt; }
+      else if (q.k === 'gift') { q.y += q.vy * dt; q.rot += dt * 8; if (q.y > q.tx) { q.life = 0; sparks(q.x, q.y, ['#fff', GOLD2, '#ff3b5c'], 10, 200); } }
       else if (q.k === 'rock') { q.y += q.vy * dt; q.vy *= .99; q.rot += q.vr * dt; }
     }
     fx = fx.filter(q => q.life > 0);
@@ -2279,6 +2283,17 @@ function Fight(api) {
         cx.restore();
       }
       if (!front) continue;
+      if (q.k === 'confetti') { cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = Math.min(1, a * 2); cx.save(); cx.translate(q.x, q.y); cx.rotate(q.rot); cx.scale(1, Math.abs(Math.sin(q.rot * 2)) + .2); cx.fillStyle = q.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); continue; }
+      if (q.k === 'gift') { cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = 1; cx.save(); cx.shadowColor = GOLD2; cx.shadowBlur = 14; drawGift(q.x, q.y, 1.3, q.rot, pick([CRIM, '#2e7a46', '#2a5aa8'])); cx.restore(); continue; }
+      if (q.k === 'spike') {
+        const e2 = clamp((q.max - q.life - q.d) / .12, 0, 1), out = clamp(q.life / .3, 0, 1), h2 = q.h * e2 * out; if (h2 <= 0) continue;
+        cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = 1;
+        cx.fillStyle = '#020104'; cx.beginPath(); cx.moveTo(q.x - 10, FL + 2); cx.lineTo(q.x + 1, FL - h2); cx.lineTo(q.x + 10, FL + 2); cx.fill();
+        const sg = cx.createLinearGradient(q.x - 8, 0, q.x + 8, 0); sg.addColorStop(0, '#1a0a24'); sg.addColorStop(.5, '#5a3a7a'); sg.addColorStop(1, '#0a0410'); cx.fillStyle = sg;
+        cx.beginPath(); cx.moveTo(q.x - 8, FL + 2); cx.lineTo(q.x + 1, FL - h2 + 3); cx.lineTo(q.x + 8, FL + 2); cx.fill();
+        cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = '#d08cff'; cx.shadowColor = '#b44cff'; cx.shadowBlur = 10; cx.lineWidth = 1.2; cx.beginPath(); cx.moveTo(q.x, FL); cx.lineTo(q.x + 1, FL - h2 + 6); cx.stroke(); cx.restore();
+        continue;
+      }
       if (q.k === 'mote') { cx.globalCompositeOperation = 'lighter'; cx.globalAlpha = Math.min(1, (1 - a) * 3); cx.fillStyle = q.col; circ(q.x, q.y, 2.2); cx.fill(); continue; }
       if (q.k === 'rock') { cx.globalCompositeOperation = 'source-over'; cx.globalAlpha = Math.min(1, a * 2); cx.save(); cx.translate(q.x, q.y); cx.rotate(q.rot); cx.fillStyle = '#2a2432'; cx.beginPath(); cx.moveTo(-q.r, -q.r * .4); cx.lineTo(0, -q.r); cx.lineTo(q.r, -q.r * .2); cx.lineTo(q.r * .5, q.r); cx.lineTo(-q.r * .7, q.r * .6); cx.fill(); cx.strokeStyle = 'rgba(255,214,74,.7)'; cx.lineWidth = .8; cx.stroke(); cx.restore(); continue; }
       if (q.k === 'bolt') {
@@ -2394,6 +2409,8 @@ function Fight(api) {
       if (intro > 1.7) { tx = P.x + 20; tz = 1.55; } else if (intro > 0.9) { tx = E.x - 20; tz = 1.55; }
       if (over && result === 'K.O.' && slow > 0) { const l = winner === P ? E : P; tx = l.x; tz = 1.5; }
       if (cutin) { tx = cutin.f.x; tz = 1.35; }
+      if (windup) { tx = windup.f.x + windup.f.face * 20; tz = 1.35 + windup.t * .4; }
+      if (sfx) { tx = sfx.o.x; tz = 1.6 - Math.min(.3, sfx.t * .3); }
       if (exform) { tx = E.x; tz = exform.t < 1.3 ? 1.3 + exform.t * .55 : exform.t < 2.6 ? 1.75 : exform.t < 3.6 ? 1.5 : 1.2; }
       if (xform) { tx = P.x; tz = xform.t < 1.3 ? 1.3 + xform.t * .55 : xform.t < 2.6 ? 1.75 : xform.t < 3.6 ? 1.5 : 1.2; }
       cam.x = lerp(cam.x, tx, Math.min(1, rdt * 6)); cam.z = lerp(cam.z, tz, Math.min(1, rdt * 5));
@@ -2482,6 +2499,43 @@ function Fight(api) {
         }
         return;
       }
+      if (windup) {
+        const w = windup, f = w.f; w.t += rdt; f.st = 'throw'; f.t = Math.min(.12, w.t * .3);
+        const J = f.rig.W, hx = J.hF.x, hy = J.hF.y - 40;
+        for (let i = 0; i < 3; i++) { const a = rand(0, 7), r = rand(60, 120); fx.push({ k: 'mote', x: hx + Math.cos(a) * r, y: hy + Math.sin(a) * r, tx: hx, ty: hy, life: .35, max: .35, col: f.isP ? pick([GOLD2, '#fff', '#ff6b8a', '#6bd08b']) : pick(['#b44cff', '#ff2a4a', '#d08cff']) }); }
+        if (Math.floor(w.t * 12) !== Math.floor((w.t - rdt) * 12)) tone((f.isP ? 400 : 120) + w.t * 900, .08, 'square', .04);
+        animate(P, rdt * .4); animate(E, rdt * .4);
+        if (w.t >= .6) { windup = null; f.t = .2; fire(f); }
+        return;
+      }
+      if (sfx) {
+        const q = sfx, o = q.o; q.t += rdt; o.st = 'hit'; o.t = 0; o.stun = 1; o.vx = 0;
+        const tx = o.x, ty = FL - o.y - 70;
+        if (q.n < q.hits && q.t >= .12 + q.n * .085) {
+          q.n++; const prev = o.hp; o.hp = Math.max(1, o.hp - q.dmg); o.flash = .1;
+          if (q.att.isP) { combo = comboT > 0 ? combo + 1 : 1; comboT = 1.2; maxCombo = Math.max(maxCombo, combo); }
+          SFX.hit(); tone(500 + q.n * 70, .06, 'square', .05); shake = 6; cam.kick += .03;
+          const cols = palOf(q.att.rig).hit; sparks(tx + rand(-14, 14), ty + rand(-20, 20), cols, 10, 260);
+          fx.push({ k: 'star', x: tx + rand(-16, 16), y: ty + rand(-24, 24), s: 26, life: .1, max: .1, rot: rand(0, 1) });
+          if (q.att.isP) for (let i = 0; i < 6; i++) fx.push({ k: 'confetti', x: tx, y: ty, vx: rand(-220, 220), vy: rand(-320, -80), rot: rand(0, 6), vr: rand(-12, 12), life: 1.6, max: 1.6, col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff']) });
+          if (q.att.isP && hyper > 0) fx.push({ k: 'gift', x: tx + rand(-60, 60), y: ty - 260, vy: 520, tx: ty, rot: rand(0, 6), life: .5, max: .5 });
+        }
+        if (!q.boom && q.t >= .12 + q.hits * .085 + .18) {
+          q.boom = true; o.hp = Math.max(1, o.hp); const isP = q.att.isP, cols = palOf(q.att.rig).hit;
+          flashW = .35; negW = isP ? 0 : .08; shake = 18; cam.kick += .14; cam.ang += (Math.random() < .5 ? -1 : 1) * .08;
+          for (let i = 0; i < 5; i++) fx.push({ k: 'ring', x: tx, y: ty, r: 8, vr: 380 + i * 220, life: .7, max: .7, col: isP ? ['#fff', '#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff'][i] : ['#fff', '#b44cff', '#ff2a4a', '#d08cff', '#5a1a8a'][i] });
+          if (isP) { for (let k = 0; k < 4; k++) { const fx2 = tx + rand(-90, 90), fy2 = ty - rand(40, 160), c = pick([['#ff3b5c', '#ffb0c0'], [GOLD2, '#fff'], ['#4fd18b', '#c8ffd8'], ['#7fb8ff', '#e0f0ff']]); sparks(fx2, fy2, c, 30, 260); fx.push({ k: 'ring', x: fx2, y: fy2, r: 4, vr: 200, life: .5, max: .5, col: c[0] }); }
+            for (let i = 0; i < 40; i++) fx.push({ k: 'confetti', x: tx, y: ty, vx: rand(-320, 320), vy: rand(-460, -100), rot: rand(0, 6), vr: rand(-12, 12), life: 2.2, max: 2.2, col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff']) });
+            melody([[72, .25], [76, .25], [79, .25], [84, .75]], 300, 'square', .06); }
+          else { for (let i = 0; i < 7; i++) fx.push({ k: 'spike', x: tx + (i - 3) * 22, h: rand(50, 110), life: 1.1, max: 1.1, d: Math.abs(i - 3) * .05 }); tone(60, .6, 'sawtooth', .1, -20); }
+          sparks(tx, ty, cols, 50, 560); SFX.boom(); noise(.7, .4, 700);
+          fx.push({ k: 'crack', x: o.x, life: 3, max: 3, seed: Math.random() * 99, s: 1.6 });
+          apply(q.att, o, q.final, 420, .9, 'sp'); if (o.y <= 0) o.vy = 380;
+        }
+        animate(P, rdt * .55); animate(E, rdt * .55);
+        if (q.t > .12 + q.hits * .085 + .55) sfx = null;
+        return;
+      }
       if (cutin) {
         cutin.t += rdt; animate(cutin.f, rdt * 0.15);
         if (cutin.t >= cutin.dur) {
@@ -2489,7 +2543,7 @@ function Fight(api) {
             hyper = HYPER_T; P.hp = Math.min(100, P.hp + 15); flashW = .4; shake = 12; speedL = .8;
             const J = P.rig.W; for (let i = 0; i < 3; i++) fx.push({ k: 'ring', x: J.hip.x, y: J.hip.y - 20, r: 10, vr: 500 + i * 220, life: .6, max: .6, col: i ? '#ffd84a' : '#fff' });
             sparks(J.hip.x, J.hip.y - 20, PAL.hyper.hit, 40, 500); SFX.fanfare();
-          } else fire(cutin.f);
+          } else { windup = { f: cutin.f, t: 0 }; cutin.f.st = 'throw'; cutin.f.t = 0; }
           cutin = null;
         }
         return;
@@ -2509,8 +2563,16 @@ function Fight(api) {
       for (const p of proj) {
         p.x += p.vx * sdt; p.r += sdt * 10; p.tr.push({ x: p.x, y: FL - p.y }); if (p.tr.length > 16) p.tr.shift();
         const o = p.owner === P ? E : P;
-        if (!p.dead && Math.abs(p.x - o.x) < 26 && o.y < 95 && o.st !== 'ko') { p.dead = true; apply(p.owner, o, 18, 280, 0.55, 'sp'); }
-        if (p.x < -40 || p.x > W + 40) p.dead = true;
+        if (!p.dead && Math.abs(p.x - o.x) < 30 * (p.sp ? 1.4 : 1) && o.y < 110 && o.st !== 'ko') {
+          p.dead = true;
+          const guarded = o.st === 'guard' && o.face === -Math.sign(p.vx);
+          if (p.sp && !guarded && !sfx) {
+            const mult = p.owner.isP ? (hyper > 0 ? 1.5 : 1) : .97, hits = p.owner.isP && hyper > 0 ? 9 : 6, total = 22 * mult;
+            sfx = { att: p.owner, o, t: 0, n: 0, hits, dmg: total * .55 / hits, final: total * .45, boom: false };
+            hitstop = 0; flashW = .25; shake = 12; o.st = 'hit'; o.vx = 0; SFX.hit(); noise(.3, .35, 2500);
+          } else apply(p.owner, o, 18, 280, 0.55, 'sp');
+        }
+        if (p.x < -60 || p.x > W + 60) p.dead = true; p.sz = Math.min(p.sp ? 1.6 : 1, p.sz + sdt * 4);
       }
       proj = proj.filter(p => !p.dead);
       // トナカイ・アシスト
@@ -2528,14 +2590,14 @@ function Fight(api) {
         if (deer.x < -140 || deer.x > W + 140) deer = null;
       }
       // ハイパーモード（スーパーサンタ）
-      if (!hyperUsed && !over && !cutin && !exform && P.st !== 'ko' && (P.hp < 40 || combo >= 6)) {
+      if (!hyperUsed && !over && !cutin && !exform && !sfx && !windup && P.st !== 'ko' && (P.hp < 40 || combo >= 6)) {
         hyperUsed = true; P.st = 'idle'; P.vx = 0; P.vy = 0; P.y = 0; E.st = E.st === 'ko' ? 'ko' : 'idle'; E.vx = 0;
         xform = { t: 0, beat: 0, flashed: false, banner: false };
         tone(70, 1.3, 'sawtooth', .07, 900); for (const d of [0, .38, .66, .88, 1.04, 1.16, 1.24]) setTimeout(() => { tone(55, .18, 'sine', .35, -20); noise(.08, .15, 300); }, d * 1000);
       }
       if (hyper > 0) { hyper -= sdt; P.meter = Math.min(100, P.meter + sdt * 6); if (hyper <= 0) { P.rig.hyper = false; fxText('HYPER END', P.x, FL - 160, '#fff'); for (const k in P.rig.armor) P.rig.armor[k] = 0; noise(.3, .3, 2000); const J = P.rig.W; for (let i = 0; i < 14; i++) fx.push({ k: 'rock', x: J.hip.x + rand(-20, 20), y: J.hip.y - rand(0, 50), vy: -rand(60, 160), vr: rand(-6, 6), r: rand(3, 6), rot: 0, life: 1, max: 1 }); } }
       if (!hyper && !xform && P.rig.bulk > 0) P.rig.bulk = Math.max(0, P.rig.bulk - sdt * 1.5);
-      if (!rageOn && !over && !xform && !cutin && E.hp < 30 && E.st !== 'ko') { rageOn = true; E.st = 'idle'; E.vx = 0; E.vy = 0; E.y = 0; P.st = P.st === 'ko' ? 'ko' : 'idle'; P.vx = 0; exform = { t: 0, flashed: false, banner: false }; tone(40, 1.3, 'sawtooth', .09, 120); for (const d of [0, .4, .7, .92, 1.08, 1.2, 1.27]) setTimeout(() => { tone(45, .22, 'sine', .4, -15); noise(.1, .2, 220); }, d * 1000); }
+      if (!rageOn && !over && !xform && !cutin && !sfx && !windup && E.hp < 30 && E.st !== 'ko') { rageOn = true; E.st = 'idle'; E.vx = 0; E.vy = 0; E.y = 0; P.st = P.st === 'ko' ? 'ko' : 'idle'; P.vx = 0; exform = { t: 0, flashed: false, banner: false }; tone(40, 1.3, 'sawtooth', .09, 120); for (const d of [0, .4, .7, .92, 1.08, 1.2, 1.27]) setTimeout(() => { tone(45, .22, 'sine', .4, -15); noise(.1, .2, 220); }, d * 1000); }
       animate(P, sdt); animate(E, sdt);
       if (over) { over -= rdt; if (over <= 0) finish(); }
     },
@@ -2598,11 +2660,37 @@ function Fight(api) {
       for (const p of proj) {
         const isP = p.owner === P, col = isP ? GOLD2 : '#b44cff';
         cx.save(); cx.globalCompositeOperation = 'lighter';
-        p.tr.forEach((q, i) => { const a = i / p.tr.length; cx.globalAlpha = a * .6; cx.fillStyle = col; circ(q.x, q.y + Math.sin(i + gT * 20) * 2, 3 + a * 9); cx.fill(); });
+        p.tr.forEach((q, i) => { const a = i / p.tr.length; cx.globalAlpha = a * .6; cx.fillStyle = col; circ(q.x, q.y + Math.sin(i + gT * 20) * 2 * (p.sp ? 3 : 1), (3 + a * 9) * (p.sp ? 1.8 : 1)); cx.fill(); });
+        if (p.sp && isP) p.tr.forEach((q, i) => { if (i % 3) return; cx.fillStyle = ['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff'][i % 4]; cx.globalAlpha = i / p.tr.length; cx.fillRect(q.x - 2, q.y + Math.sin(i * 3 + gT * 9) * 14, 4, 4); });
         if (!isP) { cx.strokeStyle = '#e0b0ff'; cx.lineWidth = 1.5; cx.globalAlpha = .9; cx.beginPath(); let lx = p.x, ly = FL - p.y; cx.moveTo(lx, ly); for (let i = 0; i < 5; i++) { lx -= p.vx / 300 * 12; ly += rand(-9, 9); cx.lineTo(lx, ly); } cx.stroke(); }
         cx.restore();
-        if (isP) { cx.save(); cx.shadowColor = GOLD2; cx.shadowBlur = 20; drawGift(p.x, FL - p.y, p.big ? 2 : 1.6, p.r, p.big ? '#c08a10' : CRIM); cx.restore(); }
-        else { cx.save(); cx.shadowColor = '#a020ff'; cx.shadowBlur = 24; const og = cx.createRadialGradient(p.x - 4, FL - p.y - 4, 1, p.x, FL - p.y, 14); og.addColorStop(0, '#fff'); og.addColorStop(.3, '#d9a0ff'); og.addColorStop(1, '#1a0230'); cx.fillStyle = og; circ(p.x, FL - p.y, 14); cx.fill(); cx.restore(); }
+        if (isP) { cx.save(); cx.shadowColor = GOLD2; cx.shadowBlur = 26; drawGift(p.x, FL - p.y, (p.big ? 2 : 1.6) * (p.sp ? 1.8 * (p.sz || 1) / 1.6 : 1), p.r, p.big ? '#c08a10' : CRIM); cx.restore(); }
+        else { cx.save(); cx.shadowColor = '#a020ff'; cx.shadowBlur = 24; const pr = p.sp ? 22 : 14; const og = cx.createRadialGradient(p.x - 4, FL - p.y - 4, 1, p.x, FL - p.y, pr); og.addColorStop(0, '#fff'); og.addColorStop(.3, '#d9a0ff'); og.addColorStop(1, '#1a0230'); cx.fillStyle = og; circ(p.x, FL - p.y, pr); cx.fill(); cx.restore(); }
+      }
+      if (windup) {
+        const w = windup, f = w.f, J = f.rig.W, k = Math.min(1, w.t / .5), hx = J.hF.x, hy = J.hF.y - 36 * k;
+        cx.save(); cx.globalCompositeOperation = 'lighter';
+        const rg = cx.createRadialGradient(hx, hy, 2, hx, hy, 70 * k); rg.addColorStop(0, f.isP ? 'rgba(255,240,180,.9)' : 'rgba(220,120,255,.9)'); rg.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = rg; circ(hx, hy, 70 * k); cx.fill();
+        cx.strokeStyle = f.isP ? GOLD2 : '#d08cff'; cx.lineWidth = 2; for (let i = 0; i < 3; i++) { cx.save(); cx.translate(hx, hy); cx.rotate(gT * (4 + i) * (i % 2 ? -1 : 1)); cx.scale(1, .35 + i * .2); cx.beginPath(); cx.arc(0, 0, (26 + i * 10) * k, 0, 4.5); cx.stroke(); cx.restore(); }
+        cx.restore();
+        if (f.isP) { cx.save(); cx.shadowColor = GOLD2; cx.shadowBlur = 24; drawGift(hx, hy, 3.2 * k, Math.sin(gT * 20) * .1 * k, hyper > 0 ? '#c08a10' : CRIM); cx.restore(); }
+        else { cx.save(); cx.shadowColor = '#a020ff'; cx.shadowBlur = 30; const og = cx.createRadialGradient(hx - 5, hy - 5, 1, hx, hy, 22 * k); og.addColorStop(0, '#fff'); og.addColorStop(.3, '#d9a0ff'); og.addColorStop(1, '#1a0230'); cx.fillStyle = og; circ(hx, hy, 22 * k); cx.fill(); cx.restore(); }
+      }
+      if (sfx) {
+        const q = sfx, o = q.o, tx = o.x, ty = FL - o.y - 70, isP = q.att.isP, k = Math.min(1, q.t / .12);
+        if (!q.boom) {
+          cx.save(); cx.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + gT * 6, r1 = 20, r2 = 80 + Math.sin(gT * 30 + i) * 20; cx.strokeStyle = isP ? (i % 2 ? GOLD2 : '#ff6b8a') : (i % 2 ? '#d08cff' : '#ff2a4a'); cx.globalAlpha = .6; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(tx + Math.cos(a) * r1, ty + Math.sin(a) * r1); cx.lineTo(tx + Math.cos(a) * r2 * k, ty + Math.sin(a) * r2 * k); cx.stroke(); }
+          cx.restore();
+          if (isP) { // プレゼントの箱に閉じ込める
+            const sc = 4.2 * k, j = Math.sin(gT * 50) * 2 * Math.min(1, q.n / 3);
+            cx.save(); cx.globalAlpha = .82; cx.shadowColor = GOLD2; cx.shadowBlur = 30; drawGift(tx + j, ty + 6, sc, Math.sin(gT * 40) * .04 * q.n, hyper > 0 ? '#c08a10' : CRIM); cx.restore();
+          } else { // 鎖で縛る
+            cx.save(); cx.strokeStyle = '#8a84a0'; cx.lineWidth = 2.4; cx.shadowColor = '#b44cff'; cx.shadowBlur = 10;
+            for (let c = 0; c < 4; c++) { const sx = tx + (c - 1.5) * 70, sy = FL + 4; cx.beginPath(); for (let i = 0; i <= 12; i++) { const qq = i / 12 * k, x2 = lerp(sx, tx, qq), y2 = lerp(sy, ty - 10 + c * 8, qq) - Math.sin(qq * Math.PI) * 18; cx.moveTo(x2 - 2.5, y2); cx.arc(x2, y2, 2.5, Math.PI, Math.PI * 3); } cx.stroke(); }
+            cx.restore();
+          }
+        }
       }
       drawFx(true);
       cx.restore();
@@ -2613,7 +2701,7 @@ function Fight(api) {
       if (flashW > 0) { cx.fillStyle = `rgba(255,250,240,${Math.min(.8, flashW * 3)})`; cx.fillRect(0, 0, W, FL + 46); }
       if (slow > 0 && result === 'K.O.') { cx.fillStyle = 'rgba(80,0,20,.18)'; cx.fillRect(0, 0, W, FL + 46); }
       // レターボックス（演出中）
-      const lb = (intro > 0.9 || cutin || xform || exform || (slow > 0 && over)) ? 1 : 0;
+      const lb = (intro > 0.9 || cutin || windup || sfx || xform || exform || (slow > 0 && over)) ? 1 : 0;
       this._lb = lerp(this._lb || 0, lb, 0.2);
       if (this._lb > .01) { cx.fillStyle = '#000'; cx.fillRect(0, 44, W, 36 * this._lb); cx.fillRect(0, FL + 46 - 30 * this._lb, W, 30 * this._lb); }
       if (intro > 0.9) {
@@ -2678,13 +2766,26 @@ function Fight(api) {
         if (t > 3.6 && t < 4.8) drawCutin({ f: P, t: t - 3.6, dur: 1.2, hyper: true, name: 'スーパーサンタ覚醒', sub: 'HYPER MODE  ·  MIRACLE OVERDRIVE' });
         if (t < 1.3) { spaced('MIRACLE ENERGY', W / 2, 120, 9, GOLD2, 3); const q = t / 1.3; cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(W / 2 - 80, 132, 160, 6); cx.fillStyle = goldGrad(132, 138); cx.fillRect(W / 2 - 80, 132, 160 * q, 6); mono(`${Math.floor(q * 100)}%`, W / 2, 150, 10, '#fff'); }
       }
+      if (windup || sfx) {
+        const isP = (windup ? windup.f : sfx.att).isP, t = windup ? windup.t : sfx.t;
+        cx.fillStyle = isP ? 'rgba(20,6,0,.32)' : 'rgba(16,0,20,.4)'; cx.fillRect(0, 0, W, FL + 46);
+        if (sfx) {
+          const name = isP ? (hyper > 0 ? 'ミラクル・プレゼント・レイン' : 'プレゼント・ボム') : 'ブラック・コール', y0 = FL + 14;
+          const k = Math.min(1, t * 6);
+          cx.save(); cx.globalAlpha = k; cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fillRect(0, y0 - 18, W, 36); cx.fillStyle = isP ? GOLD : '#b44cff'; cx.fillRect(0, y0 - 18, W, 1.5); cx.fillRect(0, y0 + 17, W, 1.5);
+          spaced('SUPER ARTS', 14, y0 - 8, 7, isP ? GOLD : '#d08cff', 2, 'left');
+          bigCall(name, W / 2 + (1 - k) * 80, y0 + 3, name.length > 10 ? 17 : 22, isP ? GOLD2 : '#e0b0ff'); cx.restore();
+          if (sfx.n > 0) { cx.save(); cx.translate(W - 56, 140); const s2 = 1 + Math.max(0, .1 - ((t - .12) % .085)) * 4; cx.scale(s2, s2); bigCall(String(sfx.n), 0, 0, 46, isP ? GOLD2 : '#e0b0ff'); spaced('HITS', 0, 30, 9, '#fff', 2); cx.restore(); }
+          if (sfx.boom) { const k2 = clamp((sfx.t - .12 - sfx.hits * .085 - .18) * 5, 0, 1); cx.save(); cx.globalAlpha = k2; cx.translate(W / 2, 190); cx.scale(1.6 - .6 * k2, 1.6 - .6 * k2); bigCall(isP ? 'MERRY CHRISTMAS!' : 'ABYSS!', 0, 0, isP ? 30 : 44, isP ? GOLD2 : '#ff4a6a'); cx.restore(); }
+        }
+      }
       if (cutin) drawCutin();
       bar(12, 140, P, false, hyper > 0 ? 'SUPER SANTA' : 'AGENT (YOU)', hyper > 0 ? '#fff6c8' : GOLD2);
       if (hyper > 0) { cx.fillStyle = '#ffd84a'; cx.fillRect(12, 104, 140 * hyper / HYPER_T, 3); spaced('HYPER', 12, 112, 7, '#ffd84a', 2, 'left'); }
       bar(W - 152, 140, E, true, 'BLACKRUF / K.R.A.M.P.U.S.', '#c77dff');
       bevel(W / 2 - 24, 48, 48, 36, 8); cx.fillStyle = 'rgba(0,0,0,.85)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.7)'; cx.lineWidth = 1; cx.stroke();
       mono(String(Math.ceil(time)), W / 2, 67, 22, time < 10 ? '#ff6b6b' : GOLD2);
-      if (combo >= 2 && comboT > 0) { cx.save(); cx.translate(70, 130); const s = 1 + Math.max(0, comboT - .75) * 3; cx.scale(s, s); bigCall(`${combo}`, -14, 0, 34); spaced('HITS', 22, 4, 10, GOLD2, 2, 'left', SERIF, '900'); cx.restore(); }
+      if (combo >= 2 && comboT > 0 && !sfx) { cx.save(); cx.translate(70, 130); const s = 1 + Math.max(0, comboT - .75) * 3; cx.scale(s, s); bigCall(`${combo}`, -14, 0, 34); spaced('HITS', 22, 4, 10, GOLD2, 2, 'left', SERIF, '900'); cx.restore(); }
       if (intro > 0 && intro <= 0.9) bigCall(intro > 0.35 ? 'ROUND 1' : 'FIGHT!', W / 2, 220, intro > 0.35 ? 40 : 52 + (0.35 - intro) * 40);
       if (over > 0 && result && over > (result === 'K.O.' ? 2.9 : 2.4)) { const s = result === 'K.O.' ? 1 + Math.max(0, over - 4.2) * 4 : 1; cx.save(); cx.translate(W / 2, 220); cx.scale(s, s); bigCall(result, 0, 0, result === 'K.O.' ? 68 : 44); cx.restore(); }
       // 操作ボタン
