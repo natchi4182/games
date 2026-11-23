@@ -4662,54 +4662,103 @@ const Final = {
 const Alert = {
   ...BtnMix,
   enter() {
-    this.t = 0; this.ev = {}; this.avg = mainAvg(); this.sh = 0;
+    this.t = 0; this.ev = {}; this.avg = mainAvg(); this.sh = 0; this.fl = 0; this.flc = '255,40,60'; this.spark = [];
+    this.blips = [...Array(5)].map((_, i) => ({ a: i * 1.257 + rand(-.3, .3), r: rand(22, 54), at: 1.05 + i * .12 }));
     if (!save.exUnlocked) { save.exUnlocked = true; persist(); }
     this.btns = [Btn(52, 560, 256, 58, '緊急出動', () => go(Briefing, EX_I), { glow: true, size: 20, sub: 'SCRAMBLE' })];
   },
   once(k, at) { if (!this.ev[k] && this.t >= at) { this.ev[k] = 1; return true; } return false; },
   update(dt) {
     const t0 = this.t, t = this.t += dt;
-    if (t < 3 && Math.floor(t0 * 2) !== Math.floor(t * 2)) { const hi = Math.floor(t * 2) % 2; tone(hi ? 960 : 720, .45, 'sawtooth', .045, hi ? -200 : 200); }
-    if (this.once('slam', .35)) { this.sh = 16; noise(.5, .4, 900); tone(55, .6, 'sawtooth', .09, -20); }
-    if (this.once('cond', 1.0)) { tone(1320, .08, 'square', .05); tone(1760, .12, 'square', .05, 0, .1); }
-    if (this.once('stamp', 1.5)) { SFX.stamp(); this.sh = 10; flashFx(.4, '255,60,80'); }
-    this.sh = Math.max(0, this.sh - dt * 30);
+    // サイレン（うねる2音）
+    if (t < 3.2 && Math.floor(t0 * 2) !== Math.floor(t * 2)) { const hi = Math.floor(t * 2) % 2; tone(hi ? 960 : 720, .45, 'sawtooth', .045, hi ? -200 : 200); tone(hi ? 480 : 360, .45, 'square', .02); }
+    if (this.once('cut', .02)) { noise(.5, .4, 6000); this.fl = 1; this.flc = '255,255,255'; }
+    if (this.once('slam', .35)) { this.sh = 22; this.fl = .8; this.flc = '255,40,60'; noise(.7, .45, 700); tone(45, .9, 'sawtooth', .11, -15); ringFx(W / 2, 120, '#ff3b5c', 260, .5, 5); ringFx(W / 2, 120, '#fff', 180, .35, 3); burst(W / 2, 120, ['#ff3b5c', '#fff', '#ffcc1a'], 40, 340, .7, 3); }
+    if (this.once('lock', .95)) { tone(1760, .08, 'square', .05); tone(2200, .1, 'square', .05, 0, .1); this.sh = 6; }
+    this.blips.forEach((b, i) => { if (this.once('b' + i, b.at)) { tone(1200 + i * 120, .06, 'square', .045); const x = W / 2 + Math.cos(b.a) * b.r, y = 250 + Math.sin(b.a) * b.r; ringFx(x, y, '#ff3b5c', 26, .4, 2); } });
+    if (this.once('5', 1.7)) { popCall('BOMB ×5 DETECTED', W / 2, 314, '#ff6b7d', 18, .9); noise(.2, .2, 2000); }
+    // ゲージが70%ラインを突破
+    const gk = clamp((t - 1.35) / .9, 0, 1), cur = this.avg * (1 - Math.pow(1 - gk, 3));
+    if (t > 1.35 && t < 2.25 && Math.floor(t0 * 30) !== Math.floor(t * 30)) tone(400 + cur * 1200, .02, 'square', .025);
+    if (cur >= EX_NEED && this.once('cross', 0)) { this.sh = 10; this.fl = .5; this.flc = '120,255,170'; tone(1568, .1, 'square', .06); tone(2093, .2, 'square', .06, 0, .1); burst(46 + (W - 92) * EX_NEED, 392, ['#7fffb0', '#fff', GOLD2], 30, 260, .6, 3); ringFx(46 + (W - 92) * EX_NEED, 392, '#7fffb0', 70, .4, 3); popCall('CLEAR!', 46 + (W - 92) * EX_NEED, 366, '#7fffb0', 20, .7); }
+    if (this.once('stamp', 2.35)) { SFX.stamp(); this.sh = 18; this.fl = .55; this.flc = '120,255,170'; noise(.5, .35, 900); ringFx(W - 86, 322, '#4fd18b', 140, .45, 4); burst(W - 86, 322, ['#4fd18b', '#fff'], 30, 260, .6, 3); }
+    if (this.once('btn', 3.1)) { SFX.go(); }
+    // 導火線の火花
+    if (t > .5) for (let k = 0; k < 2; k++) this.spark.push({ x: W / 2 + 20, y: 220, vx: rand(-90, 90), vy: rand(-140, -20), life: rand(.2, .45) });
+    for (const s of this.spark) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 300 * dt; s.life -= dt; } this.spark = this.spark.filter(s => s.life > 0);
+    this.sh = Math.max(0, this.sh - dt * 40); this.fl = Math.max(0, this.fl - dt * 3);
   },
   draw(dt) {
-    const t = this.t;
+    const t = this.t, pu = .5 + .5 * Math.sin(t * Math.PI * 2), strobe = t < 3.2 && Math.floor(t * 8) % 4 === 0;
     drawAgency(dt, 300);
-    const pu = .5 + .5 * Math.sin(t * Math.PI * 2);
-    cx.fillStyle = `rgba(200,0,30,${.12 + .14 * pu})`; cx.fillRect(0, 0, W, H);
-    // 回転する赤いサーチライト
-    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 0);
-    for (const ph of [0, Math.PI]) { const a = Math.PI / 2 + Math.sin(t * 2.4 + ph) * .9; const g = cx.createRadialGradient(0, 0, 0, 0, 0, 700); g.addColorStop(0, 'rgba(255,40,60,.45)'); g.addColorStop(1, 'rgba(255,40,60,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 700, a - .18, a + .18); cx.closePath(); cx.fill(); }
+    cx.fillStyle = `rgba(200,0,30,${.14 + .16 * pu + (strobe ? .12 : 0)})`; cx.fillRect(0, 0, W, H);
+    // 赤い回転灯（左右上）とサーチライト
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    for (const [lx, ph] of [[24, 0], [W - 24, Math.PI]]) {
+      const a = t * 5 + ph; const g = cx.createRadialGradient(lx, 92, 0, lx, 92, 520); g.addColorStop(0, 'rgba(255,40,60,.5)'); g.addColorStop(1, 'rgba(255,40,60,0)'); cx.fillStyle = g;
+      cx.beginPath(); cx.moveTo(lx, 92); cx.arc(lx, 92, 520, a, a + .35); cx.closePath(); cx.fill(); cx.beginPath(); cx.moveTo(lx, 92); cx.arc(lx, 92, 520, a + Math.PI, a + Math.PI + .35); cx.closePath(); cx.fill();
+    }
+    cx.translate(W / 2, 0);
+    for (const ph of [0, Math.PI]) { const a = Math.PI / 2 + Math.sin(t * 2.4 + ph) * .9; const g = cx.createRadialGradient(0, 0, 0, 0, 0, 700); g.addColorStop(0, 'rgba(255,40,60,.35)'); g.addColorStop(1, 'rgba(255,40,60,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 700, a - .16, a + .16); cx.closePath(); cx.fill(); }
     cx.restore();
+    for (const lx of [24, W - 24]) { const on = .6 + .4 * Math.sin(t * 10); cx.fillStyle = '#300'; bevel(lx - 9, 84, 18, 16, 4); cx.fill(); const g = cx.createRadialGradient(lx, 88, 1, lx, 88, 10); g.addColorStop(0, '#fff'); g.addColorStop(.4, `rgba(255,50,70,${on})`); g.addColorStop(1, 'rgba(255,0,30,0)'); cx.fillStyle = g; circ(lx, 88, 10); cx.fill(); }
     cx.save(); if (this.sh > 0) cx.translate(rand(-this.sh, this.sh) * .5, rand(-this.sh, this.sh) * .5);
-    // 警告帯
-    for (const yb of [58, 516]) { cx.save(); cx.beginPath(); cx.rect(0, yb, W, 16); cx.clip(); cx.fillStyle = '#111'; cx.fillRect(0, yb, W, 16); for (let x = -20 + ((t * 40) % 32) * (yb < 100 ? 1 : -1); x < W + 32; x += 32) { cx.fillStyle = '#ffcc1a'; cx.beginPath(); cx.moveTo(x, yb); cx.lineTo(x + 16, yb); cx.lineTo(x, yb + 16); cx.lineTo(x - 16, yb + 16); cx.fill(); } cx.restore(); }
+    // 警告マーキー
+    for (const [yb, dir, msg] of [[46, 1, 'WARNING // EMERGENCY ORDER // PRIORITY ALPHA // '], [522, -1, '緊急指令 // 爆弾発見 // 総員警戒 // ']]) {
+      cx.save(); cx.beginPath(); cx.rect(0, yb, W, 22); cx.clip(); cx.fillStyle = '#111'; cx.fillRect(0, yb, W, 22);
+      for (let x = -32 + ((t * 40) % 32) * dir; x < W + 32; x += 32) { cx.fillStyle = '#ffcc1a'; cx.beginPath(); cx.moveTo(x, yb); cx.lineTo(x + 16, yb); cx.lineTo(x, yb + 22); cx.lineTo(x - 16, yb + 22); cx.fill(); }
+      cx.fillStyle = 'rgba(0,0,0,.82)'; cx.fillRect(0, yb + 4, W, 14);
+      cx.font = `900 9px ${MONO}`; const mw = cx.measureText(msg).width + msg.length * 2; for (let x = -((t * 60 * dir) % mw + mw) % mw - mw; x < W; x += mw) spaced(msg, x, yb + 11.5, 9, '#ff6b7d', 2, 'left', MONO, '900');
+      cx.restore();
+    }
     spaced('PRIORITY ALPHA  //  DIRECTOR ONLY', W / 2, 24, 9, '#ff9aa8', 2.5);
-    const k = clamp((t - .2) / .2, 0, 1);
-    if (k > 0) { cx.save(); cx.translate(W / 2, 120); const sc = 1 + (1 - k) * 2.5; cx.scale(sc, sc); cx.globalAlpha = k; chromaText('EMERGENCY', 0, 0, 40, 4, SERIF, '#fff', t < .6 || Math.random() < .05 ? 1 : 0); cx.restore();
-      cx.save(); cx.globalAlpha = k; serifText('緊 急 指 令', W / 2, 160, 20, '#ffd0d6', 'center', '900'); cx.restore(); }
-    // 爆弾アイコン（脈動）
-    if (t > .5) { const q = clamp((t - .5) * 4, 0, 1), s2 = (1 + .08 * pu) * q; cx.save(); cx.translate(W / 2, 250);
-      cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 3; i++) { cx.strokeStyle = `rgba(255,60,80,${(.5 - i * .15) * q})`; cx.lineWidth = 2; circ(0, 0, 44 + i * 14 + pu * 6); cx.stroke(); }
-      cx.globalCompositeOperation = 'source-over'; cx.scale(s2, s2); emo('💣', 0, 0, 56); cx.restore(); }
-    // 条件達成パネル
-    if (t > .9) { const q = clamp((t - .9) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate((1 - q) * -50, 0);
-      drawPanel(30, 318, W - 60, 74);
-      spaced('CAMPAIGN EVALUATION', 46, 334, 7.5, GOLD, 2, 'left');
-      text('全6作戦の平均達成率', 46, 356, 12, '#e2dccb', 'left', 'normal');
-      mono(`${(this.avg * 100 * clamp((t - .9) * 2, 0, 1)).toFixed(1)}%`, W - 46, 356, 20, '#fff', 'right');
-      rateBar(46, 372, W - 92, 7, this.avg); cx.fillStyle = GOLD2; cx.fillRect(46 + (W - 92) * EX_NEED - 1, 368, 2, 15);
-      mono('70%', 46 + (W - 92) * EX_NEED, 390, 7, GOLD2); cx.restore(); }
-    if (t > 1.5) { const q = clamp((t - 1.5) * 7, 0, 1); cx.save(); cx.translate(W - 82, 318); cx.scale(2.2 - 1.2 * q, 2.2 - 1.2 * q); cx.globalAlpha = q; rectStamp(0, 0, 'UNLOCKED', '#4fd18b', -.16, 12); cx.restore(); }
-    if (t > 1.7) { const n = Math.floor((t - 1.7) * 40); const msg = '本部地下で K.R.A.M.P.U.S. の時限爆弾を発見。\n優秀な君にしか頼めない追加任務だ。\n成功すれば最終評価にボーナスを与える。'; let left = n;
-      msg.split('\n').forEach((l, i) => { text(l.slice(0, Math.max(0, left)), W / 2, 424 + i * 22, 13, '#ece6d6', 'center', 'normal'); left -= l.length; }); }
+    // EMERGENCY（叩きつけ＋グリッチ）
+    const k = clamp((t - .2) / .15, 0, 1);
+    if (k > 0) { const gl = t < .7 || Math.random() < .04 ? 1 : 0; cx.save(); cx.translate(W / 2 + (gl && Math.random() < .5 ? rand(-6, 6) : 0), 108); const sc = (1 + (1 - k) * 3) * (1 + .03 * pu); cx.scale(sc, sc); cx.globalAlpha = k; chromaText('EMERGENCY', 0, 0, 42, 4, SERIF, strobe ? '#ffd0d6' : '#fff', gl); cx.restore();
+      if (gl) for (let i = 0; i < 3; i++) { cx.fillStyle = 'rgba(255,60,80,.35)'; cx.fillRect(0, 88 + rand(0, 40), W, rand(2, 6)); }
+      cx.save(); cx.globalAlpha = clamp((t - .45) * 5, 0, 1); const ss = 1 + Math.max(0, .55 - t) * 4; cx.translate(W / 2, 146); cx.scale(ss, ss); bigCall('緊 急 指 令', 0, 0, 22, '#ffd0d6'); cx.restore(); }
+    // レーダー（爆弾の位置にロックオン）
+    if (t > .5) { const q = clamp((t - .5) * 4, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(W / 2, 250);
+      cx.fillStyle = 'rgba(30,0,6,.7)'; circ(0, 0, 66); cx.fill();
+      cx.strokeStyle = 'rgba(255,80,100,.35)'; cx.lineWidth = 1; for (const r of [22, 44, 66]) { circ(0, 0, r); cx.stroke(); } cx.beginPath(); cx.moveTo(-66, 0); cx.lineTo(66, 0); cx.moveTo(0, -66); cx.lineTo(0, 66); cx.stroke();
+      const sw = t * 3; const sg = cx.createRadialGradient(0, 0, 0, 0, 0, 66); sg.addColorStop(0, 'rgba(255,60,80,.5)'); sg.addColorStop(1, 'rgba(255,60,80,0)'); cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = sg; cx.beginPath(); cx.moveTo(0, 0); cx.arc(0, 0, 66, sw - .7, sw); cx.closePath(); cx.fill(); cx.restore();
+      this.blips.forEach(b => { if (t < b.at) return; const bx = Math.cos(b.a) * b.r, by = Math.sin(b.a) * b.r, bl = .5 + .5 * Math.sin(t * 12 + b.a * 3); cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(255,60,80,${.4 + .5 * bl})`; circ(bx, by, 4 + bl * 2); cx.fill(); cx.restore(); cx.fillStyle = '#fff'; circ(bx, by, 1.5); cx.fill(); });
+      // 爆弾（脈動）と導火線
+      const s2 = 1 + .1 * pu; cx.save(); cx.scale(s2, s2); emo('💣', 0, 0, 52); cx.restore();
+      cx.restore();
+      cx.save(); cx.globalCompositeOperation = 'lighter'; for (const s of this.spark) { cx.fillStyle = `rgba(255,${200 + Math.random() * 55 | 0},90,${s.life * 2.5})`; cx.fillRect(s.x, s.y, 2.5, 2.5); } const fg = cx.createRadialGradient(W / 2 + 20, 220, 0, W / 2 + 20, 220, 14); fg.addColorStop(0, 'rgba(255,255,200,.9)'); fg.addColorStop(1, 'rgba(255,120,40,0)'); cx.fillStyle = fg; circ(W / 2 + 20, 220, 14); cx.fill(); cx.restore();
+      // ロックオン枠（外から絞り込む）
+      const lk = clamp((t - .6) / .35, 0, 1), pad = 76 + (1 - lk) * 60; corners(W / 2 - pad, 250 - pad, pad * 2, pad * 2, 16, lk >= 1 ? '#ff3b5c' : GOLD2, 2);
+      if (lk >= 1) { mono(Math.floor(t * 4) % 2 ? '● TARGET LOCKED' : '○ TARGET LOCKED', W / 2 - 74, 166, 8, '#ff6b7d', 'left'); mono(`B2F  ·  N.POLE HQ`, W / 2 - 76, 334, 7.5, '#ff9aa8', 'left'); }
+    }
+    // 条件パネル（ゲージが70%を突破）
+    if (t > 1.2) { const q = clamp((t - 1.2) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate((1 - q) * -60, 0);
+      drawPanel(30, 344, W - 60, 66); corners(32, 346, W - 64, 62, 8, CRIM, 1.5);
+      spaced('CAMPAIGN EVALUATION', 46, 358, 7.5, GOLD, 2, 'left');
+      const gk = clamp((t - 1.35) / .9, 0, 1), cur = this.avg * (1 - Math.pow(1 - gk, 3)), ok = cur >= EX_NEED;
+      text('全6作戦の平均達成率', 46, 376, 11.5, '#e2dccb', 'left', 'normal');
+      cx.save(); if (ok) { cx.shadowColor = '#7fffb0'; cx.shadowBlur = 12; } mono(`${(cur * 100).toFixed(1)}%`, W - 46, 376, 20, ok ? '#7fffb0' : '#fff', 'right'); cx.restore();
+      cx.fillStyle = 'rgba(255,255,255,.1)'; cx.fillRect(46, 389, W - 92, 7); const bg = cx.createLinearGradient(46, 0, W - 46, 0); bg.addColorStop(0, '#b3122e'); bg.addColorStop(EX_NEED, '#ff6b7d'); bg.addColorStop(1, '#7fffb0'); cx.fillStyle = bg; cx.fillRect(46, 389, (W - 92) * cur, 7);
+      cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(255,255,255,.6)'; cx.fillRect(46 + (W - 92) * cur - 3, 387, 3, 11); cx.restore();
+      cx.fillStyle = GOLD2; cx.fillRect(46 + (W - 92) * EX_NEED - 1, 385, 2, 15); mono('70%', 46 + (W - 92) * EX_NEED, 404, 7, GOLD2); cx.restore(); }
+    if (t > 2.35) { const q = clamp((t - 2.35) * 7, 0, 1); cx.save(); cx.translate(W - 86, 322); cx.scale(3 - 2 * q, 3 - 2 * q); cx.globalAlpha = q; rectStamp(0, 0, 'UNLOCKED', '#4fd18b', -.16, 14); cx.restore(); }
+    // 長官からの通信
+    if (t > 2.5) { const q = clamp((t - 2.5) * 6, 0, 1); cx.save(); cx.globalAlpha = q;
+      bevel(22, 420, W - 44, 92, 8); cx.fillStyle = 'rgba(8,2,6,.85)'; cx.fill(); cx.strokeStyle = 'rgba(255,60,80,.5)'; cx.lineWidth = 1; cx.stroke(); cx.fillStyle = CRIM; cx.fillRect(22, 420, 3, 92);
+      spaced('FROM THE DIRECTOR', 34, 432, 7, GOLD, 2, 'left'); mono(Math.floor(t * 2) % 2 ? '● LIVE' : '○ LIVE', W - 34, 432, 8, '#ff3b4f', 'right');
+      const n = Math.floor((t - 2.6) * 40); const msg = '本部地下で K.R.A.M.P.U.S. の時限爆弾を発見。\n優秀な君にしか頼めない追加任務だ。\n成功すれば最終評価にボーナスを与える。'; let left = n;
+      msg.split('\n').forEach((l, i) => { const s = l.slice(0, Math.max(0, left)); text(s, 34, 452 + i * 20, 12.5, '#ece6d6', 'left', 'normal'); if (left >= 0 && left < l.length && Math.floor(t * 4) % 2) { font(12.5, 'normal'); cx.fillStyle = GOLD; cx.fillRect(34 + cx.measureText(s).width + 2, 445 + i * 20, 6, 13); } left -= l.length; });
+      cx.restore(); }
     cx.restore();
-    if (t > 2.2) this.btns.forEach(b => { const q = clamp((t - 2.2) * 5, 0, 1); cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30); drawBtn(b, t); cx.restore(); });
+    // 出動ボタン（赤く脈動）
+    if (t > 3.1) { const q = clamp((t - 3.1) * 5, 0, 1); this.btns.forEach(b => { cx.save(); cx.globalAlpha = q; cx.translate(0, (1 - q) * 30);
+      cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(255,40,60,${.2 + .2 * pu})`; bevel(b.x - 8, b.y - 8, b.w + 16, b.h + 16, 14); cx.fill(); cx.restore(); drawBtn(b, t); cx.restore(); }); }
+    // 冒頭：割り込みノイズ
+    if (t < .35) { const a = 1 - t / .35; for (let i = 0; i < 40; i++) { cx.fillStyle = `rgba(${Math.random() < .5 ? '255,255,255' : '255,40,60'},${a * Math.random() * .6})`; cx.fillRect(0, rand(0, H), W, rand(2, 14)); }
+      cx.save(); cx.globalAlpha = a; spaced('!! INTERRUPT !!', W / 2, H / 2, 16, '#fff', 6, 'center', MONO, '900'); cx.restore(); }
+    if (this.fl > 0) { cx.fillStyle = `rgba(${this.flc},${Math.min(1, this.fl)})`; cx.fillRect(0, 0, W, H); }
   },
-  down(x, y) { if (this.t < 2.2) { this.t = 2.2; for (const k of ['slam', 'cond', 'stamp']) this.ev[k] = 1; return; } BtnMix.down.call(this, x, y); },
+  down(x, y) { if (this.t < 3.1) { this.t = 3.1; for (const k of ['cut', 'slam', 'lock', '5', 'cross', 'stamp', 'b0', 'b1', 'b2', 'b3', 'b4']) this.ev[k] = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
 // =====================================================================
