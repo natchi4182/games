@@ -4820,48 +4820,131 @@ const NameEntry = {
 const Ranking = {
   ...BtnMix,
   enter(a = {}) {
-    this.a = a; this.t = 0; this.ev = {};
+    this.a = a; this.t = 0; this.ev = {}; this.sh = 0; this.fl = 0; this.fw = 0; this.conf = []; this.emb = [];
     const toTitle = () => go(Title);
     this.btns = a.from === 'final'
       ? [Btn(24, 572, 150, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.entered = false; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
          Btn(186, 572, 150, 50, 'タイトルへ', toTitle, { kind: 'dark', size: 15, sub: 'HEADQUARTERS' })]
       : [Btn(80, 572, 200, 50, 'タイトルへ', toTitle, { kind: 'dark', size: 15, sub: 'HEADQUARTERS' })];
   },
+  // 各行の登場時刻（10位→4位は連打、3位・2位・1位はタメてドン）
+  at(i) { return i >= 3 ? .75 + (RANK_N - 1 - i) * .11 : [2.75, 2.25, 1.8][i]; },
+  rowY(i) { return 140 + i * 42; },
+  once(k, at) { if (!this.ev[k] && this.t >= at) { this.ev[k] = 1; return true; } return false; },
   update(dt) {
-    const t0 = this.t, t = this.t += dt;
-    save.ranking.forEach((e, i) => { const at = .4 + (RANK_N - 1 - i) * .09; if (t0 < at && t >= at) { tone(500 + (RANK_N - i) * 70, .05, 'square', .04); noise(.04, .1, 3000); } });
-    if (t0 < .05 && t >= .05) { noise(.3, .2, 900); tone(90, .3, 'sawtooth', .07, -30); }
+    const t = this.t += dt;
+    if (this.once('in', .02)) { noise(.4, .15, 5000); for (let k = 0; k < 6; k++) tone(1400 + k * 150, .03, 'square', .03, 0, k * .05); }
+    if (this.once('slam', .45)) { this.sh = 14; this.fl = .8; noise(.6, .4, 800); tone(55, .7, 'sawtooth', .09, -20); ringFx(W / 2, 60, GOLD2, 240, .5, 4); ringFx(W / 2, 60, '#fff', 160, .35, 3); burst(W / 2, 60, [GOLD2, '#fff'], 40, 320, .7, 3); }
+    save.ranking.forEach((e, i) => {
+      const at = this.at(i), y = this.rowY(i);
+      if (this.once('w' + i, at)) noise(.12, .12, 5000); // 風切り音
+      if (this.once('r' + i, at + .16)) {
+        const hl = e.id && e.id === this.a.hl;
+        if (i >= 3) { tone(500 + (RANK_N - i) * 70, .06, 'square', .045); noise(.05, .15, 2500); this.sh = Math.max(this.sh, 3); burst(36, y, [GOLD, '#fff'], 8, 120, .4, 2); }
+        else {
+          SFX.stamp(); this.sh = [16, 11, 8][i]; this.fl = [.7, .45, .35][i]; noise(.5, .35, 900); tone([55, 70, 82][i], .6, 'sawtooth', .09, -20);
+          ringFx(36, y, MEDAL[i], 120 + (3 - i) * 50, .5, 4); ringFx(W / 2, y, MEDAL[i], 260, .55, 2);
+          burst(36, y, [MEDAL[i], '#fff'], 30 + (3 - i) * 12, 260, .8, 3);
+          popCall(i === 0 ? 'CHAMPION!' : ORD(i + 1) + ' PLACE', W / 2 + 40, y - 30, MEDAL[i], i === 0 ? 30 : 22, 1);
+          if (i === 0) { melody([[72, .25], [76, .25], [79, .25], [84, 1]], 260, 'square', .06); for (let k = 0; k < 40; k++) this.conf.push(this.mkConf(true)); }
+        }
+        if (hl) { setTimeout(() => SFX.jingle(), 200); popCall('NEW RECORD!', W / 2, y + 30, '#ff6b9a', 26, 1.2); for (let k = 0; k < 5; k++) burst(rand(40, W - 40), y + rand(-20, 20), [`hsl(${k * 70},100%,65%)`, '#fff'], 20, 240, .8, 3); this.fl = Math.max(this.fl, .5); }
+      }
+    });
+    // 祝賀（1位登場後）：花火と紙吹雪
+    if (t > 2.95) {
+      this.fw -= dt;
+      if (this.fw <= 0) { this.fw = this.a.hl ? rand(.35, .7) : rand(.8, 1.4); const x = rand(30, W - 30), y = rand(110, 330), h = rand(0, 360);
+        burst(x, y, [`hsl(${h},100%,65%)`, `hsl(${(h + 40) % 360},100%,80%)`, '#fff'], 34, 220, 1, 3); ringFx(x, y, `hsl(${h},100%,70%)`, 60, .4, 2); noise(.25, .08, 900); }
+      if (Math.random() < (this.a.hl ? .5 : .2)) this.conf.push(this.mkConf(false));
+    }
+    if (Math.random() < .5) this.emb.push({ x: rand(0, W), y: H + 5, vy: rand(-60, -25), vx: rand(-8, 8), life: rand(2, 4), max: 4, r: rand(.8, 2) });
+    for (const c of this.conf) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy = Math.min(c.vy + 120 * dt, 160); c.rot += c.vr * dt; c.vx += Math.sin(gT * 3 + c.rot) * 30 * dt; }
+    this.conf = this.conf.filter(c => c.y < H + 10);
+    for (const e of this.emb) { e.x += e.vx * dt; e.y += e.vy * dt; e.life -= dt; } this.emb = this.emb.filter(e => e.life > 0);
+    this.sh = Math.max(0, this.sh - dt * 40); this.fl = Math.max(0, this.fl - dt * 2.5);
+  },
+  mkConf(burstUp) { return { x: burstUp ? W / 2 + rand(-40, 40) : rand(0, W), y: burstUp ? 140 : -10, vx: burstUp ? rand(-260, 260) : rand(-30, 30), vy: burstUp ? rand(-380, -120) : rand(60, 140), rot: rand(0, 6), vr: rand(-10, 10), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff', '#ff9aef']) }; },
+  laurel(x, y, dir, k) {
+    cx.save(); cx.translate(x, y); cx.scale(dir, 1); cx.globalAlpha *= k;
+    for (let i = 0; i < 7; i++) { const a = -.2 - i * .3, r = 34, lx = Math.cos(a + Math.PI) * r * -1, ly = Math.sin(a) * r * .9 + 18;
+      cx.save(); cx.translate(lx * .9, ly); cx.rotate(a - .9); const g = cx.createLinearGradient(-6, 0, 6, 0); g.addColorStop(0, '#8a6a20'); g.addColorStop(.5, GOLD2); g.addColorStop(1, '#8a6a20'); cx.fillStyle = g; cx.beginPath(); cx.ellipse(0, 0, 7, 3, 0, 0, 7); cx.fill(); cx.restore(); }
+    cx.restore();
   },
   draw(dt) {
     const t = this.t;
     drawAgency(dt, 140);
-    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 70);
-    for (let i = 0; i < 16; i++) { cx.rotate(Math.PI / 8); const g = cx.createLinearGradient(0, 0, 400, 0); g.addColorStop(0, 'rgba(255,214,120,.12)'); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(400, -20); cx.lineTo(400, 20); cx.fill(); }
+    // 下から照らすサーチライト
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    for (const [bx, ph, col] of [[50, 0, '255,214,120'], [W - 50, 2, '255,80,110'], [W / 2, 4, '127,184,255']]) { const a = -Math.PI / 2 + Math.sin(gT * .9 + ph) * .45; const g = cx.createRadialGradient(bx, H, 0, bx, H, 700); g.addColorStop(0, `rgba(${col},.22)`); g.addColorStop(1, `rgba(${col},0)`); cx.fillStyle = g; cx.beginPath(); cx.moveTo(bx, H); cx.arc(bx, H, 700, a - .1, a + .1); cx.closePath(); cx.fill(); }
+    // 金の火の粉
+    for (const e of this.emb) { cx.fillStyle = `rgba(255,${190 + e.r * 20 | 0},110,${Math.min(1, e.life / 1.5) * .7})`; circ(e.x + Math.sin(gT * 2 + e.y * .05) * 4, e.y, e.r); cx.fill(); }
+    // タイトル背後の放射光
+    cx.translate(W / 2, 60); cx.rotate(gT * .2);
+    for (let i = 0; i < 18; i++) { cx.rotate(Math.PI / 9); const g = cx.createLinearGradient(0, 0, 420, 0); g.addColorStop(0, `rgba(255,214,120,${t > .45 ? .2 : 0})`); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(420, -22); cx.lineTo(420, 22); cx.fill(); }
     cx.restore();
+    cx.save(); if (this.sh > 0) cx.translate(rand(-this.sh, this.sh) * .5, rand(-this.sh, this.sh) * .5);
     spaced('TOP SECRET  //  AGENT RECORDS', W / 2, 22, 9, GOLD, 2.5);
-    const k = clamp(t * 5, 0, 1); cx.save(); cx.translate(W / 2, 60); cx.scale(1 + (1 - k) * 1.5, 1 + (1 - k) * 1.5); cx.globalAlpha = k; chromaText('HALL OF FAME', 0, 0, 30, 3, SERIF, goldGrad(-15, 15), t < .3 ? 1 : 0); cx.restore();
-    text('秘密結社 S.A.N.T.A.　歴代エージェント', W / 2, 90, 12, '#c9bd98', 'center', 'normal');
-    spaced('RANK', 30, 112, 7, '#8f876f', 1.5, 'left'); spaced('NAME', 82, 112, 7, '#8f876f', 1.5, 'left'); spaced('SCORE', 262, 112, 7, '#8f876f', 1.5, 'right'); spaced('DATE', 340, 112, 7, '#8f876f', 1.5, 'right');
+    // タイトル（叩きつけ＋月桂冠＋光の筋）
+    if (t > .3) {
+      const k = clamp((t - .3) / .15, 0, 1), sc = 1 + (1 - k) * 2.5;
+      this.laurel(W / 2 - 128, 46, 1, k); this.laurel(W / 2 + 128, 46, -1, k);
+      cx.save(); cx.translate(W / 2, 60); cx.scale(sc, sc); cx.globalAlpha = k;
+      const gl = t < .7 || (gT % 3.2) < .08 ? 1 : 0; chromaText('HALL OF FAME', 0, 0, 30, 3, SERIF, goldGrad(-15, 15), gl); cx.restore();
+      cx.save(); cx.font = `900 30px ${SERIF}`; const tw = cx.measureText('HALL OF FAME').width + 36; cx.beginPath(); cx.rect(W / 2 - tw / 2, 42, tw, 36); cx.clip(); cx.globalCompositeOperation = 'lighter';
+      const sx = W / 2 - tw / 2 + ((t * 200) % (tw + 200)) - 80; const sg = cx.createLinearGradient(sx, 0, sx + 50, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(.5, 'rgba(255,250,220,.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = sg; cx.fillRect(sx, 42, 50, 36); cx.restore();
+      cx.save(); cx.globalAlpha = clamp((t - .5) * 4, 0, 1); text('秘密結社 S.A.N.T.A.　歴代エージェント', W / 2, 90, 12, '#c9bd98', 'center', 'normal');
+      spaced('RANK', 30, 112, 7, '#8f876f', 1.5, 'left'); spaced('NAME', 82, 112, 7, '#8f876f', 1.5, 'left'); spaced('SCORE', 262, 112, 7, '#8f876f', 1.5, 'right'); spaced('DATE', 340, 112, 7, '#8f876f', 1.5, 'right'); cx.restore();
+    }
     save.ranking.forEach((e, i) => {
-      const at = .4 + (RANK_N - 1 - i) * .09, q = clamp((t - at) * 6, 0, 1); if (q <= 0) return;
-      const y = 140 + i * 42, hl = e.id && e.id === this.a.hl, mc = i < 3 ? MEDAL[i] : '#ece6d6';
-      cx.save(); cx.globalAlpha = q; cx.translate((1 - q) * W, 0);
+      const at = this.at(i), q = clamp((t - at) * 6, 0, 1); if (q <= 0) return;
+      const y = this.rowY(i), hl = e.id && e.id === this.a.hl, mc = i < 3 ? MEDAL[i] : '#ece6d6', ox = (1 - q) * (1 - q) * W * (i % 2 ? -1 : 1);
+      const land = clamp(1 - (t - at - .16) * 3, 0, 1);
+      // 飛び込みの残像
+      if (q < 1) { cx.save(); cx.globalCompositeOperation = 'lighter'; const g = cx.createLinearGradient(ox + (i % 2 ? W : -W) * .3, 0, ox, 0); g.addColorStop(0, 'rgba(255,214,120,0)'); g.addColorStop(1, `rgba(${i < 3 ? '255,214,120' : '255,255,255'},.5)`); cx.fillStyle = g; cx.fillRect(Math.min(ox, ox + (i % 2 ? W : -W) * .3) + 16, y - 14, W * .3 + W - 32, 28); cx.restore(); }
+      cx.save(); cx.translate(ox, 0);
+      if (i < 3 && land > 0) { const s2 = 1 + land * .12; cx.translate(W / 2, y); cx.scale(s2, s2); cx.translate(-W / 2, -y); }
       bevel(16, y - 17, W - 32, 36, 8);
-      cx.fillStyle = hl ? `hsla(${(gT * 160) % 360},80%,40%,.55)` : i < 3 ? 'rgba(40,30,10,.75)' : 'rgba(10,8,14,.75)'; cx.fill();
-      cx.strokeStyle = hl ? '#fff' : i < 3 ? mc : 'rgba(212,175,55,.25)'; cx.lineWidth = hl ? 2 : 1; cx.stroke();
-      if (i < 3) { cx.fillStyle = mc; circ(36, y, 12); cx.fill(); cx.fillStyle = 'rgba(0,0,0,.25)'; circ(36, y + 2, 9); cx.fill(); mono(String(i + 1), 36, y + 1, 13, INK); }
-      else mono(ORD(i + 1), 36, y + 1, 11, '#cfc6ad');
-      serifText(e.name, 62, y + 1, 18, hl ? '#fff' : mc, 'left', '900');
+      cx.fillStyle = hl ? `hsla(${(gT * 160) % 360},80%,40%,.55)` : i === 0 ? 'rgba(70,50,10,.85)' : i < 3 ? 'rgba(40,30,10,.8)' : 'rgba(10,8,14,.78)'; cx.fill();
+      // 枠：上位は光が周回、ハイライトは虹色
+      cx.lineWidth = hl ? 2.2 : i < 3 ? 1.6 : 1;
+      cx.strokeStyle = hl ? `hsl(${(gT * 300) % 360},100%,70%)` : i < 3 ? mc : 'rgba(212,175,55,.25)'; cx.stroke();
+      if (i < 3 || hl) { cx.save(); bevel(16, y - 17, W - 32, 36, 8); cx.clip(); cx.globalCompositeOperation = 'lighter';
+        const sx = 16 + ((gT * (i === 0 ? 260 : 170) + i * 120) % (W + 160)) - 80, sg = cx.createLinearGradient(sx, 0, sx + 60, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(.5, i === 0 ? 'rgba(255,240,180,.4)' : 'rgba(255,255,255,.2)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = sg; cx.fillRect(sx, y - 17, 60, 36); cx.restore(); }
+      // メダル（くるっと回って着地）
+      if (i < 3) {
+        const spin = clamp((t - at) * 2.2, 0, 1), sx2 = Math.cos((1 - spin) * Math.PI * 4) * (i === 0 ? 1 + Math.sin(gT * 4) * .04 : 1);
+        cx.save(); cx.translate(36, y); cx.scale(sx2, 1);
+        cx.save(); cx.globalCompositeOperation = 'lighter'; const gg = cx.createRadialGradient(0, 0, 2, 0, 0, 22); gg.addColorStop(0, i === 0 ? 'rgba(255,220,120,.6)' : 'rgba(255,255,255,.3)'); gg.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = gg; circ(0, 0, 22); cx.fill(); cx.restore();
+        const mg = cx.createRadialGradient(-4, -4, 1, 0, 0, 13); mg.addColorStop(0, '#fff'); mg.addColorStop(.35, mc); mg.addColorStop(1, 'rgba(0,0,0,.6)'); cx.fillStyle = mg; circ(0, 0, 12.5); cx.fill();
+        cx.strokeStyle = 'rgba(255,255,255,.6)'; cx.lineWidth = 1; circ(0, 0, 9.5); cx.stroke(); mono(String(i + 1), 0, 1, 13, INK); cx.restore();
+        if (i === 0) { const cb = Math.sin(gT * 3) * 2; cx.save(); cx.translate(36, y - 22 + cb); cx.rotate(-.25 + Math.sin(gT * 2) * .05); emo('👑', 0, 0, 16); cx.restore();
+          if (Math.random() < .12) burst(rand(20, W - 20), y + rand(-14, 14), [GOLD2, '#fff'], 2, 40, .5, 1.5); }
+      } else mono(ORD(i + 1), 36, y + 1, 11, '#cfc6ad');
+      // 名前・スコア（カウントアップ）
+      cx.save(); if (i < 3 || hl) { cx.shadowColor = hl ? '#ff6b9a' : mc; cx.shadowBlur = i === 0 ? 12 : 6; } serifText(e.name, 62, y + 1, i === 0 ? 20 : 18, hl ? '#fff' : mc, 'left', '900'); cx.restore();
       if (e.ex) { bevel(170, y - 7, 22, 14, 3); cx.fillStyle = CRIM; cx.fill(); mono('EX', 181, y, 7.5, '#fff'); }
-      mono(`${e.score.toFixed(1)}%`, 262, y + 1, 14, '#fff', 'right');
-      serifText(e.r, 282, y + 1, 16, gradeCol[e.r] || '#fff', 'center', '900');
-      if (hl) { cx.save(); cx.globalAlpha = q * (.6 + .4 * Math.sin(gT * 10)); bevel(298, y - 8, 40, 16, 4); cx.fillStyle = '#ff3b5c'; cx.fill(); spaced('NEW', 318, y, 7.5, '#fff', 1.5); cx.restore(); }
+      const cnt = clamp((t - at) / .55, 0, 1), sv = e.score * (1 - Math.pow(1 - cnt, 3));
+      mono(`${sv.toFixed(1)}%`, 262, y + 1, i === 0 ? 15 : 14, cnt < 1 ? GOLD2 : '#fff', 'right');
+      if (cnt >= 1) { const pk = clamp((t - at - .55) * 6, 0, 1); cx.save(); cx.translate(282, y + 1); cx.scale(1 + (1 - pk) * 1.4, 1 + (1 - pk) * 1.4); cx.globalAlpha *= pk; serifText(e.r, 0, 0, 16, gradeCol[e.r] || '#fff', 'center', '900'); cx.restore(); }
+      if (hl) { cx.save(); cx.globalAlpha = .6 + .4 * Math.sin(gT * 10); bevel(298, y - 8, 40, 16, 4); cx.fillStyle = '#ff3b5c'; cx.fill(); spaced('NEW', 318, y, 7.5, '#fff', 1.5); cx.restore(); }
       else mono(e.date === '----' ? '----' : e.date.slice(2), 340, y + 1, 8.5, '#8f876f', 'right');
+      // 着地の閃光
+      if (land > 0) { cx.save(); cx.globalCompositeOperation = 'lighter'; bevel(16, y - 17, W - 32, 36, 8); cx.fillStyle = `rgba(255,250,220,${land * (i < 3 ? .7 : .35)})`; cx.fill(); cx.restore(); }
       cx.restore();
     });
-    const bq = clamp((t - 1.5) * 4, 0, 1); this.btns.forEach(b => { cx.save(); cx.globalAlpha = bq; drawBtn(b, t); cx.restore(); });
+    cx.restore();
+    // 紙吹雪
+    for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
+    // 冒頭：記録庫へのアクセス演出
+    if (t < .5) { const a = t < .38 ? 1 : 1 - (t - .38) / .12; cx.fillStyle = `rgba(0,0,0,${.92 * a})`; cx.fillRect(0, 0, W, H);
+      cx.save(); cx.globalAlpha = a; const n = Math.floor(t * 90); mono('> ACCESSING AGENT ARCHIVE...'.slice(0, n), 40, 300, 10, '#7fe0a8', 'left', 'normal');
+      cx.fillStyle = 'rgba(255,255,255,.1)'; cx.fillRect(40, 316, W - 80, 5); cx.fillStyle = GOLD2; cx.fillRect(40, 316, (W - 80) * Math.min(1, t / .38), 5);
+      for (let k = 0; k < 5; k++) { cx.fillStyle = 'rgba(255,255,255,.08)'; cx.fillRect(0, rand(0, H), W, rand(1, 3)); } cx.restore(); }
+    if (this.fl > 0) { cx.fillStyle = `rgba(255,250,230,${Math.min(1, this.fl)})`; cx.fillRect(0, 0, W, H); }
+    const bq = clamp((t - 3.3) * 4, 0, 1); this.btns.forEach((b, i) => { cx.save(); cx.globalAlpha = bq; cx.translate(0, (1 - bq) * 30); drawBtn(b, t); cx.restore(); });
   },
-  down(x, y) { if (this.t < 1.5) { this.t = 1.5; return; } BtnMix.down.call(this, x, y); },
+  down(x, y) { if (this.t < 3.3) { this.t = 3.3; for (let i = 0; i < RANK_N; i++) { this.ev['w' + i] = 1; this.ev['r' + i] = 1; } this.ev.in = this.ev.slam = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
 const Training = {
