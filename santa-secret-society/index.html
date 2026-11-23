@@ -4001,34 +4001,89 @@ const Final = {
 const Training = {
   ...BtnMix,
   enter() {
-    this.t = 0;
-    this.btns = MISSIONS.map((m, i) => Btn(20, 104 + i * 70, W - 40, 60, '', () => { G.mode = 'training'; go(Briefing, i); }, { kind: 'dark', m }));
-    this.btns.push(Btn(110, 534 + 50, 140, 40, '◀ 本部へ戻る', () => go(Title), { kind: 'ghost', size: 13 }));
+    this.t = 0; this.ev = {}; this.sel = null; this.selT = 0;
+    this.btns = MISSIONS.map((m, i) => Btn(20, 150 + i * 66, W - 40, 58, '', () => { this.sel = i; this.selT = 0; SFX.go(); noise(.3, .2, 4000); }, { kind: 'dark', m }));
+    this.btns.push(Btn(110, 552 + 40, 140, 36, '◀ 本部へ戻る', () => go(Title), { kind: 'ghost', size: 13 }));
+    const vals = MISSIONS.map(m => save.missions[m.id]).filter(v => v != null);
+    this.cleared = vals.length; this.avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    this.sCount = vals.filter(v => gradeOf(v) === 'S').length;
   },
-  update(dt) { this.t += dt; },
+  update(dt) {
+    const t0 = this.t; this.t += dt; const t = this.t;
+    if (t0 < .02 && t >= .02) { noise(.3, .12, 5000); for (let k = 0; k < 4; k++) tone(900 + k * 200, .04, 'square', .03, 0, k * .05); }
+    MISSIONS.forEach((m, i) => { const at = .45 + i * .08; if (t0 < at && t >= at) { tone(600 + i * 100, .05, 'square', .035); noise(.05, .1, 3000); } });
+    if (this.sel != null) { this.selT += dt; if (this.selT > .55) { const i = this.sel; this.sel = null; G.mode = 'training'; go(Briefing, i); } }
+  },
   draw(dt) {
+    const t = this.t;
     drawAgency(dt, 100);
-    spaced('TRAINING FACILITY', W / 2, 26, 10, GOLD, 3);
-    goldRule(40, 30, W - 30);
-    serifText('訓練モード', W / 2, 66, 24, '#fff', 'center', '900');
-    text('ファイルを選んで、個別に作戦を訓練せよ', W / 2, 88, 11, '#9a937e', 'center', 'normal');
+    // 遠近グリッドの床（シミュレーター）
+    cx.save(); cx.globalCompositeOperation = 'lighter'; const hz = 140;
+    cx.strokeStyle = 'rgba(127,224,168,.12)'; cx.lineWidth = 1;
+    for (let i = -12; i <= 12; i++) { cx.beginPath(); cx.moveTo(W / 2 + i * 10, hz); cx.lineTo(W / 2 + i * 90, H); cx.stroke(); }
+    for (let i = 0; i < 12; i++) { const q = (i + (gT * .5) % 1) / 12, y = hz + Math.pow(q, 2.2) * (H - hz); cx.globalAlpha = q; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+    cx.restore();
+    // 標的のホログラム
+    cx.save(); cx.translate(W - 52, 78); cx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 4; i++) { cx.save(); cx.rotate(gT * (i % 2 ? -.6 : .8)); cx.strokeStyle = `rgba(127,224,168,${.4 - i * .08})`; cx.lineWidth = 1.5; cx.setLineDash([6 + i * 3, 4]); circ(0, 0, 12 + i * 9); cx.stroke(); cx.restore(); }
+    cx.fillStyle = 'rgba(255,60,90,.8)'; circ(0, 0, 3); cx.fill(); cx.restore();
+    // ヘッダ
+    const hk = clamp(t * 4, 0, 1);
+    cx.globalAlpha = hk; spaced('TRAINING FACILITY  //  SIMULATOR', W / 2, 24, 9, '#7fe0a8', 2.5); goldRule(38, W / 2 - (W / 2 - 30) * hk, W / 2 + (W / 2 - 30) * hk); cx.globalAlpha = 1;
+    { const k = clamp((t - .1) * 6, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(30, 72); cx.scale(1 + (1 - k), 1 + (1 - k));
+      cx.save(); cx.globalCompositeOperation = 'lighter'; serifText('訓練モード', -1.5, 0, 26, 'rgba(255,30,80,.6)', 'left', '900'); serifText('訓練モード', 1.5, 0, 26, 'rgba(30,210,255,.6)', 'left', '900'); cx.restore();
+      cx.shadowColor = 'rgba(127,224,168,.6)'; cx.shadowBlur = 12; serifText('訓練モード', 0, 0, 26, '#fff', 'left', '900'); cx.restore(); }
+    { const n = Math.floor(clamp((t - .2) * 50, 0, 40)); mono('> SELECT A FILE TO BEGIN SIMULATION'.slice(0, n), 30, 98, 8.5, '#7fe0a8', 'left', 'normal'); }
+    // 訓練の記録
+    { const k = clamp((t - .3) * 5, 0, 1); cx.save(); cx.globalAlpha = k; const y = 116;
+      bevel(20, y, W - 40, 24, 6); cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fill(); cx.strokeStyle = 'rgba(127,224,168,.4)'; cx.lineWidth = 1; cx.stroke();
+      spaced('RECORD', 30, y + 12, 7, '#7fe0a8', 2, 'left'); mono(`CLEARED ${this.cleared}/6`, 92, y + 12, 9, '#fff', 'left');
+      mono(`AVG ${Math.round(this.avg * 100 * k)}%`, 190, y + 12, 9, '#fff', 'left'); mono(`S ×${this.sCount}`, W - 30, y + 12, 9, GOLD2, 'right');
+      cx.fillStyle = 'rgba(255,255,255,.1)'; cx.fillRect(250, y + 9, 50, 6); cx.fillStyle = '#7fe0a8'; cx.fillRect(250, y + 9, 50 * this.avg * k, 6); cx.restore(); }
+    // ファイル
     this.btns.forEach((b, i) => {
-      const k = clamp((this.t - i * 0.06) * 5, 0, 1);
-      cx.save(); cx.globalAlpha = k; cx.translate((1 - k) * 30, 0);
-      drawBtn(b, this.t);
-      if (b.m) {
-        const best = save.missions[b.m.id];
-        cx.fillStyle = CRIM; cx.fillRect(b.x + 1, b.y + 12, 3, b.h - 24);
-        emo(b.m.icon, b.x + 34, b.y + 30, 24);
-        mono(b.m.code, b.x + 62, b.y + 18, 9, GOLD, 'left');
-        serifText(b.m.name, b.x + 62, b.y + 38, 17, '#fff', 'left', '900');
-        mono(b.m.genre, b.x + 62 + (b.m.name.length * 17) + 10, b.y + 39, 9, '#8f876f', 'left', 'normal');
-        if (best != null) { mono(`${Math.round(best * 100)}%`, b.x + b.w - 46, b.y + 30, 13, '#fff', 'right'); serifText(gradeOf(best), b.x + b.w - 22, b.y + 30, 22, gradeCol[gradeOf(best)], 'center', '900'); }
-        else mono('NO DATA', b.x + b.w - 14, b.y + 30, 9, '#6e6858', 'right');
-      }
+      if (!b.m) { const k = clamp((t - 1) * 5, 0, 1); cx.save(); cx.globalAlpha = k; drawBtn(b, t); cx.restore(); return; }
+      const k = clamp((t - .45 - i * .08) * 6, 0, 1); if (k <= 0) return;
+      const selected = this.sel === i, st = this.selT;
+      cx.save(); cx.globalAlpha = this.sel != null && !selected ? Math.max(.25, 1 - st * 3) : k;
+      cx.translate((1 - k) * (i % 2 ? 120 : -120), 0);
+      if (selected) { const s2 = 1 + Math.sin(Math.min(1, st * 4) * Math.PI) * .06; cx.translate(b.x + b.w / 2, b.y + b.h / 2); cx.scale(s2, s2); cx.translate(-(b.x + b.w / 2), -(b.y + b.h / 2)); }
+      drawBtn(b, t);
+      const best = save.missions[b.m.id], g = best != null ? gradeOf(best) : null;
+      // 光の筋が走る
+      cx.save(); bevel(b.x, b.y, b.w, b.h, 12); cx.clip(); cx.globalCompositeOperation = 'lighter';
+      const sx = b.x + ((t * 220 + i * 90) % (b.w + 300)) - 120; const sg = cx.createLinearGradient(sx, 0, sx + 40, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(.5, 'rgba(127,224,168,.18)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = sg; cx.fillRect(sx, b.y, 40, b.h);
+      if (selected) { cx.fillStyle = `rgba(127,224,168,${.4 * (1 - st * 1.5)})`; cx.fillRect(b.x, b.y, b.w, b.h); }
+      cx.restore();
+      cx.fillStyle = g === 'S' ? GOLD2 : CRIM; cx.fillRect(b.x + 1, b.y + 12, 3, b.h - 24);
+      // 六角フレームのアイコン
+      cx.save(); cx.translate(b.x + 32, b.y + 29); cx.rotate(Math.sin(gT * 2 + i) * .05);
+      cx.beginPath(); for (let k2 = 0; k2 < 6; k2++) { const a = k2 * Math.PI / 3 + Math.PI / 6; cx.lineTo(Math.cos(a) * 20, Math.sin(a) * 20); } cx.closePath();
+      cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fill(); cx.strokeStyle = g === 'S' ? GOLD2 : 'rgba(127,224,168,.6)'; cx.lineWidth = 1.2; cx.stroke(); cx.restore();
+      emo(b.m.icon, b.x + 32, b.y + 29, 22);
+      mono(b.m.code, b.x + 62, b.y + 16, 8.5, GOLD, 'left');
+      serifText(b.m.name, b.x + 62, b.y + 35, 16, '#fff', 'left', '900');
+      mono(b.m.genre, b.x + 62, b.y + 50, 7.5, '#8f876f', 'left', 'normal');
+      if (best != null) {
+        cx.fillStyle = 'rgba(255,255,255,.1)'; cx.fillRect(b.x + b.w - 120, b.y + 44, 70, 4);
+        cx.fillStyle = gradeCol[g]; cx.fillRect(b.x + b.w - 120, b.y + 44, 70 * best * clamp((t - .7 - i * .08) * 3, 0, 1), 4);
+        mono(`${Math.round(best * 100)}%`, b.x + b.w - 50, b.y + 28, 13, '#fff', 'right');
+        const pk = clamp((t - .75 - i * .08) * 7, 0, 1); cx.save(); cx.translate(b.x + b.w - 24, b.y + 29); cx.scale(1 + (1 - pk) * 1.5, 1 + (1 - pk) * 1.5); cx.globalAlpha *= pk;
+        if (g === 'S') { cx.save(); cx.globalCompositeOperation = 'lighter'; const gg = cx.createRadialGradient(0, 0, 2, 0, 0, 22); gg.addColorStop(0, `rgba(255,214,74,${.5 + .2 * Math.sin(gT * 6)})`); gg.addColorStop(1, 'rgba(255,214,74,0)'); cx.fillStyle = gg; circ(0, 0, 22); cx.fill(); cx.restore(); }
+        serifText(g, 0, 0, 24, gradeCol[g], 'center', '900'); cx.restore();
+      } else { cx.save(); cx.globalAlpha *= .5 + .5 * Math.sin(gT * 4 + i); mono('NO DATA', b.x + b.w - 14, b.y + 29, 9, '#7fe0a8', 'right'); cx.restore(); }
       cx.restore();
     });
+    // 選んだときの演出
+    if (this.sel != null) {
+      const st = this.selT, b = this.btns[this.sel];
+      cx.save(); cx.globalCompositeOperation = 'lighter'; for (let k = 0; k < 2; k++) { cx.strokeStyle = k ? '#7fe0a8' : '#fff'; cx.globalAlpha = Math.max(0, 1 - st * 2); cx.lineWidth = 3 - k; circ(b.x + 32, b.y + 29, 20 + st * (400 + k * 200)); cx.stroke(); } cx.restore();
+      if (st > .25) { const k = clamp((st - .25) * 6, 0, 1); cx.fillStyle = `rgba(0,0,0,${k * .6})`; cx.fillRect(0, 0, W, H); cx.save(); cx.globalAlpha = k; cx.translate(W / 2, H / 2); cx.scale(2 - k, 2 - k); bigCall('SIMULATION START', 0, 0, 24, '#7fe0a8'); cx.restore(); }
+    }
+    // 起動時の走査線
+    if (t < .5) { const y = t / .5 * H; cx.save(); cx.globalCompositeOperation = 'lighter'; const g = cx.createLinearGradient(0, y - 40, 0, y); g.addColorStop(0, 'rgba(127,224,168,0)'); g.addColorStop(1, 'rgba(127,224,168,.45)'); cx.fillStyle = g; cx.fillRect(0, y - 40, W, 40); cx.fillStyle = 'rgba(220,255,235,.8)'; cx.fillRect(0, y, W, 2); cx.restore(); }
   },
+  down(x, y) { if (this.sel != null) return; if (this.t < 1) { this.t = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
 // =====================================================================
