@@ -163,6 +163,133 @@ const SFX = {
   sad: () => melody([[67, 1], [66, 1], [65, 1], [64, 3]], 110, 'triangle', 0.07),
 };
 
+// =====================================================================
+//  BGM エンジン（WebAudio のステップシーケンサー。曲はすべてオリジナル＋パブリックドメイン）
+// =====================================================================
+const _ = null;
+const CH = { m: [0, 3, 7], M: [0, 4, 7], m7: [0, 3, 7, 10], 7: [0, 4, 7, 10], M7: [0, 4, 7, 11], d: [0, 3, 6] };
+const TRACKS = {
+  theme: { name: 'Operation Holy Night', bpm: 120, key: 57, prog: [[0, 'm'], [0, 'm'], [8, 'M'], [7, 'M'], [0, 'm'], [0, 'm'], [5, 'm'], [7, '7']],
+    kick: 'x.....x.x.....x.', snare: '....x.......x...', hat: '..x...x...x...x.', bass: 'x.xx.x.xx.xx.x.x', arp: 0, pad: 1,
+    lead: [[0,_,_,3,_,_,5,_,6,5,_,3,_,_,0,_],[0,_,_,3,_,_,5,_,7,_,6,_,5,3,_,_],[12,_,10,_,7,_,10,_,8,_,7,_,5,_,3,_],[2,_,3,_,5,_,7,_,11,_,_,_,_,_,_,_]] },
+  brief: { name: 'Classified Briefing', bpm: 92, key: 50, prog: [[0, 'm'], [10, 'M'], [8, 'M'], [7, 'M']],
+    kick: 'x.......x.......', snare: '', hat: '..x...x...x...x.', bass: 'x.......x.......', arp: 2, pad: 1, lead: null, soft: 1 },
+  research: { name: 'Wishlist Decoder', bpm: 112, key: 60, prog: [[0, 'M'], [9, 'm'], [5, 'M'], [7, 'M']],
+    kick: 'x.......x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', bass: 'x...x.x.x...x.x.', arp: 2, pad: 0, lead: 'auto', bell: 1 },
+  funding: { name: 'Midnight Cashflow', bpm: 124, key: 55, prog: [[0, 'm7'], [5, '7'], [0, 'm7'], [5, '7']],
+    kick: 'x..x..x...x..x..', snare: '....x..x....x...', hat: 'x.xxx.xxx.xxx.xx', bass: 'x.xx.x..x.xx.x.x', oct: 1, arp: 0, pad: 0, lead: 'auto' },
+  procure: { name: 'Toy Factory Line', bpm: 120, key: 52, prog: [[0, 'm'], [0, 'm'], [3, 'M'], [10, 'M']],
+    kick: 'x...x...x...x...', snare: '....x.......x...', hat: '.x.x.x.x.x.x.x.x', bass: 'x.x.x.x.x.x.x.x.', arp: 1, pad: 0, lead: 'auto' },
+  escort: { name: 'Convoy Under Fire', bpm: 150, key: 50, prog: [[0, 'm'], [10, 'M'], [0, 'm'], [9, 'M']],
+    kick: 'x.x...x.x.x...x.', snare: '....x.......x..x', hat: 'xxxxxxxxxxxxxxxx', bass: 'xxxxxxxxxxxxxxxx', arp: 0, pad: 0, lead: 'auto' },
+  fight: { name: 'Rooftop Showdown', bpm: 160, key: 52, prog: [[0, 'm'], [8, 'M'], [10, 'M'], [11, '7']],
+    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', bass: 'x.xx.xx.x.xx.xx.', arp: 0, pad: 0,
+    lead: [[0,_,_,3,_,_,7,_,_,_,5,_,3,_,2,_],[0,_,_,3,_,_,7,_,10,_,12,_,_,_,_,_],[12,_,10,_,8,_,7,_,_,_,5,_,7,_,_,_],[11,_,_,_,7,_,_,_,6,_,_,_,3,_,_,_]] },
+  delivery: { name: 'Silent Night Run', bpm: 132, key: 62, prog: [[0, 'M'], [0, 'M'], [0, 'M'], [0, 'M'], [5, 'M'], [0, 'M'], [7, '7'], [7, '7']],
+    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx', bell: 1, bass: 'x...x...x...x...', arp: 0, pad: 0,
+    // Jingle Bells（パブリックドメイン）
+    lead: [[4,_,_,_,4,_,_,_,4,_,_,_,_,_,_,_],[4,_,_,_,4,_,_,_,4,_,_,_,_,_,_,_],[4,_,_,_,7,_,_,_,0,_,_,_,_,_,2,_],[4,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+           [5,_,_,_,5,_,_,_,5,_,_,_,_,_,5,_],[5,_,_,_,4,_,_,_,4,_,4,_,4,_,_,_],[4,_,_,_,2,_,_,_,2,_,_,_,4,_,_,_],[2,_,_,_,_,_,_,_,7,_,_,_,_,_,_,_]] },
+  report: { name: 'Mission Report', bpm: 104, key: 60, prog: [[0, 'M7'], [7, 'M'], [9, 'm7'], [5, 'M7']],
+    kick: 'x.......x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', bass: 'x..x..x.x..x..x.', arp: 2, pad: 1, lead: null, soft: 1 },
+  victory: { name: 'Holy Night Victory', bpm: 132, key: 60, prog: [[0, 'M'], [5, 'M'], [7, 'M'], [0, 'M']],
+    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx', bell: 1, bass: 'x.x.x.x.x.x.x.x.', arp: 1, pad: 1,
+    lead: [[0,_,4,_,7,_,12,_,_,_,7,_,12,_,_,_],[9,_,_,_,7,_,_,_,5,_,4,_,2,_,_,_],[7,_,_,_,11,_,14,_,12,_,11,_,7,_,_,_],[12,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_]] },
+  gloom: { name: 'Krampus Reigns', bpm: 72, key: 45, prog: [[0, 'm'], [5, 'm'], [7, '7'], [0, 'm']],
+    kick: 'x...............', snare: '', hat: '', bass: 'x.......x.......', arp: 2, pad: 1, lead: [[12,_,_,_,_,_,_,_,11,_,_,_,_,_,_,_],[10,_,_,_,_,_,_,_,8,_,_,_,_,_,_,_],[7,_,_,_,_,_,_,_,8,_,_,_,11,_,_,_],[12,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_]], soft: 1 },
+};
+const BGM = { cur: null, want: undefined, gain: null, filt: null, step: 0, next: 0, kickT: -9, level: 0, toast: null, fading: 0, hype: 0 };
+let bgmHype = 0, hurryG = 0;
+function bgmInit() {
+  if (!AC || BGM.gain) return;
+  BGM.filt = AC.createBiquadFilter(); BGM.filt.type = 'lowpass'; BGM.filt.frequency.value = 16000;
+  BGM.comp = AC.createDynamicsCompressor(); BGM.gain = AC.createGain(); BGM.gain.gain.value = 0;
+  BGM.filt.connect(BGM.comp); BGM.comp.connect(BGM.gain); BGM.gain.connect(AC.destination);
+  if (!noiseBuf) { noiseBuf = AC.createBuffer(1, AC.sampleRate * .6, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+}
+function bv(f, t, dur, type, vol, slide = 0) {
+  const o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f + slide), t + dur);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .008); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g); g.connect(BGM.filt); o.start(t); o.stop(t + dur + .03);
+}
+function bn(t, dur, vol, hp) {
+  const s = AC.createBufferSource(); s.buffer = noiseBuf; const f = AC.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+  const g = AC.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(BGM.filt); s.start(t, Math.random() * .3); s.stop(t + dur + .02);
+}
+function bgmStep(T, step, t) {
+  const s = step % 16, bar = Math.floor(step / 16), hype = T === TRACKS.fight ? bgmHype : 0;
+  const key = T.key + (hype === 2 ? 2 : 0), ch = T.prog[bar % T.prog.length], root = key + ch[0], tones = CH[ch[1]], sl = 60 / T.bpm / 4;
+  const N = n => NOTE(n), on = (pat, i) => pat && pat[i] === 'x';
+  // ドラム
+  if (on(T.kick, s) || (hype === 2 && s % 2 === 0) || (hurryG && s % 4 === 0)) { bv(150, t, .14, 'sine', .55, -110); if (s % 4 === 0) BGM.kickT = t; }
+  if (on(T.snare, s) || (hype >= 1 && s === 15) || (hurryG && s === 14)) { bn(t, .13, .22, 1200); bv(220, t, .07, 'triangle', .08, -80); }
+  if (on(T.hat, s) || hype === 2 || hurryG) bn(t, T.bell ? .06 : .03, (T.bell ? .07 : .045) * (T.soft ? .6 : 1), T.bell ? 8000 : 7000);
+  // ベース
+  if (on(T.bass, s) || (hype >= 1 && s % 2 === 0)) { const n = root - 12 + (T.oct && s % 4 === 2 ? 12 : 0); bv(N(n), t, sl * (T.soft ? 3 : 1.6), T.soft ? 'triangle' : 'sawtooth', T.soft ? .09 : .06); }
+  // パッド
+  if (T.pad && s === 0) for (const k of tones) bv(N(root + 12 + k), t, sl * 16, 'triangle', .022);
+  // アルペジオ
+  const arp = T.arp || (hype === 2 ? 1 : 0);
+  if (arp && s % arp === 0) { const k = tones[(s / arp) % tones.length]; bv(N(root + 24 + k + (Math.floor(s / 8) % 2 ? 12 : 0) * (T.bell ? 1 : 0)), t, sl * 1.5, T.bell ? 'triangle' : 'square', T.soft ? .02 : .025); }
+  // メロディー
+  let note = null;
+  if (Array.isArray(T.lead)) { const lb = T.lead[bar % T.lead.length]; if (lb[s] != null) note = key + 12 + lb[s] + (hype === 2 ? 12 : 0); }
+  else if (T.lead === 'auto') { const r = 'x..x..x.x.x.x...'; if (r[s] === 'x') { const pat = [2, 1, 0, 1, 2, 3, 2, 0], k = pat[(bar * 3 + s) % pat.length] % tones.length; note = root + 12 + tones[k] + (k === 3 ? 0 : 0); } }
+  if (note != null) { bv(N(note), t, sl * 2.2, 'square', .05); bv(N(note) * 1.006, t, sl * 2.2, 'sawtooth', .018); }
+  // 残り5秒の警報
+  if (hurryG && s === 0) bv(1760, t, .1, 'square', .03);
+}
+function bgmWant() {
+  if (scene === Title) return 'theme';
+  if (scene === Prologue || scene === Briefing || scene === Training) return 'brief';
+  if (scene === Play) return Play.done ? null : Play.m.id;
+  if (scene === Result) return Result.t > (Result.R || 0) + .9 ? 'report' : null;
+  if (scene === Final) return Final.t > 3 ? (Final.good ? 'victory' : 'gloom') : null;
+  return null;
+}
+function bgmTick() {
+  if (scene !== Play) { hurryG = 0; bgmHype = 0; }
+  if (!AC) return; bgmInit(); if (!BGM.gain) return;
+  const now = AC.currentTime, want = bgmWant();
+  if (want !== BGM.want) {
+    BGM.want = want; BGM.gain.gain.cancelScheduledValues(now); BGM.gain.gain.setValueAtTime(BGM.gain.gain.value, now); BGM.gain.gain.linearRampToValueAtTime(0, now + .35);
+    BGM.fading = now + .38; BGM.cur = null;
+  }
+  if (!BGM.cur && BGM.want && now >= BGM.fading) {
+    BGM.cur = TRACKS[BGM.want]; BGM.step = 0; BGM.next = now + .05; BGM.hype = -1;
+  }
+  const T = BGM.cur;
+  const vol = muted || !T ? 0 : (Play.paused && scene === Play ? .22 : .5);
+  if (T && now >= BGM.fading) { BGM.gain.gain.cancelScheduledValues(now); BGM.gain.gain.setTargetAtTime(vol, now, .12); }
+  BGM.filt.frequency.setTargetAtTime(scene === Play && Play.paused ? 650 : (scene === Play && Play.cd > 0 ? 2500 : 16000), now, .15);
+  if (!T) return;
+  if (T === TRACKS.fight && BGM.hype !== bgmHype) { BGM.hype = bgmHype; BGM.toast = { name: T.name + (bgmHype === 2 ? '  -MIRACLE MIX-' : bgmHype === 1 ? '  -BERSERK MIX-' : ''), t: 0 }; }
+  else if (BGM.hype === -1) { BGM.hype = 0; BGM.toast = { name: T.name, t: 0 }; }
+  const sl = 60 / T.bpm / 4;
+  while (BGM.next < now + .12) { if (!muted) bgmStep(T, BGM.step, BGM.next); BGM.next += sl; BGM.step++; }
+}
+// 曲名の表示とビートに合わせた光
+function bgmDraw(dt) {
+  if (!AC || !BGM.cur || muted) return;
+  const since = AC.currentTime - BGM.kickT, beat = since >= 0 && since < .2 ? 1 - since / .2 : 0;
+  BGM.level = Math.max(beat, BGM.level - dt * 3);
+  if ((scene === Title || scene === Final || (scene === Play && Play.m.id === 'fight')) && BGM.level > 0) {
+    const vg = cx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .75);
+    const c = scene === Final && !Final.good ? '180,60,255' : bgmHype === 2 ? '255,214,74' : '255,40,70';
+    vg.addColorStop(0, `rgba(${c},0)`); vg.addColorStop(1, `rgba(${c},${.14 * BGM.level})`); cx.fillStyle = vg; cx.fillRect(0, 0, W, H);
+  }
+  const ts = BGM.toast; if (!ts) return; ts.t += dt; if (ts.t > 3.6) { BGM.toast = null; return; }
+  const k = Math.min(1, ts.t * 5) * Math.min(1, (3.6 - ts.t) * 3), y = H - 14;
+  cx.save(); cx.globalAlpha = k; cx.translate((1 - Math.min(1, ts.t * 5)) * -140, 0);
+  cx.font = `bold 9px ${MONO}`; const tw = cx.measureText(ts.name).width + ts.name.length * 1.2 + 70;
+  bevel(8, y - 10, tw, 20, 6); cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.7)'; cx.lineWidth = 1; cx.stroke();
+  for (let i = 0; i < 5; i++) { const h = 3 + Math.abs(Math.sin(gT * (7 + i * 2.3) + i)) * 9 * (.5 + BGM.level * .5); cx.fillStyle = i % 2 ? GOLD2 : '#ff3b5c'; cx.fillRect(16 + i * 4, y + 6 - h, 3, h); }
+  spaced('♪', 44, y, 9, GOLD2, 0, 'left'); spaced(ts.name, 56, y + .5, 9, '#fff', 1.2, 'left');
+  cx.restore();
+}
+
 // ---------------------------------------------------------------- input
 const keys = {};
 const ptrs = new Map();
@@ -422,6 +549,7 @@ function drawPanel(x, y, w, h, col = 'rgba(10,10,14,.88)') {
   corners(x + 4, y + 4, w - 8, h - 8, 10, 'rgba(212,175,55,.8)', 1.5);
 }
 function hud(title, time, right) {
+  hurryG = time != null && time > 0 && time < 5 ? 1 : 0;
   if (time != null && time > 0 && time < 5) {
     const pu = .5 + .5 * Math.sin(gT * 10), vg = cx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75); vg.addColorStop(0, 'rgba(255,0,40,0)'); vg.addColorStop(1, `rgba(255,0,40,${.22 + .2 * pu})`); cx.fillStyle = vg; cx.fillRect(0, 0, W, H);
     if (Math.floor(time) !== Math.floor(time + 1 / 60)) { tone(70, .18, 'sine', .3, -20); tone(55, .18, 'sine', .25, -15, .12); }
@@ -2681,6 +2809,7 @@ function Fight(api) {
         xform = { t: 0, beat: 0, flashed: false, banner: false };
         tone(70, 1.3, 'sawtooth', .07, 900); for (const d of [0, .38, .66, .88, 1.04, 1.16, 1.24]) setTimeout(() => { tone(55, .18, 'sine', .35, -20); noise(.08, .15, 300); }, d * 1000);
       }
+      bgmHype = hyper > 0 ? 2 : rageOn ? 1 : 0;
       if (hyper > 0) { hyper -= sdt; P.meter = Math.min(100, P.meter + sdt * 6); if (hyper <= 0) { P.rig.hyper = false; fxText('HYPER END', P.x, FL - 160, '#fff'); for (const k in P.rig.armor) P.rig.armor[k] = 0; noise(.3, .3, 2000); const J = P.rig.W; for (let i = 0; i < 14; i++) fx.push({ k: 'rock', x: J.hip.x + rand(-20, 20), y: J.hip.y - rand(0, 50), vy: -rand(60, 160), vr: rand(-6, 6), r: rand(3, 6), rot: 0, life: 1, max: 1 }); } }
       if (!hyper && !xform && P.rig.bulk > 0) P.rig.bulk = Math.max(0, P.rig.bulk - sdt * 1.5);
       if (!rageOn && !over && !xform && !cutin && !sfx && !windup && E.hp < 30 && E.st !== 'ko') { rageOn = true; E.st = 'idle'; E.vx = 0; E.vy = 0; E.y = 0; P.st = P.st === 'ko' ? 'ko' : 'idle'; P.vx = 0; exform = { t: 0, flashed: false, banner: false }; tone(40, 1.3, 'sawtooth', .09, 120); for (const d of [0, .4, .7, .92, 1.08, 1.2, 1.27]) setTimeout(() => { tone(45, .22, 'sine', .4, -15); noise(.1, .2, 220); }, d * 1000); }
@@ -3642,7 +3771,7 @@ const Briefing = typeScene(i => {
 
 const Play = {
   enter(i) {
-    this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
+    bgmHype = 0; hurryG = 0; this.i = i; this.m = MISSIONS[i]; this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
     this.g = this.m.make({ end: (rate, lines, msg) => { if (this.done) return; this.done = { rate: clamp(rate, 0, 1), lines, msg: msg || 'MISSION END', t: 0, good: rate >= .6 };
       const good = this.done.good; scrFlash = .9; scrFlashCol = good ? '255,250,230' : '255,60,80'; shake = 14;
       noise(.6, .4, 1800); tone(good ? 880 : 220, .5, 'square', .06, good ? 440 : -100); tone(55, .6, 'sawtooth', .08, -20);
@@ -4251,10 +4380,12 @@ function frame(now) {
   if (!cv.width || !cv.height || !scale) { if (innerWidth > 0 && innerHeight > 0) resize(); if (!cv.width || !cv.height || !scale) return; }
   try {
   cx.setTransform(scale * DPR, 0, 0, scale * DPR, 0, 0);
+  bgmTick();
   scene.update(dt);
   updateParts(dt);
   scene.draw(dt);
   postFX();
+  bgmDraw(dt);
   if (fade > 0) { // シャッター風の場面転換
     const e = fade * fade, bh = H / 2 * e;
     cx.fillStyle = INK; cx.fillRect(0, 0, W, bh); cx.fillRect(0, H - bh, W, bh);
