@@ -129,6 +129,8 @@ try { muted = localStorage.getItem('santa_muted') === '1'; } catch (e) {}
 function audioInit() {
   if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   if (AC && AC.state === 'suspended') AC.resume();
+  // スマホでも曲が鳴るよう、最初のタップで音源の再生を許可しておく
+  if (typeof OPENING !== 'undefined' && OPENING && !OPENING.unlocked && !OPENING.bad) { OPENING.unlocked = 1; OPENING.volume = 0; OPENING.play().catch(() => {}); }
 }
 function tone(freq, dur, type = 'square', vol = 0.08, slide = 0, delay = 0) {
   if (!AC || muted) return;
@@ -275,10 +277,21 @@ function bgmWant() {
   if (scene === Final) return Final.t > 3 ? (Final.good ? 'victory' : 'gloom') : null;
   return null;
 }
+// オープニング曲（タイトル画面だけ、用意された音源を再生。読み込めないときは内蔵BGMに戻る）
+const OPENING = (() => { try { const a = new Audio('opening.mp3'); a.loop = true; a.preload = 'auto'; a.volume = 0; a.volFixed = a.volume !== 0; /* iPhone は音量を変えられないので即停止にする */ a.addEventListener('error', () => { a.bad = true; }); return a; } catch (e) { return null; } })();
+function openingTick(on) {
+  if (!OPENING || OPENING.bad) return;
+  const target = on && !muted && !document.hidden ? .75 : 0;
+  if (target > 0 && OPENING.paused) { OPENING.play().catch(() => {}); if (!OPENING.shown) { OPENING.shown = 1; BGM.toast = { name: 'S.A.N.T.A. Operation Holy Night', t: 0 }; } }
+  OPENING.volume = clamp(OPENING.volume + (target - OPENING.volume) * .08, 0, 1);
+  if (target === 0 && (OPENING.volume < .02 || OPENING.volFixed) && !OPENING.paused) { OPENING.pause(); if (!on) OPENING.currentTime = 0; }
+}
+addEventListener('visibilitychange', () => { if (document.hidden && OPENING && !OPENING.paused) OPENING.pause(); });
 function bgmTick() {
   if (scene !== Play) { hurryG = 0; bgmHype = 0; }
   if (!AC) return; bgmInit(); if (!BGM.gain) return;
-  const now = AC.currentTime, want = bgmWant();
+  const now = AC.currentTime, raw = bgmWant(), useOp = raw === 'theme' && OPENING && !OPENING.bad, want = useOp ? null : raw;
+  openingTick(useOp);
   if (want !== BGM.want) {
     BGM.want = want; BGM.gain.gain.cancelScheduledValues(now); BGM.gain.gain.setValueAtTime(BGM.gain.gain.value, now); BGM.gain.gain.linearRampToValueAtTime(0, now + .35);
     BGM.fading = now + .38; BGM.cur = null;
