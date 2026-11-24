@@ -5122,12 +5122,22 @@ const Training = {
     const vals = MISSIONS.map(m => save.missions[m.id]).filter(v => v != null);
     this.cleared = vals.length; this.avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     this.sCount = vals.filter(v => gradeOf(v) === 'S').length;
+    this.lv = this.cleared === 0 ? ['ROOKIE', '#9ad8ff'] : this.avg >= .95 && this.cleared >= 6 ? ['LEGEND', GOLD2] : this.avg >= .8 ? ['ELITE', '#ff6b7d'] : this.avg >= .6 ? ['AGENT', '#7fe0a8'] : ['CADET', '#c9bd98'];
+    this.rain = [...Array(14)].map((_, i) => ({ x: i < 7 ? 6 + i * 2.2 : W - 6 - (i - 7) * 2.2, y: rand(-H, 0), v: rand(80, 200), ch: [] }));
+    this.dum = [...Array(3)].map((_, i) => ({ x: rand(40, W - 40), z: rand(.2, 1), v: rand(-30, 30), ph: rand(0, 6) }));
+    this.spk = [];
   },
   update(dt) {
     const t0 = this.t; this.t += dt; const t = this.t;
-    if (t0 < .02 && t >= .02) { noise(.3, .12, 5000); for (let k = 0; k < 4; k++) tone(900 + k * 200, .04, 'square', .03, 0, k * .05); }
+    if (t0 < .02 && t >= .02) { noise(.3, .12, 5000); tone(50, .5, 'sine', .25, 80); for (let k = 0; k < 4; k++) tone(900 + k * 200, .04, 'square', .03, 0, k * .05); }
+    if (t0 < .32 && t >= .32) { tone(1760, .06, 'square', .04); tone(2637, .1, 'square', .04, 0, .07); }
     MISSIONS.forEach((m, i) => { const at = .45 + i * .08; if (t0 < at && t >= at) { tone(600 + i * 100, .05, 'square', .035); noise(.05, .1, 3000); } });
-    if (this.sel != null) { this.selT += dt; if (this.selT > .55) { const i = this.sel; this.sel = null; G.mode = 'training'; go(Briefing, i); } }
+    for (const r of this.rain) { r.y += r.v * dt; if (r.y > H + 200) r.y = rand(-300, -40); }
+    for (const d of this.dum) { d.x += d.v * dt * d.z; if (d.x < 20 || d.x > W - 20) d.v *= -1; }
+    this.btns.forEach(b => { if (b.m && save.missions[b.m.id] >= .95 && Math.random() < .08) this.spk.push({ x: b.x + rand(10, b.w - 10), y: b.y + rand(6, b.h - 6), life: .6 }); });
+    for (const p of this.spk) p.life -= dt; this.spk = this.spk.filter(p => p.life > 0);
+    if (this.sel != null) { const s0 = this.selT, s1 = s0 + dt; for (const at of [.12, .24, .36]) if (s0 < at && s1 >= at) tone(1400 + at * 2000, .05, 'square', .04); if (s0 < .3 && s1 >= .3) { noise(.4, .3, 1500); tone(60, .4, 'sine', .3, -20); shake = 8; } }
+    if (this.sel != null) { this.selT += dt; if (this.selT > .72) { const i = this.sel; this.sel = null; G.mode = 'training'; go(Briefing, i); } }
   },
   draw(dt) {
     const t = this.t;
@@ -5137,6 +5147,14 @@ const Training = {
     cx.strokeStyle = 'rgba(127,224,168,.12)'; cx.lineWidth = 1;
     for (let i = -12; i <= 12; i++) { cx.beginPath(); cx.moveTo(W / 2 + i * 10, hz); cx.lineTo(W / 2 + i * 90, H); cx.stroke(); }
     for (let i = 0; i < 12; i++) { const q = (i + (gT * .5) % 1) / 12, y = hz + Math.pow(q, 2.2) * (H - hz); cx.globalAlpha = q; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+    // データの雨（両端）
+    font(8, 'normal'); for (const r of this.rain) { for (let k = 0; k < 10; k++) { const y = r.y - k * 10; if (y < 0 || y > H) continue; cx.fillStyle = `rgba(127,224,168,${(1 - k / 10) * (k ? .25 : .7)})`; cx.fillText('01ABCDEF#'[(Math.floor(gT * 12 + k * 3 + r.x) % 9 + 9) % 9], r.x, y); } }
+    // ホログラムの訓練用ダミー
+    for (const d of this.dum) { const y = 150 + d.z * (H - 220), sc = .4 + d.z * .7, fl = Math.random() < .03 ? 0 : 1; cx.save(); cx.translate(d.x, y); cx.scale(sc, sc); cx.globalAlpha = (.12 + .1 * Math.sin(gT * 3 + d.ph)) * fl;
+      cx.strokeStyle = '#7fe0a8'; cx.lineWidth = 2; circ(0, -46, 10); cx.stroke(); cx.beginPath(); cx.moveTo(0, -36); cx.lineTo(0, 0); cx.moveTo(-16, -26); cx.lineTo(16, -26); cx.moveTo(0, 0); cx.lineTo(-10, 24); cx.moveTo(0, 0); cx.lineTo(10, 24); cx.stroke();
+      cx.strokeStyle = '#ff3b5c'; circ(0, -20, 16 + Math.sin(gT * 4 + d.ph) * 2); cx.stroke(); cx.restore(); }
+    // 走査レーザー
+    for (const [ph, col] of [[0, '127,224,168'], [2.2, '255,60,90']]) { const ly = 150 + ((gT * 90 + ph * 140) % (H - 150)); cx.fillStyle = `rgba(${col},.22)`; cx.fillRect(0, ly, W, 1.5); cx.fillStyle = `rgba(${col},.05)`; cx.fillRect(0, ly - 12, W, 12); }
     cx.restore();
     // 標的のホログラム
     cx.save(); cx.translate(W - 52, 78); cx.globalCompositeOperation = 'lighter';
@@ -5147,7 +5165,10 @@ const Training = {
     cx.globalAlpha = hk; spaced('TRAINING FACILITY  //  SIMULATOR', W / 2, 24, 9, '#7fe0a8', 2.5); goldRule(38, W / 2 - (W / 2 - 30) * hk, W / 2 + (W / 2 - 30) * hk); cx.globalAlpha = 1;
     { const k = clamp((t - .1) * 6, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(30, 72); cx.scale(1 + (1 - k), 1 + (1 - k));
       cx.save(); cx.globalCompositeOperation = 'lighter'; serifText('訓練モード', -1.5, 0, 26, 'rgba(255,30,80,.6)', 'left', '900'); serifText('訓練モード', 1.5, 0, 26, 'rgba(30,210,255,.6)', 'left', '900'); cx.restore();
-      cx.shadowColor = 'rgba(127,224,168,.6)'; cx.shadowBlur = 12; serifText('訓練モード', 0, 0, 26, '#fff', 'left', '900'); cx.restore(); }
+      cx.shadowColor = 'rgba(127,224,168,.6)'; cx.shadowBlur = 12; const gl = (gT % 2.6) < .07; serifText('訓練モード', gl ? rand(-4, 4) : 0, 0, 26, '#fff', 'left', '900'); cx.restore();
+      if (gl) { cx.fillStyle = 'rgba(127,224,168,.35)'; cx.fillRect(24, 60 + rand(0, 20), 150, rand(2, 4)); } }
+    if (t > .55) { const k = clamp((t - .55) * 6, 0, 1), [lvn, lvc] = this.lv; cx.save(); cx.translate(218, 70); cx.rotate(-.08); cx.scale(2 - k, 2 - k); cx.globalAlpha = k;
+      bevel(-34, -11, 68, 22, 5); cx.fillStyle = 'rgba(0,0,0,.65)'; cx.fill(); cx.strokeStyle = lvc; cx.lineWidth = 1.5; cx.stroke(); spaced('RANK', 0, -4, 5.5, lvc, 1.5); spaced(lvn, 0, 5, 9, '#fff', 2); cx.restore(); }
     { const n = Math.floor(clamp((t - .2) * 50, 0, 40)); mono('> SELECT A FILE TO BEGIN SIMULATION'.slice(0, n), 30, 98, 8.5, '#7fe0a8', 'left', 'normal'); }
     // 訓練の記録
     { const k = clamp((t - .3) * 5, 0, 1); cx.save(); cx.globalAlpha = k; const y = 116;
@@ -5187,14 +5208,26 @@ const Training = {
         if (g === 'S') { cx.save(); cx.globalCompositeOperation = 'lighter'; const gg = cx.createRadialGradient(0, 0, 2, 0, 0, 22); gg.addColorStop(0, `rgba(255,214,74,${.5 + .2 * Math.sin(gT * 6)})`); gg.addColorStop(1, 'rgba(255,214,74,0)'); cx.fillStyle = gg; circ(0, 0, 22); cx.fill(); cx.restore(); }
         serifText(g, 0, 0, 24, gradeCol[g], 'center', '900'); cx.restore();
       } else { cx.save(); cx.globalAlpha *= .5 + .5 * Math.sin(gT * 4 + i); mono('NO DATA', b.x + b.w - 14, b.y + 29, 9, '#7fe0a8', 'right'); cx.restore(); }
+      if (b.m.extra) { cx.save(); bevel(b.x, b.y, b.w, b.h, 12); cx.clip(); cx.fillStyle = `rgba(200,10,40,${.12 + .08 * Math.sin(gT * 5)})`; cx.fillRect(b.x, b.y, b.w, b.h); for (let x = b.x - 20 + (gT * 30) % 16; x < b.x + b.w; x += 16) { cx.fillStyle = 'rgba(255,204,26,.25)'; cx.beginPath(); cx.moveTo(x, b.y + b.h - 4); cx.lineTo(x + 8, b.y + b.h - 4); cx.lineTo(x + 4, b.y + b.h); cx.lineTo(x - 4, b.y + b.h); cx.fill(); } cx.restore();
+        cx.save(); cx.translate(b.x + b.w - 92, b.y + 13); cx.rotate(-.06); mono('TOP SECRET', 0, 0, 7, '#ff6b7d'); cx.restore(); }
+      if (g === 'S' || b.m.extra) { const pad = 2 + Math.sin(gT * 5 + i) * 2; corners(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2, 10, b.m.extra ? '#ff3b5c' : GOLD2, 1.5); }
       cx.restore();
     });
+    cx.save(); cx.globalCompositeOperation = 'lighter'; for (const p of this.spk) { const a = p.life / .6, r = 3 * a + 1; cx.fillStyle = `rgba(255,224,140,${a})`; cx.beginPath(); cx.moveTo(p.x, p.y - r * 2); cx.lineTo(p.x + r * .4, p.y); cx.lineTo(p.x, p.y + r * 2); cx.lineTo(p.x - r * .4, p.y); cx.closePath(); cx.fill(); cx.fillRect(p.x - r * 1.5, p.y - .4, r * 3, .8); } cx.restore();
     // 選んだときの演出
+    if (this.sel != null) { const b0 = this.btns[this.sel], lk = clamp(this.selT / .3, 0, 1), pad = 4 + (1 - lk) * 60; corners(b0.x - pad, b0.y - pad, b0.w + pad * 2, b0.h + pad * 2, 14, lk >= 1 ? '#ff3b5c' : '#7fe0a8', 2.5);
+      if (lk >= 1) { mono(Math.floor(gT * 8) % 2 ? '● LOCKED' : '○ LOCKED', b0.x + b0.w, b0.y - 10, 8, '#ff6b7d', 'right'); } }
     if (this.sel != null) {
       const st = this.selT, b = this.btns[this.sel];
       cx.save(); cx.globalCompositeOperation = 'lighter'; for (let k = 0; k < 2; k++) { cx.strokeStyle = k ? '#7fe0a8' : '#fff'; cx.globalAlpha = Math.max(0, 1 - st * 2); cx.lineWidth = 3 - k; circ(b.x + 32, b.y + 29, 20 + st * (400 + k * 200)); cx.stroke(); } cx.restore();
-      if (st > .25) { const k = clamp((st - .25) * 6, 0, 1); cx.fillStyle = `rgba(0,0,0,${k * .6})`; cx.fillRect(0, 0, W, H); cx.save(); cx.globalAlpha = k; cx.translate(W / 2, H / 2); cx.scale(2 - k, 2 - k); bigCall('SIMULATION START', 0, 0, 24, '#7fe0a8'); cx.restore(); }
+      if (st > .25) { const k = clamp((st - .25) * 6, 0, 1); cx.fillStyle = `rgba(0,0,0,${k * .6})`; cx.fillRect(0, 0, W, H); cx.save(); cx.globalAlpha = k; cx.translate(W / 2, H / 2); cx.scale(2 - k, 2 - k); bigCall('SIMULATION START', 0, 0, 24, '#7fe0a8'); cx.restore();
+        cx.save(); cx.globalAlpha = k; const lb = clamp((st - .3) / .35, 0, 1); cx.fillStyle = 'rgba(255,255,255,.12)'; cx.fillRect(W / 2 - 90, H / 2 + 26, 180, 6); cx.fillStyle = '#7fe0a8'; cx.fillRect(W / 2 - 90, H / 2 + 26, 180 * lb, 6); mono(`LOADING ${Math.floor(lb * 100)}%`, W / 2, H / 2 + 44, 8, '#7fe0a8'); cx.restore(); }
+      if (st > .5) { const q = clamp((st - .5) / .2, 0, 1); cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = 'rgba(127,224,168,.6)'; cx.lineWidth = 1; for (let y = 0; y < H * q; y += 16) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); } for (let x = 0; x < W; x += 16) { cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H * q); cx.stroke(); } cx.fillStyle = `rgba(127,224,168,${q * .5})`; cx.fillRect(0, 0, W, H * q); cx.restore(); }
     }
+    // ブラウン管の電源ON＋起動ログ
+    if (t < .45) { const a = t < .3 ? 1 : 1 - (t - .3) / .15; cx.fillStyle = `rgba(0,0,0,${a})`; cx.fillRect(0, 0, W, H);
+      const op = clamp(t / .12, 0, 1), hh = Math.max(2, op * op * H); cx.save(); cx.globalAlpha = a; cx.globalCompositeOperation = 'lighter'; const g = cx.createLinearGradient(0, H / 2 - hh / 2, 0, H / 2 + hh / 2); g.addColorStop(0, 'rgba(127,224,168,0)'); g.addColorStop(.5, `rgba(200,255,220,${t < .12 ? .9 : .2})`); g.addColorStop(1, 'rgba(127,224,168,0)'); cx.fillStyle = g; cx.fillRect(0, H / 2 - hh / 2, W, hh);
+      const L = ['> SIMULATOR BOOT v3.2', '> LOADING COMBAT DATA... OK', '> HOLOGRAM ENGINE... OK', '> READY'], n = Math.floor((t - .1) * 160); let left = n; L.forEach((l, i) => { mono(l.slice(0, Math.max(0, left)), 30, H / 2 - 30 + i * 16, 9, i === 3 ? GOLD2 : '#7fe0a8', 'left', 'normal'); left -= l.length; }); cx.restore(); }
     // 起動時の走査線
     if (t < .5) { const y = t / .5 * H; cx.save(); cx.globalCompositeOperation = 'lighter'; const g = cx.createLinearGradient(0, y - 40, 0, y); g.addColorStop(0, 'rgba(127,224,168,0)'); g.addColorStop(1, 'rgba(127,224,168,.45)'); cx.fillStyle = g; cx.fillRect(0, y - 40, W, 40); cx.fillStyle = 'rgba(220,255,235,.8)'; cx.fillRect(0, y, W, 2); cx.restore(); }
   },
