@@ -3532,6 +3532,7 @@ function Defuse(api) {
   const WC = [['赤', '#ff3046', '#6a0a14'], ['青', '#3a8cff', '#0c2a6a'], ['黄', '#ffd23a', '#6a4a08'], ['緑', '#3ad67a', '#0a4a22'], ['白', '#f2f2f2', '#6a6a6a']];
   let t = 0, time = TIME, bomb = 0, phase = 'dial', locks = 0, ang = -Math.PI / 2, spd = 2.4, dir = 1, zA = 0, zW = .8;
   let wires = [], order = '', target = -1, inkCol = '#fff', defused = 0, mistakes = 0, endT = -1, boomed = false, clearT = 0, lid = 0, lockFlash = 0, errFlash = 0, okFlash = 0, introT = .8, sparks = [];
+  let trail = [], boltT = [-9, -9, -9], streak = 0, steam = [], arcs = [], pulse = null, slideIn = 0, slideOut = 0, beat = 0, cracks = [], allClear = false, orderT = 0, embers = [], fireball = 0, debris = [];
   const wx = k => DX + (k - (wires.length - 1) / 2) * 54;
   function newZone() {
     zW = Math.max(.34, .8 - bomb * .08 - locks * .05); spd = 2.3 + bomb * .42 + locks * .22;
@@ -3552,11 +3553,10 @@ function Defuse(api) {
       () => { const ex = ri(0, n - 1), k = ex === 0 ? 1 : 0; return [`${nm(ex)}以外で一番左を切れ`, k]; },
     ];
     const r = (bomb === 0 ? R.slice(0, 2) : bomb === 1 ? R.slice(0, 5) : R)[ri(0, bomb === 0 ? 1 : bomb === 1 ? 4 : R.length - 1)]();
-    order = r[0]; target = r[1];
-    // 後半は文字色でひっかける
+    order = r[0]; target = r[1]; orderT = 0;
     inkCol = bomb >= 3 ? WC[pick(wires.filter((w, i) => i !== target)).c][1] : '#fff';
   }
-  function newBomb() { phase = 'dial'; locks = 0; lid = 0; introT = .7; ang = -Math.PI / 2; newZone(); tone(220, .12, 'square', .05); tone(330, .12, 'square', .05, 0, .1); }
+  function newBomb() { phase = 'dial'; locks = 0; lid = 0; introT = .7; slideIn = .35; ang = -Math.PI / 2; boltT = [-9, -9, -9]; wires = []; trail = []; newZone(); noise(.3, .15, 3000); tone(220, .12, 'square', .05); tone(330, .12, 'square', .05, 0, .1); tone(60, .25, 'sine', .3, -20, .2); }
   newZone();
   function finish() {
     const tb = defused === NB ? .2 * clamp(time / 15, 0, 1) : 0;
@@ -3564,122 +3564,176 @@ function Defuse(api) {
     api.end(rate, [`解除: ${defused} / ${NB} 個`, `ミス: ${mistakes} 回`, `残り時間: ${Math.max(0, time).toFixed(1)} 秒`], defused === NB ? 'BOMB DEFUSED!' : 'KABOOM...');
   }
   function penalty(sec, x, y) {
-    time -= sec; mistakes++; errFlash = 1; shake = 12; SFX.bad(); noise(.25, .3, 2500); flashFx(.35, '255,40,60');
-    popCall(`-${sec}秒`, x, y, '#ff6b7d', 22, .8);
+    time -= sec; mistakes++; errFlash = 1; shake = 14; streak = 0; SFX.bad(); noise(.3, .35, 2500); tone(110, .3, 'sawtooth', .07, -60); flashFx(.4, '255,40,60');
+    popCall(`-${sec}秒`, x, y, '#ff6b7d', 24, .8);
+    for (let i = 0; i < 3; i++) cracks.push({ x: x + rand(-30, 30), y: y + rand(-10, 30), seg: [...Array(5)].map(() => [rand(-30, 30), rand(-30, 30)]), t: 0 });
   }
   function tapDial() {
-    if (phase !== 'dial' || introT > 0) return;
-    let d = ((ang - zA) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+    if (phase !== 'dial' || introT > 0 || slideIn > 0) return;
+    const d = ((ang - zA) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
     if (Math.abs(d) <= zW / 2) {
-      locks++; lockFlash = 1; shake = 5; tone(1200 + locks * 200, .08, 'square', .06); noise(.08, .2, 4000);
-      const lx = DX + (locks - 2) * 30; burst(lx, DY + DR + 26, ['#7fffb0', '#fff'], 14, 160); ringFx(DX, DY, '#7fffb0', DR + 30, .35);
-      popCall(Math.abs(d) < zW * .15 ? 'PERFECT!' : 'LOCK!', DX, DY - DR - 22, Math.abs(d) < zW * .15 ? GOLD2 : '#7fffb0', 20, .6);
-      if (Math.abs(d) < zW * .15) time = Math.min(TIME, time + .5);
-      if (locks >= 3) { phase = 'wire'; makeWires(); SFX.reload(); tone(90, .3, 'sawtooth', .07, -30); }
+      const perf = Math.abs(d) < zW * .15;
+      locks++; lockFlash = 1; shake = perf ? 9 : 5; boltT[locks - 1] = t;
+      tone(1200 + locks * 200, .08, 'square', .06); noise(.1, .25, 4000); tone(90, .12, 'square', .07, -30);
+      const lx = DX + (locks - 2) * 30; burst(lx, DY + DR + 26, ['#7fffb0', '#fff'], 16, 180, .45, 2.5); ringFx(DX, DY, '#7fffb0', DR + 34, .35, 3);
+      const nx = DX + Math.cos(ang) * (DR - 10), ny = DY + Math.sin(ang) * (DR - 10); burst(nx, ny, perf ? [GOLD2, '#fff'] : ['#7fffb0', '#fff'], perf ? 24 : 12, 220, .5, 2.5);
+      if (perf) { streak++; time = Math.min(TIME, time + .5); flashFx(.25, '255,230,140'); ringFx(nx, ny, GOLD2, 60, .35, 3);
+        popCall(streak >= 2 ? `PERFECT ×${streak}!` : 'PERFECT!', DX, DY - 34, GOLD2, streak >= 2 ? 24 : 22, .7); tone(2093, .12, 'triangle', .05, 0, .05); if (streak >= 3) melody([[84, .2], [88, .2], [91, .4]], 480, 'square', .04); }
+      else { streak = 0; popCall('LOCK!', DX, DY - 34, '#7fffb0', 20, .6); }
+      if (locks >= 3) { phase = 'wire'; makeWires(); SFX.reload(); tone(90, .3, 'sawtooth', .07, -30); noise(.5, .25, 1200);
+        for (let i = 0; i < 26; i++) steam.push({ x: rand(40, W - 40), y: 426, vx: rand(-40, 40), vy: rand(-90, -30), life: rand(.5, 1.1), r: rand(6, 14) }); popCall('UNLOCKED', DX, 380, '#7fffb0', 18, .6); }
       else { dir *= bomb >= 1 ? -1 : 1; newZone(); }
     } else { penalty(3, DX, DY - DR - 22); dir *= -1; }
   }
   function cut(k) {
     if (phase !== 'wire' || lid < .9 || k < 0 || k >= wires.length || wires[k].cut) return;
-    const w = wires[k]; w.cut = 1; w.ct = 0; SFX.whoosh(); noise(.1, .3, 5000); tone(2400, .04, 'square', .04);
-    const y = 506;
+    const w = wires[k]; w.cut = 1; w.ct = 0; SFX.whoosh(); noise(.12, .35, 6000); tone(2400, .04, 'square', .04);
+    const y = 506, x = wx(k);
+    // 切断のスパーク（電撃）
+    for (let i = 0; i < 4; i++) arcs.push({ x, y, life: .25, seed: Math.random() * 100, col: k === target ? '#bfffe0' : '#9ad8ff' });
     if (k === target) {
-      defused++; phase = 'clear'; clearT = 1.0; okFlash = 1; shake = 10; flashFx(.5, '120,255,170');
-      burst(wx(k), y, ['#7fffb0', '#fff', GOLD2], 40, 260); ringFx(DX, 300, '#7fffb0', 200, .5, 4); ringFx(DX, 300, '#fff', 120, .35, 3);
-      popCall(defused === NB ? 'ALL CLEAR!' : 'DEFUSED!', DX, 250, '#7fffb0', 34, 1);
-      SFX.good(); melody([[79, .25], [84, .5]], 400, 'square', .06);
+      defused++; phase = 'clear'; clearT = 1.25; okFlash = 1; shake = 12; flashFx(.55, '120,255,170'); pulse = { x, t: 0 };
+      burst(x, y, ['#7fffb0', '#fff', GOLD2], 44, 280, .7, 3); ringFx(DX, 300, '#7fffb0', 220, .5, 4); ringFx(DX, 300, '#fff', 140, .35, 3);
+      popCall(defused === NB ? 'ALL CLEAR!' : 'DEFUSED!', DX, 250, '#7fffb0', defused === NB ? 40 : 34, 1.1);
+      SFX.good(); melody([[79, .25], [84, .5]], 400, 'square', .06); tone(60, .3, 'sine', .3, -20);
+      if (defused === NB) { allClear = true; for (let i = 0; i < 8; i++) setTimeout(() => { const fx = rand(40, W - 40), fy = rand(80, 380), h = rand(0, 360); burst(fx, fy, [`hsl(${h},100%,65%)`, '#fff', GOLD2], 34, 260, 1, 3); ringFx(fx, fy, `hsl(${h},100%,70%)`, 70, .4, 2); noise(.25, .1, 900); }, i * 140); }
     } else {
-      for (let i = 0; i < 18; i++) sparks.push({ x: wx(k), y, vx: rand(-160, 160), vy: rand(-220, -40), life: rand(.3, .6) });
-      penalty(5, wx(k), y - 40);
+      for (let i = 0; i < 24; i++) sparks.push({ x, y, vx: rand(-180, 180), vy: rand(-240, -40), life: rand(.3, .7) });
+      penalty(5, x, y - 40);
     }
   }
   return {
     update(dt) {
-      t += dt; lockFlash = Math.max(0, lockFlash - dt * 3); errFlash = Math.max(0, errFlash - dt * 3); okFlash = Math.max(0, okFlash - dt * 2);
+      t += dt; lockFlash = Math.max(0, lockFlash - dt * 3); errFlash = Math.max(0, errFlash - dt * 3); okFlash = Math.max(0, okFlash - dt * 2); beat = Math.max(0, beat - dt * 4);
       for (const s of sparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 500 * dt; s.life -= dt; } sparks = sparks.filter(s => s.life > 0);
+      for (const s of steam) { s.x += s.vx * dt; s.y += s.vy * dt; s.r += 20 * dt; s.life -= dt; } steam = steam.filter(s => s.life > 0);
+      for (const a of arcs) a.life -= dt; arcs = arcs.filter(a => a.life > 0);
+      for (const c of cracks) c.t += dt; cracks = cracks.filter(c => c.t < 1.2);
+      for (const d of debris) { d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 600 * dt; d.r += d.vr * dt; } debris = debris.filter(d => d.y < H + 20);
+      if (pulse) { pulse.t += dt; if (pulse.t > 1) pulse = null; }
+      if (Math.random() < .3) embers.push({ x: rand(0, W), y: H + 4, vy: rand(-50, -20), life: rand(2, 4) });
+      for (const e of embers) { e.y += e.vy * dt; e.life -= dt; } embers = embers.filter(e => e.life > 0);
       for (const w of wires) w.ct += dt;
+      orderT += dt; if (slideIn > 0) slideIn -= dt; if (fireball > 0) fireball += dt;
       if (endT >= 0) { endT -= dt; if (endT < 0) { endT = 0; finish(); } return; }
       if (introT > 0) introT -= dt;
       if (phase !== 'clear') time -= dt;
-      if (phase === 'dial' && introT <= 0) ang += spd * dir * dt;
+      if (phase === 'dial' && introT <= 0 && slideIn <= 0) { ang += spd * dir * dt; trail.push(ang); if (trail.length > 8) trail.shift(); }
       if (phase === 'wire') lid = Math.min(1, lid + dt * 3.5);
-      if (phase === 'clear') { clearT -= dt; if (clearT <= 0) { bomb++; if (bomb >= NB) { endT = 1.2; SFX.jingle && SFX.jingle(); } else newBomb(); } }
-      if (Math.floor(time) !== Math.floor(time + dt) && time > 0 && phase !== 'clear') tone(time < 10 ? 1760 : 1320, .04, 'square', .035);
+      if (phase === 'clear') { clearT -= dt; slideOut = clamp((.35 - clearT) / .35, 0, 1); if (clearT <= 0) { slideOut = 0; bomb++; if (bomb >= NB) { endT = 1.4; SFX.jingle && SFX.jingle(); } else newBomb(); } }
+      // 残り時間の音（10秒以下は心音、5秒以下は倍速）
+      const step = time < 5 ? .5 : 1, prev = time + dt;
+      if (Math.floor(time / step) !== Math.floor(prev / step) && time > 0 && phase !== 'clear') { tone(time < 10 ? 1760 : 1320, .04, 'square', .035); if (time < 10) { tone(60, .15, 'sine', .28, -20); beat = 1; if (time < 5) shake = Math.max(shake, 3); } }
       if (time <= 0 && endT < 0) { // 爆発
-        time = 0; boomed = true; endT = 2; shake = 34; flashFx(1, '255,200,120');
-        for (let i = 0; i < 6; i++) setTimeout(() => { boomFx(rand(40, W - 40), rand(150, 500), 2); SFX.boom(); }, i * 120);
-        boomFx(DX, DY, 3); noise(1.2, .5, 500); tone(40, 1.2, 'sawtooth', .12, -20);
+        time = 0; boomed = true; endT = 2.2; shake = 40; flashFx(1, '255,240,200'); fireball = .001;
+        for (let i = 0; i < 8; i++) setTimeout(() => { boomFx(rand(40, W - 40), rand(120, 540), 2.2); SFX.boom(); shake = 26; }, i * 110);
+        boomFx(DX, DY, 3.5); noise(1.5, .55, 400); tone(35, 1.5, 'sawtooth', .14, -15);
+        for (let i = 0; i < 26; i++) debris.push({ x: DX + rand(-60, 60), y: DY + rand(-60, 160), vx: rand(-420, 420), vy: rand(-620, -120), r: 0, vr: rand(-12, 12), s: rand(5, 14), col: pick(['#3a3a44', '#5a5a66', '#22222a', '#ffcc1a']) });
       }
     },
     draw() {
+      const tt = Math.max(0, time), warn = tt < 10 && phase !== 'clear' && !boomed, crit = tt < 5 && warn;
       // 地下の爆弾処理室
-      const bg = cx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#120a10'); bg.addColorStop(1, '#05040a'); cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+      const bg = cx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#140a12'); bg.addColorStop(1, '#05040a'); cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
       cx.strokeStyle = 'rgba(255,255,255,.035)'; cx.lineWidth = 1; for (let y = 60; y < H; y += 24) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
-      // 回転灯
-      cx.save(); cx.globalCompositeOperation = 'lighter';
-      for (const [lx, ph] of [[18, 0], [W - 18, Math.PI]]) { const a = gT * 4 + ph; const g = cx.createRadialGradient(lx, 56, 0, lx, 56, 260); g.addColorStop(0, 'rgba(255,40,40,.35)'); g.addColorStop(1, 'rgba(255,40,40,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(lx, 56); cx.arc(lx, 56, 260, a, a + .5); cx.closePath(); cx.fill(); cx.fillStyle = `rgba(255,60,60,${.6 + .4 * Math.sin(gT * 8)})`; circ(lx, 56, 5); cx.fill(); }
+      // 流れる回路の光
+      cx.save(); cx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 6; i++) { const y = 70 + i * 96, x = ((t * 140 + i * 97) % (W + 80)) - 40; const g = cx.createLinearGradient(x - 40, 0, x, 0); g.addColorStop(0, 'rgba(255,60,80,0)'); g.addColorStop(1, `rgba(${okFlash > 0 ? '120,255,170' : '255,60,80'},.35)`); cx.fillStyle = g; cx.fillRect(x - 40, y, 40, 2); }
+      // 回転灯＋走査レーザー
+      for (const [lx, ph] of [[18, 0], [W - 18, Math.PI]]) { const a = gT * (warn ? 7 : 4) + ph; const g = cx.createRadialGradient(lx, 56, 0, lx, 56, 280); g.addColorStop(0, `rgba(255,40,40,${warn ? .5 : .35})`); g.addColorStop(1, 'rgba(255,40,40,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(lx, 56); cx.arc(lx, 56, 280, a, a + .5); cx.closePath(); cx.fill(); cx.fillStyle = `rgba(255,60,60,${.6 + .4 * Math.sin(gT * 8)})`; circ(lx, 56, 5); cx.fill(); }
+      const ly = 80 + ((t * 120) % 520); cx.fillStyle = 'rgba(255,40,70,.18)'; cx.fillRect(0, ly, W, 2); cx.fillStyle = 'rgba(255,40,70,.06)'; cx.fillRect(0, ly - 10, W, 10);
+      for (const e of embers) { cx.fillStyle = `rgba(255,140,80,${Math.min(1, e.life / 1.5) * .5})`; cx.fillRect(e.x + Math.sin(gT * 2 + e.y * .05) * 4, e.y, 2, 2); }
       cx.restore();
       cx.save(); if (shake > 0) cx.translate(rand(-shake, shake) * .5, rand(-shake, shake) * .5);
+      // 爆弾の入れ替え（右から滑り込み／左へ退場）
+      const sIn = slideIn > 0 ? Math.pow(slideIn / .35, 2) * W : 0, sOut = -Math.pow(slideOut, 2) * W * 1.1;
+      cx.translate(sIn + sOut, 0);
+      if (crit) { const z = 1 + beat * .02; cx.translate(DX, 330); cx.scale(z, z); cx.translate(-DX, -330); }
       // 爆弾ケース
       const cg = cx.createLinearGradient(0, 70, 0, 600); cg.addColorStop(0, '#3a3a44'); cg.addColorStop(1, '#16161c');
-      bevel(22, 70, W - 44, 530, 16); cx.fillStyle = cg; cx.fill(); cx.strokeStyle = errFlash > 0 ? `rgba(255,60,80,${.5 + errFlash * .5})` : okFlash > 0 ? `rgba(120,255,170,${.5 + okFlash * .5})` : 'rgba(212,175,55,.45)'; cx.lineWidth = 2; cx.stroke();
+      bevel(22, 70, W - 44, 530, 16); cx.fillStyle = cg; cx.fill();
+      cx.save(); bevel(22, 70, W - 44, 530, 16); cx.clip(); cx.globalCompositeOperation = 'lighter'; const shx = 22 + ((t * 90) % (W + 200)) - 100, shg = cx.createLinearGradient(shx, 0, shx + 70, 0); shg.addColorStop(0, 'rgba(255,255,255,0)'); shg.addColorStop(.5, 'rgba(255,255,255,.05)'); shg.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = shg; cx.fillRect(shx, 70, 70, 530);
+      if (warn) { cx.fillStyle = `rgba(255,30,50,${.05 + beat * .15})`; cx.fillRect(22, 70, W - 44, 530); } cx.restore();
+      bevel(22, 70, W - 44, 530, 16); cx.strokeStyle = errFlash > 0 ? `rgba(255,60,80,${.5 + errFlash * .5})` : okFlash > 0 ? `rgba(120,255,170,${.5 + okFlash * .5})` : warn ? `rgba(255,60,80,${.4 + beat * .6})` : 'rgba(212,175,55,.45)'; cx.lineWidth = 2; cx.stroke();
       for (const [bx, by] of [[36, 84], [W - 36, 84], [36, 586], [W - 36, 586]]) { cx.fillStyle = '#8a8a94'; circ(bx, by, 4); cx.fill(); cx.strokeStyle = '#333'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(bx - 3, by); cx.lineTo(bx + 3, by); cx.stroke(); }
-      // 黄黒の警告帯
       cx.save(); cx.beginPath(); cx.rect(34, 94, W - 68, 10); cx.clip(); for (let x = 20 - (gT * 20) % 20; x < W; x += 20) { cx.fillStyle = '#ffcc1a'; cx.beginPath(); cx.moveTo(x, 94); cx.lineTo(x + 10, 94); cx.lineTo(x, 104); cx.lineTo(x - 10, 104); cx.fill(); } cx.restore();
-      // 液晶タイマー
+      // 液晶タイマー（10秒以下で脈動）
       bevel(70, 112, W - 140, 52, 8); cx.fillStyle = '#070205'; cx.fill(); cx.strokeStyle = 'rgba(255,60,80,.4)'; cx.lineWidth = 1; cx.stroke();
-      const tt = Math.max(0, time), warn = tt < 10, blink = warn && Math.floor(t * 6) % 2;
-      cx.save(); cx.shadowColor = okFlash > 0 ? '#7fffb0' : '#ff2040'; cx.shadowBlur = 14;
-      mono(`${String(Math.floor(tt / 60)).padStart(2, '0')}:${(tt % 60).toFixed(2).padStart(5, '0')}`, DX, 140, 34, phase === 'clear' ? '#7fffb0' : blink ? '#ff9aa8' : '#ff2a44');
+      const blink = warn && Math.floor(t * (crit ? 10 : 6)) % 2;
+      cx.save(); cx.translate(DX, 140); if (warn) { const z = 1 + beat * .12; cx.scale(z, z); } cx.shadowColor = okFlash > 0 || phase === 'clear' ? '#7fffb0' : '#ff2040'; cx.shadowBlur = 14 + beat * 14;
+      mono(`${String(Math.floor(tt / 60)).padStart(2, '0')}:${(tt % 60).toFixed(2).padStart(5, '0')}`, 0, 0, 34, phase === 'clear' ? '#7fffb0' : blink ? '#ffd0d6' : '#ff2a44');
       cx.restore();
       spaced('BOMB', 84, 124, 7, '#ff6b7d', 1.5, 'left');
       for (let i = 0; i < NB; i++) { const st = i < defused ? 2 : i === bomb ? 1 : 0; cx.fillStyle = st === 2 ? '#3ad67a' : st === 1 ? (Math.floor(t * 4) % 2 ? '#ff3046' : '#6a0a14') : '#2a2a30'; circ(84 + i * 9 + 4, 154, 3); cx.fill(); }
       spaced(phase === 'clear' ? 'SAFE' : 'ARMED', W - 84, 124, 7, phase === 'clear' ? '#7fffb0' : '#ff6b7d', 1.5, 'right');
+      if (streak >= 2) { cx.save(); cx.globalAlpha = .7 + .3 * Math.sin(t * 10); spaced(`PERFECT ×${streak}`, W - 84, 154, 7, GOLD2, 1.5, 'right'); cx.restore(); }
       // ダイヤル錠
       cx.save(); cx.translate(DX, DY);
       const dg = cx.createRadialGradient(-20, -20, 10, 0, 0, DR + 14); dg.addColorStop(0, '#5a5a66'); dg.addColorStop(1, '#1a1a22'); cx.fillStyle = dg; circ(0, 0, DR + 12); cx.fill();
       cx.strokeStyle = 'rgba(212,175,55,.6)'; cx.lineWidth = 2; circ(0, 0, DR + 12); cx.stroke();
+      // ロックボルト（外周の3本が締まる）
+      for (let i = 0; i < 3; i++) { const a = -Math.PI / 2 + (i - 1) * 2.1, done = i < locks || phase !== 'dial', k2 = clamp((t - boltT[i]) * 8, 0, 1), out = done ? (boltT[i] > 0 ? k2 : 1) * 12 : 0;
+        cx.save(); cx.rotate(a); cx.fillStyle = done ? '#3ad67a' : '#6a6a74'; cx.fillRect(DR + 6 + out, -5, 14, 10); cx.fillStyle = 'rgba(255,255,255,.3)'; cx.fillRect(DR + 6 + out, -5, 14, 2); cx.restore(); }
       for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2; cx.strokeStyle = i % 5 ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.6)'; cx.lineWidth = i % 5 ? 1 : 2; cx.beginPath(); cx.moveTo(Math.cos(a) * (DR - (i % 5 ? 4 : 8)), Math.sin(a) * (DR - (i % 5 ? 4 : 8))); cx.lineTo(Math.cos(a) * DR, Math.sin(a) * DR); cx.stroke(); }
       if (phase === 'dial') {
         cx.save(); cx.globalCompositeOperation = 'lighter'; const za = .5 + .3 * Math.sin(t * 10);
         cx.strokeStyle = `rgba(60,255,140,${za})`; cx.lineWidth = 14; cx.beginPath(); cx.arc(0, 0, DR - 14, zA - zW / 2, zA + zW / 2); cx.stroke();
-        cx.strokeStyle = `rgba(255,230,120,${za})`; cx.lineWidth = 14; cx.beginPath(); cx.arc(0, 0, DR - 14, zA - zW * .075, zA + zW * .075); cx.stroke(); cx.restore();
+        cx.strokeStyle = `rgba(255,230,120,${za})`; cx.beginPath(); cx.arc(0, 0, DR - 14, zA - zW * .075, zA + zW * .075); cx.stroke();
+        // 針の残像
+        trail.forEach((a, i) => { cx.strokeStyle = `rgba(255,60,80,${(i + 1) / trail.length * .25})`; cx.lineWidth = 4; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(Math.cos(a) * (DR - 6), Math.sin(a) * (DR - 6)); cx.stroke(); });
+        cx.restore();
       }
-      // 針
       const na = phase === 'dial' ? ang : zA;
-      cx.save(); cx.rotate(na); cx.shadowColor = '#ff2040'; cx.shadowBlur = 10; cx.strokeStyle = '#ff3046'; cx.lineWidth = 4; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(-10, 0); cx.lineTo(DR - 6, 0); cx.stroke(); cx.restore();
+      cx.save(); cx.rotate(na); cx.shadowColor = '#ff2040'; cx.shadowBlur = 12; cx.strokeStyle = '#ff3046'; cx.lineWidth = 4; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(-10, 0); cx.lineTo(DR - 6, 0); cx.stroke(); cx.fillStyle = '#fff'; circ(DR - 8, 0, 2.5); cx.fill(); cx.restore();
       const hg = cx.createRadialGradient(-4, -4, 1, 0, 0, 16); hg.addColorStop(0, '#fff6d0'); hg.addColorStop(1, '#8a6a20'); cx.fillStyle = hg; circ(0, 0, 14); cx.fill();
-      if (lockFlash > 0) { cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(120,255,170,${lockFlash * .4})`; circ(0, 0, DR + 12); cx.fill(); }
+      if (lockFlash > 0) { cx.globalCompositeOperation = 'lighter'; cx.fillStyle = `rgba(120,255,170,${lockFlash * .45})`; circ(0, 0, DR + 12); cx.fill(); }
       cx.restore();
-      // ロック表示
       for (let i = 0; i < 3; i++) { const on = i < locks || phase !== 'dial'; const lx = DX + (i - 1) * 30, ly = DY + DR + 26; bevel(lx - 11, ly - 7, 22, 14, 4); cx.fillStyle = on ? '#3ad67a' : '#2a1014'; cx.fill(); if (on) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(120,255,170,.35)'; circ(lx, ly, 14); cx.fill(); cx.restore(); } }
-      // 指令ストリップ
-      bevel(36, 384, W - 72, 34, 6); cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fill(); cx.strokeStyle = 'rgba(212,175,55,.4)'; cx.lineWidth = 1; cx.stroke();
+      // 指令ストリップ（指示はデコード風に出現）
+      bevel(36, 384, W - 72, 34, 6); cx.fillStyle = 'rgba(0,0,0,.75)'; cx.fill(); cx.strokeStyle = phase === 'wire' ? `rgba(255,214,120,${.4 + .3 * Math.sin(t * 8)})` : 'rgba(212,175,55,.4)'; cx.lineWidth = 1; cx.stroke();
       if (phase === 'dial') { spaced('STAGE 1 · DIAL LOCK', 48, 394, 6.5, GOLD, 1.5, 'left'); text('緑のゾーンで針を止めろ（タップ）', DX, 407, 12.5, '#e2dccb', 'center', 'normal'); }
-      else if (phase === 'wire') { spaced('STAGE 2 · CUT THE WIRE', 48, 394, 6.5, GOLD, 1.5, 'left'); cx.save(); cx.shadowColor = 'rgba(0,0,0,.9)'; cx.shadowBlur = 4; text('▶ ' + order, DX, 408, 15, inkCol); cx.restore(); }
+      else if (phase === 'wire') { spaced('STAGE 2 · CUT THE WIRE', 48, 394, 6.5, GOLD, 1.5, 'left'); const n = Math.floor(orderT * 40), HX = '#$%&@*01'; const s2 = [...order].map((c, i) => i < n ? c : HX[Math.floor(Math.random() * HX.length)]).join(''); cx.save(); cx.shadowColor = 'rgba(0,0,0,.9)'; cx.shadowBlur = 4; text('▶ ' + s2, DX, 408, 15, inkCol); cx.restore(); }
       else text(defused >= NB ? '全弾解除！' : '解除成功 ── 次の爆弾へ', DX, 401, 14, '#7fffb0');
       // 配線パネル
       bevel(36, 426, W - 72, 160, 8); cx.fillStyle = '#0c0c12'; cx.fill(); cx.strokeStyle = 'rgba(255,255,255,.12)'; cx.stroke();
       cx.fillStyle = '#2a2a30'; cx.fillRect(48, 436, W - 96, 12); cx.fillRect(48, 564, W - 96, 12);
       wires.forEach((w, k) => {
-        const x = wx(k), [, c, d] = WC[w.c], wv = Math.sin(k * 2.1) * 10;
+        const x = wx(k), [, c, d] = WC[w.c], wv = Math.sin(k * 2.1) * 10 + (w.cut ? 0 : Math.sin(t * 3 + k) * 1.5);
         const draw = (y0, y1) => { cx.strokeStyle = d; cx.lineWidth = 9; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(x, y0); cx.bezierCurveTo(x + wv, y0 + 40, x - wv, y1 - 40, x, y1); cx.stroke(); cx.strokeStyle = c; cx.lineWidth = 6; cx.stroke(); cx.strokeStyle = 'rgba(255,255,255,.35)'; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(x - 1.5, y0); cx.bezierCurveTo(x + wv - 1.5, y0 + 40, x - wv - 1.5, y1 - 40, x - 1.5, y1); cx.stroke(); };
-        if (!w.cut) draw(442, 570);
-        else { const o = Math.min(1, w.ct * 4) * 8; cx.save(); cx.beginPath(); cx.rect(36, 426, W - 72, 72 - o); cx.clip(); draw(442, 570); cx.restore(); cx.save(); cx.beginPath(); cx.rect(36, 514 + o, W - 72, 80); cx.clip(); draw(442, 570); cx.restore();
-          cx.fillStyle = '#e0a060'; cx.fillRect(x - 2, 496 - o, 4, 4); cx.fillRect(x - 2, 514 + o, 4, 4); }
+        if (!w.cut) { draw(442, 570); // 電流が流れる
+          cx.save(); cx.globalCompositeOperation = 'lighter'; const py = 442 + ((t * 160 + k * 37) % 128); cx.fillStyle = 'rgba(255,255,255,.5)'; circ(x + Math.sin((py - 442) / 128 * Math.PI) * wv * .3, py, 2.5); cx.fill(); cx.restore(); }
+        else { const o = Math.min(1, w.ct * 4) * 10; cx.save(); cx.beginPath(); cx.rect(36, 426, W - 72, 72 - o); cx.clip(); draw(442, 570); cx.restore(); cx.save(); cx.beginPath(); cx.rect(36, 514 + o, W - 72, 80); cx.clip(); draw(442, 570); cx.restore();
+          cx.fillStyle = '#e0a060'; cx.fillRect(x - 2, 496 - o, 4, 4); cx.fillRect(x - 2, 514 + o, 4, 4);
+          if (w.ct < 1 && Math.random() < .5) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.fillStyle = 'rgba(255,220,120,.8)'; circ(x + rand(-3, 3), 498 - o + rand(-2, 2), 2); cx.fill(); cx.restore(); } }
         cx.fillStyle = '#c9a85a'; circ(x, 442, 5); cx.fill(); circ(x, 570, 5); cx.fill();
-        mono(String(k + 1), x, 588 - 2, 8, '#6a6a74');
+        mono(String(k + 1), x, 586, 8, '#6a6a74');
       });
+      // 正解の線から緑の光が回路を駆け上がる
+      if (pulse) { cx.save(); cx.globalCompositeOperation = 'lighter'; const q = pulse.t; for (let i = 0; i < 6; i++) { const yy = 500 - q * 420 - i * 14; if (yy < 120) continue; cx.fillStyle = `rgba(120,255,170,${.7 - i * .1})`; circ(lerp(pulse.x, DX, clamp((500 - yy) / 380, 0, 1)), yy, 5 - i * .6); cx.fill(); } cx.restore(); }
+      // 電撃アーク
+      for (const a of arcs) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = a.col; cx.lineWidth = 1.5; cx.globalAlpha = a.life / .25; cx.beginPath(); let px = a.x, py = a.y; cx.moveTo(px, py); const ang2 = a.seed; for (let i = 0; i < 6; i++) { px += Math.cos(ang2 + i) * 8 + rand(-6, 6); py += Math.sin(ang2 * 1.7 + i) * 8 + rand(-6, 6); cx.lineTo(px, py); } cx.stroke(); cx.restore(); }
       // カバー（ダイヤル解除で開く）
-      if (lid < 1) { const ly = 426 - lid * 170; cx.save(); cx.beginPath(); cx.rect(36, 426, W - 72, 160); cx.clip();
-        const lg = cx.createLinearGradient(0, ly, 0, ly + 160); lg.addColorStop(0, '#4a4a54'); lg.addColorStop(1, '#22222a'); cx.fillStyle = lg; cx.fillRect(36, ly, W - 72, 160);
-        for (let x = 50; x < W - 40; x += 24) { cx.fillStyle = 'rgba(0,0,0,.3)'; cx.fillRect(x, ly + 10, 12, 140); }
-        bevel(DX - 50, ly + 62, 100, 36, 6); cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fill(); spaced('LOCKED', DX, ly + 80, 10, '#ff6b7d', 3); cx.restore(); }
-      // 火花
+      if (lid < 1) { const lyy = 426 - lid * 170; cx.save(); cx.beginPath(); cx.rect(36, 426, W - 72, 160); cx.clip();
+        const lg = cx.createLinearGradient(0, lyy, 0, lyy + 160); lg.addColorStop(0, '#4a4a54'); lg.addColorStop(1, '#22222a'); cx.fillStyle = lg; cx.fillRect(36, lyy, W - 72, 160);
+        for (let x = 50; x < W - 40; x += 24) { cx.fillStyle = 'rgba(0,0,0,.3)'; cx.fillRect(x, lyy + 10, 12, 140); }
+        bevel(DX - 50, lyy + 62, 100, 36, 6); cx.fillStyle = 'rgba(0,0,0,.6)'; cx.fill(); spaced('LOCKED', DX, lyy + 80, 10, '#ff6b7d', 3); cx.restore(); }
+      for (const s of steam) { cx.fillStyle = `rgba(220,220,230,${s.life * .25})`; circ(s.x, s.y, s.r); cx.fill(); }
       for (const s of sparks) { cx.fillStyle = `rgba(255,${180 + Math.random() * 70},80,${s.life * 2})`; cx.fillRect(s.x, s.y, 2.5, 2.5); }
+      // 解除済みスタンプ（退場時）
+      if (phase === 'clear' && clearT < 1.1) { const k = clamp((1.25 - clearT) * 6, 0, 1); cx.save(); cx.translate(DX, 300); cx.rotate(-.18); cx.scale(2.4 - 1.4 * k, 2.4 - 1.4 * k); cx.globalAlpha = k; rectStamp(0, 0, 'SAFE', '#3ad67a', 0, 26); cx.restore(); }
       cx.restore();
-      if (introT > 0 && phase === 'dial' && endT < 0) { const k = clamp(introT / .7, 0, 1); cx.save(); cx.globalAlpha = k; bigCall(`BOMB ${bomb + 1} / ${NB}`, DX, DY, 30, '#ff6b7d'); cx.restore(); }
-      if (boomed) { cx.fillStyle = `rgba(255,120,40,${clamp(endT / 2, 0, 1) * .4})`; cx.fillRect(0, 0, W, H); cx.save(); cx.translate(DX, 300); const s = 1 + (2 - endT) * .1; cx.scale(s, s); bigCall('KABOOM!!', 0, 0, 46, '#ff4a2a'); cx.restore(); }
+      // ひび割れ（ミス時）
+      for (const c of cracks) { cx.save(); cx.globalAlpha = 1 - c.t / 1.2; cx.strokeStyle = '#fff'; cx.lineWidth = 1.2; cx.beginPath(); cx.moveTo(c.x, c.y); let px = c.x, py = c.y; for (const [dx, dy] of c.seg) { px += dx; py += dy; cx.lineTo(px, py); } cx.stroke(); cx.restore(); }
+      if (introT > 0 && phase === 'dial' && endT < 0) { const k = clamp(introT / .7, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(DX, DY); cx.scale(1 + (1 - k) * .6, 1 + (1 - k) * .6); bigCall(`BOMB ${bomb + 1} / ${NB}`, 0, 0, 32, '#ff6b7d'); cx.restore(); }
+      // 爆発：火球と破片
+      if (boomed) {
+        const fq = clamp(fireball / 1.2, 0, 1); cx.save(); cx.globalCompositeOperation = 'lighter';
+        const fg = cx.createRadialGradient(DX, DY, 0, DX, DY, 60 + fq * 520); fg.addColorStop(0, `rgba(255,255,220,${1 - fq})`); fg.addColorStop(.3, `rgba(255,160,60,${.9 * (1 - fq)})`); fg.addColorStop(1, 'rgba(120,20,10,0)'); cx.fillStyle = fg; cx.fillRect(0, 0, W, H); cx.restore();
+        for (const d of debris) { cx.save(); cx.translate(d.x, d.y); cx.rotate(d.r); cx.fillStyle = d.col; cx.fillRect(-d.s / 2, -d.s / 3, d.s, d.s * .66); cx.restore(); }
+        cx.fillStyle = `rgba(30,10,5,${clamp((fireball - .6) * .5, 0, .5)})`; cx.fillRect(0, 0, W, H);
+        cx.save(); cx.translate(DX, 300); const s = 1 + Math.min(1, fireball) * .25 + Math.sin(t * 30) * .02; cx.scale(s, s); bigCall('KABOOM!!', 0, 0, 52, '#ff4a2a'); cx.restore();
+        cx.save(); cx.strokeStyle = 'rgba(255,255,255,.6)'; cx.lineWidth = 1.5; for (let i = 0; i < 7; i++) { cx.beginPath(); cx.moveTo(DX, 300); let px = DX, py = 300; const a = i / 7 * Math.PI * 2 + .3; for (let k = 0; k < 6; k++) { px += Math.cos(a + Math.sin(k * 3 + i) * .4) * 30; py += Math.sin(a + Math.sin(k * 3 + i) * .4) * 30; cx.lineTo(px, py); } cx.stroke(); } cx.restore();
+      }
+      if (allClear && endT >= 0) { const k = clamp((1.4 - endT) * 4, 0, 1); cx.save(); cx.globalAlpha = k; cx.fillStyle = 'rgba(0,30,15,.45)'; cx.fillRect(0, 230, W, 120); cx.translate(DX, 290); cx.scale(1 + (1 - k) * 1.5, 1 + (1 - k) * 1.5); bigCall('MISSION ACCOMPLISHED', 0, 0, 26, '#7fffb0'); cx.restore(); }
       text(phase === 'wire' ? '指示どおりの線をタップ（1〜5キー）' : 'タップ / スペースで針を止める', DX, 622, 11, '#8f876f', 'center', 'normal');
       hud('OP-EX 爆弾解除', time, `💣 ${defused}/${NB}`);
     },
@@ -3691,7 +3745,7 @@ function Defuse(api) {
       if (phase === 'dial' && (code === 'Space' || code === 'Enter')) tapDial();
       const m = /^Digit([1-5])$/.exec(code); if (m) cut(+m[1] - 1);
     },
-    dbg: { get phase() { return phase; }, get target() { return target; }, get zone() { return [zA, ang]; }, set ang(v) { ang = v; }, get defused() { return defused; }, set time(v) { time = v; } },
+    dbg: { get phase() { return phase; }, get target() { return target; }, get zone() { return [zA, ang]; }, set ang(v) { ang = v; }, get defused() { return defused; }, set time(v) { time = v; }, get ready() { return introT <= 0 && slideIn <= 0; } },
   };
 }
 
