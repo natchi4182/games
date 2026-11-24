@@ -290,7 +290,7 @@ addEventListener('visibilitychange', () => { if (document.hidden && OPENING && !
 function bgmTick() {
   if (scene !== Play) { hurryG = 0; bgmHype = 0; }
   if (!AC) return; bgmInit(); if (!BGM.gain) return;
-  const now = AC.currentTime, raw = bgmWant(), useOp = raw === 'theme' && OPENING && !OPENING.bad, want = useOp ? null : raw;
+  const now = AC.currentTime, raw = bgmWant(), useOp = (raw === 'theme' || (scene === Final && raw)) && OPENING && !OPENING.bad, want = useOp ? null : raw;
   openingTick(useOp);
   if (want !== BGM.want) {
     BGM.want = want; BGM.gain.gain.cancelScheduledValues(now); BGM.gain.gain.setValueAtTime(BGM.gain.gain.value, now); BGM.gain.gain.linearRampToValueAtTime(0, now + .35);
