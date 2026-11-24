@@ -269,6 +269,7 @@ function bgmWant() {
   if (scene === Prologue || scene === Briefing || scene === Training) return 'brief';
   if (scene === Play) return Play.done ? null : Play.m.id;
   if (scene === Result) return Result.t > (Result.R || 0) + .9 ? 'report' : null;
+  if (scene === Fest) return Fest.t > 3 ? (Fest.kind === 'eve' ? 'delivery' : 'victory') : null;
   if (scene === NameEntry) return 'victory';
   if (scene === Ranking) return 'report';
   if (scene === Final) return Final.t > 3 ? (Final.good ? 'victory' : 'gloom') : null;
@@ -5187,6 +5188,127 @@ const Ranking = {
   down(x, y) { if (this.t < 3.3) { this.t = 3.3; for (let i = 0; i < RANK_N; i++) { this.ev['w' + i] = 1; this.ev['r' + i] = 1; for (let k = 0; k < 12; k++) this.ev[`f${i}_${k}`] = 1; } this.ev.in = this.ev.slam = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
+// 12/24・12/25・1/1 だけの特別な起動演出
+const Fest = {
+  ...BtnMix,
+  enter() {
+    this.t = 0; this.ev = {}; this.sh = 0; this.fl = 0; this.flc = '255,250,230'; this.fw = 0; this.conf = []; this.trail = []; this.rain = [];
+    this.kind = NY ? 'ny' : SEASON.xday ? 'xmas' : 'eve';
+    this.orn = [...Array(22)].map((_, i) => { const tier = i % 4, row = Math.random(); return { u: rand(-1, 1), v: .18 + (i / 22) * .8, c: pick(['#ff3046', GOLD2, '#3a8cff', '#ff9aef', '#fff', '#3ad67a']), at: 1.3 + (1 - i / 22) * .9 }; });
+  },
+  once(k, at) { if (!this.ev[k] && this.t >= at) { this.ev[k] = 1; return true; } return false; },
+  boom(x, y, cols, big = 1) { burst(x, y, cols, 40 * big, 260 * big, 1.1, 3); ringFx(x, y, cols[0], 80 * big, .45, 3); noise(.3, .12, 900); },
+  update(dt) {
+    const t = this.t += dt, K = this.kind;
+    if (K === 'eve') {
+      if (this.once('bell', .2)) SFX.jingle();
+      if (t > .4 && t < 3.2) { const q = (t - .4) / 2.6, x = lerp(-120, W + 120, q), y = 380 - Math.sin(q * Math.PI) * 220; for (let k = 0; k < 3; k++) this.trail.push({ x: x - 30 + rand(-6, 6), y: y + 8 + rand(-4, 4), life: rand(.6, 1.4) }); }
+      if (this.once('slam', 2.8)) { this.sh = 18; this.fl = .8; noise(.7, .4, 800); tone(55, .8, 'sawtooth', .1, -20); for (let i = 0; i < 4; i++) setTimeout(() => this.boom(rand(40, W - 40), rand(60, 260), [`hsl(${rand(0, 360)},100%,65%)`, GOLD2, '#fff']), i * 150); }
+    } else if (K === 'xmas') {
+      if (this.once('grow', .1)) { noise(.8, .2, 3000); tone(220, 1.2, 'triangle', .05, 440); }
+      this.orn.forEach((o, i) => { if (this.once('o' + i, o.at)) tone(1200 + i * 60, .05, 'triangle', .03); });
+      if (this.once('star', 2.25)) { this.sh = 14; this.fl = .7; this.boom(W / 2, 150, [GOLD2, '#fff', '#ffe9a0'], 1.6); tone(1568, .2, 'square', .05); }
+      if (this.once('slam', 2.6)) { SFX.jingle(); for (let k = 0; k < 80; k++) this.conf.push({ x: W / 2 + rand(-40, 40), y: 150, vx: rand(-300, 300), vy: rand(-420, -120), rot: rand(0, 6), vr: rand(-10, 10), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff']) }); }
+    } else {
+      for (const [k, at] of [['d0', .25], ['d1', .55], ['d2', .85], ['d3', 1.0], ['d4', 1.15]]) if (this.once(k, at)) { tone(55, .35, 'sine', .4, -25); noise(.15, .3, 300); this.sh = 8; }
+      ['謹', '賀', '新', '年'].forEach((c, i) => { if (this.once('k' + i, 2.3 + i * .28)) { SFX.stamp(); this.sh = 12; this.fl = .25; burst(W / 2 + (i - 1.5) * 76, 150, [GOLD2, '#ff3b5c', '#fff'], 20, 220, .6, 3); } });
+      if (this.once('fan', 3.5)) { melody([[74, .5], [76, .5], [79, .5], [81, .5], [84, 1.5]], 180, 'triangle', .06); this.fl = .5; for (let i = 0; i < 5; i++) setTimeout(() => this.boom(rand(40, W - 40), rand(60, 300), [GOLD2, '#ffe9a0', '#ff3b5c']), i * 160); }
+      if (t > 3.4 && Math.random() < .25) this.rain.push({ x: rand(10, W - 10), y: -20, vy: rand(80, 160), r: rand(-.5, .5), vr: rand(-2, 2) });
+    }
+    // 共通：花火・紙吹雪
+    if (t > 3) { this.fw -= dt; if (this.fw <= 0) { this.fw = rand(.35, .7); const h = K === 'ny' ? pick([40, 50, 0, 350]) : rand(0, 360); this.boom(rand(30, W - 30), rand(50, 300), [`hsl(${h},100%,65%)`, `hsl(${(h + 40) % 360},100%,80%)`, '#fff']); }
+      if (Math.random() < .35) this.conf.push({ x: rand(0, W), y: -10, vx: rand(-30, 30), vy: rand(60, 140), rot: rand(0, 6), vr: rand(-8, 8), col: K === 'ny' ? pick([GOLD2, '#ff3b5c', '#fff']) : pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff']) }); }
+    for (const c of this.conf) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy = Math.min(c.vy + 160 * dt, 170); c.rot += c.vr * dt; c.vx += Math.sin(gT * 3 + c.rot) * 30 * dt; } this.conf = this.conf.filter(c => c.y < H + 10);
+    for (const p of this.trail) p.life -= dt; this.trail = this.trail.filter(p => p.life > 0);
+    for (const r of this.rain) { r.y += r.vy * dt; r.r += r.vr * dt; } this.rain = this.rain.filter(r => r.y < H + 30);
+    this.sh = Math.max(0, this.sh - dt * 40); this.fl = Math.max(0, this.fl - dt * 2.5);
+    if (t > 9) go(Title);
+  },
+  drawSleigh(x, y, s) {
+    cx.save(); cx.translate(x, y); cx.scale(s, s);
+    drawReindeer(78, -2, .85, gT * 1.5, 1, '#ff2a3a'); drawReindeer(48, 2, .85, gT * 1.5 + .4, 1);
+    cx.strokeStyle = GOLD; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(18, -2); cx.lineTo(44, 1); cx.lineTo(74, -3); cx.stroke();
+    drawSanta(0, -16, .72);
+    const sg = cx.createLinearGradient(0, -8, 0, 14); sg.addColorStop(0, '#d01836'); sg.addColorStop(1, '#5e0816'); cx.fillStyle = sg; cx.beginPath(); cx.moveTo(-32, -6); cx.lineTo(18, -6); cx.quadraticCurveTo(28, -6, 24, 6); cx.quadraticCurveTo(20, 13, 8, 13); cx.lineTo(-26, 13); cx.quadraticCurveTo(-36, 6, -32, -6); cx.fill();
+    cx.strokeStyle = GOLD; cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(-34, 20); cx.lineTo(20, 20); cx.quadraticCurveTo(32, 20, 30, 10); cx.stroke();
+    drawGift(-22, -12, .7, -.3); cx.restore();
+  },
+  draw(dt) {
+    const t = this.t, K = this.kind;
+    cx.save(); if (this.sh > 0) cx.translate(rand(-this.sh, this.sh) * .5, rand(-this.sh, this.sh) * .5);
+    if (K === 'eve') {
+      drawNight('#020414', '#1a1048');
+      // 巨大な満月
+      cx.save(); cx.globalCompositeOperation = 'lighter'; const mg = cx.createRadialGradient(W / 2, 230, 60, W / 2, 230, 260); mg.addColorStop(0, 'rgba(255,240,200,.35)'); mg.addColorStop(1, 'rgba(255,240,200,0)'); cx.fillStyle = mg; cx.fillRect(0, 0, W, H); cx.restore();
+      drawMoon(W / 2, 230, 96);
+      drawSkyline(H, 1);
+      cx.save(); cx.globalCompositeOperation = 'lighter'; for (const p of this.trail) { cx.fillStyle = `rgba(255,214,120,${Math.min(1, p.life)})`; circ(p.x, p.y, 1.5 + p.life); cx.fill(); } cx.restore();
+      if (t > .4 && t < 3.2) { const q = (t - .4) / 2.6; this.drawSleigh(lerp(-120, W + 120, q), 380 - Math.sin(q * Math.PI) * 220, 1.1); }
+      drawSnow(dt, .8);
+      if (t > 2.8) { const k = clamp((t - 2.8) / .2, 0, 1); cx.save(); cx.translate(W / 2, 410); cx.scale(1 + (1 - k) * 3, 1 + (1 - k) * 3); cx.globalAlpha = k; chromaText('CHRISTMAS EVE', 0, 0, 34, 3, SERIF, goldGrad(-16, 16), t < 3.2 ? 1 : 0); cx.restore();
+        cx.save(); cx.globalAlpha = clamp((t - 3.1) * 4, 0, 1); bigCall('今夜、作戦決行', W / 2, 462, 26, '#ff6b7d'); cx.restore();
+        if (t > 3.4) { const d = new Date(), left = Math.max(0, (24 * 3600) - (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds())); const hh = String(Math.floor(left / 3600)).padStart(2, '0'), mm = String(Math.floor(left / 60) % 60).padStart(2, '0'), ss = String(left % 60).padStart(2, '0');
+          cx.save(); cx.globalAlpha = clamp((t - 3.4) * 4, 0, 1); bevel(W / 2 - 110, 490, 220, 48, 8); cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fill(); cx.strokeStyle = 'rgba(255,60,80,.6)'; cx.lineWidth = 1; cx.stroke(); spaced('作戦開始（深夜0時）まで', W / 2, 501, 7.5, '#ff9aa8', 2); cx.shadowColor = '#ff2040'; cx.shadowBlur = 12; mono(`${hh}:${mm}:${ss}`, W / 2, 522, 22, '#ff3b5c'); cx.restore(); } }
+    } else if (K === 'xmas') {
+      const bg = cx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0a0620'); bg.addColorStop(1, '#3a0a1a'); cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+      // 星の放射光
+      if (t > 2.25) { cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 150); cx.rotate(gT * .3); for (let i = 0; i < 16; i++) { cx.rotate(Math.PI / 8); const g = cx.createLinearGradient(0, 0, 500, 0); g.addColorStop(0, 'rgba(255,220,130,.25)'); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(500, -24); cx.lineTo(500, 24); cx.fill(); } cx.restore(); }
+      // 巨大ツリーがせり上がる
+      const gk = clamp(t / 1.3, 0, 1), ge = 1 - Math.pow(1 - gk, 3) + Math.sin(gk * Math.PI) * .08, base = 500, top = 160, hh = (base - top) * ge;
+      cx.save(); cx.translate(W / 2, base); cx.scale(ge, ge);
+      cx.fillStyle = '#4a2a14'; cx.fillRect(-14, 0, 28, 40);
+      for (let i = 0; i < 4; i++) { const y0 = -(base - top) * (i / 4) - 10, w = 150 - i * 30, h2 = (base - top) * .42; const g = cx.createLinearGradient(-w, 0, w, 0); g.addColorStop(0, '#0a3a1a'); g.addColorStop(.5, '#1f7a3a'); g.addColorStop(1, '#0a3a1a'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(-w, y0); cx.lineTo(0, y0 - h2); cx.lineTo(w, y0); cx.closePath(); cx.fill(); }
+      cx.restore();
+      // オーナメントと電飾
+      if (t > 1) { cx.save(); for (const [o, i] of this.orn.map((o, i) => [o, i])) { if (t < o.at) continue; const y = base - (base - top) * o.v, wv = (1 - o.v) * 140, x = W / 2 + o.u * wv * .85, pk = clamp((t - o.at) * 6, 0, 1), tw = .6 + .4 * Math.sin(gT * 5 + i);
+        cx.save(); cx.globalCompositeOperation = 'lighter'; const g = cx.createRadialGradient(x, y, 0, x, y, 12); g.addColorStop(0, o.c); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.globalAlpha = .5 * tw; cx.fillStyle = g; cx.fillRect(x - 12, y - 12, 24, 24); cx.restore();
+        cx.fillStyle = o.c; circ(x, y, 4.5 * pk); cx.fill(); cx.fillStyle = 'rgba(255,255,255,.7)'; circ(x - 1.3, y - 1.3, 1.3 * pk); cx.fill(); } cx.restore(); }
+      // てっぺんの星
+      if (t > 2.0) { const k = clamp((t - 2.0) / .25, 0, 1), y = lerp(-40, 150, k); cx.save(); cx.translate(W / 2, y); cx.rotate((1 - k) * 6 + Math.sin(gT * 2) * .05); cx.scale(1 + Math.sin(gT * 4) * .05, 1 + Math.sin(gT * 4) * .05);
+        cx.shadowColor = GOLD2; cx.shadowBlur = 24; cx.fillStyle = GOLD2; cx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 9 : 22, a = -Math.PI / 2 + i * Math.PI / 5; cx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } cx.closePath(); cx.fill(); cx.restore(); }
+      // 足元のプレゼント
+      if (t > .8) { const k = clamp((t - .8) * 4, 0, 1); cx.save(); cx.globalAlpha = k; drawGift(W / 2 - 60, 528, 1.5, -.1); drawGift(W / 2 + 56, 530, 1.4, .12, '#2e7a46'); drawGift(W / 2 - 22, 540, 1.2, 0, '#3a5aa8'); drawGift(W / 2 + 22, 536, 1.1, .05, GOLD); cx.restore(); }
+      if (t > 3) { const q = ((t - 3) / 3) % 1; this.drawSleigh(lerp(W + 80, -120, q), 70 + Math.sin(q * 6) * 6, .55); }
+      drawSnow(dt, .7);
+      // MERRY CHRISTMAS! の文字が1文字ずつ跳ねる
+      if (t > 2.6) { const str = 'MERRY CHRISTMAS!'; cx.save(); cx.font = `900 30px ${SERIF}`; const tw = cx.measureText(str).width; let x = W / 2 - tw / 2;
+        [...str].forEach((c, i) => { const cw = cx.measureText(c).width, k = clamp((t - 2.6 - i * .05) * 6, 0, 1), by = (1 - k) * -60 + Math.sin(gT * 6 + i * .5) * 3; if (k > 0) { cx.save(); cx.globalAlpha = k; cx.shadowColor = `hsl(${(i * 30 + gT * 120) % 360},100%,55%)`; cx.shadowBlur = 14; cx.fillStyle = `hsl(${(i * 30 + gT * 120) % 360},100%,72%)`; cx.textAlign = 'left'; cx.textBaseline = 'middle'; cx.fillText(c, x, 590 + by); cx.restore(); } x += cw; }); cx.restore();
+        cx.save(); cx.globalAlpha = clamp((t - 3.4) * 4, 0, 1); text('作戦成功おめでとう、エージェント', W / 2, 620, 12, '#ffe9c0', 'center', 'normal'); cx.restore(); }
+    } else {
+      // 初日の出
+      const sk = clamp(t / 3, 0, 1), sky = cx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, `rgb(${lerp(6, 40, sk) | 0},${lerp(8, 50, sk) | 0},${lerp(30, 110, sk) | 0})`); sky.addColorStop(.55, `rgb(${lerp(20, 255, sk) | 0},${lerp(14, 140, sk) | 0},${lerp(40, 80, sk) | 0})`); sky.addColorStop(1, `rgb(${lerp(10, 255, sk) | 0},${lerp(10, 200, sk) | 0},${lerp(30, 120, sk) | 0})`);
+      cx.fillStyle = sky; cx.fillRect(0, 0, W, H);
+      const sy = lerp(520, 330, 1 - Math.pow(1 - clamp((t - .3) / 2.7, 0, 1), 2));
+      cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, sy); cx.rotate(gT * .1); for (let i = 0; i < 24; i++) { cx.rotate(Math.PI / 12); const g = cx.createLinearGradient(0, 0, 520, 0); g.addColorStop(0, `rgba(255,214,120,${.3 * sk})`); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(520, -16); cx.lineTo(520, 16); cx.fill(); } cx.restore();
+      const sg = cx.createRadialGradient(W / 2, sy, 10, W / 2, sy, 70); sg.addColorStop(0, '#fff6d0'); sg.addColorStop(.35, '#ff6a2a'); sg.addColorStop(1, 'rgba(255,60,20,0)'); cx.fillStyle = sg; circ(W / 2, sy, 70); cx.fill();
+      cx.fillStyle = '#ff4a1a'; circ(W / 2, sy, 42); cx.fill();
+      // 雲の帯
+      for (let i = 0; i < 3; i++) { const y = 380 + i * 22, x = ((gT * (12 + i * 6)) % (W + 200)) - 100; cx.fillStyle = `rgba(255,${200 - i * 20},150,${.35 * sk})`; cx.beginPath(); cx.ellipse(x, y, 110, 7, 0, 0, 7); cx.fill(); cx.beginPath(); cx.ellipse(x - W * .6, y + 6, 90, 6, 0, 0, 7); cx.fill(); }
+      // 山（雪をかぶった稜線）
+      cx.fillStyle = '#1a1a3a'; cx.beginPath(); cx.moveTo(0, 470); cx.lineTo(80, 440); cx.lineTo(150, 380); cx.lineTo(W / 2, 372); cx.lineTo(210, 380); cx.lineTo(280, 440); cx.lineTo(W, 460); cx.lineTo(W, H); cx.lineTo(0, H); cx.closePath(); cx.fill();
+      cx.fillStyle = '#f2f6ff'; cx.beginPath(); cx.moveTo(150, 380); cx.lineTo(W / 2, 372); cx.lineTo(210, 380); cx.lineTo(196, 392); cx.lineTo(184, 386); cx.lineTo(172, 394); cx.lineTo(160, 388); cx.closePath(); cx.fill();
+      cx.fillStyle = 'rgba(10,10,30,.85)'; cx.fillRect(0, 520, W, H - 520);
+      // 門松
+      for (const [x, f] of [[-6, false], [W + 6, true]]) { cx.save(); cx.translate(x, H - 20); cx.scale(.9, .9); drawKadomatsu(0, 0, f); cx.restore(); }
+      // 降ってくるお年玉
+      for (const r of this.rain) drawGift(r.x, r.y, 1.1, r.r);
+      // 謹賀新年（1文字ずつ叩きつけ）
+      ['謹', '賀', '新', '年'].forEach((c, i) => { const at = 2.3 + i * .28; if (t < at) return; const k = clamp((t - at) / .12, 0, 1), x = W / 2 + (i - 1.5) * 76; cx.save(); cx.translate(x, 150); cx.scale(1 + (1 - k) * 3, 1 + (1 - k) * 3); cx.globalAlpha = k;
+        bevel(-34, -34, 68, 68, 8); cx.fillStyle = 'rgba(160,10,30,.9)'; cx.fill(); cx.strokeStyle = GOLD2; cx.lineWidth = 2; cx.stroke(); cx.shadowColor = GOLD2; cx.shadowBlur = 14; serifText(c, 0, 2, 46, '#fff6d0', 'center', '900'); cx.restore(); });
+      if (t > 3.4) { const k = clamp((t - 3.4) * 4, 0, 1); cx.save(); cx.globalAlpha = k; cx.translate(W / 2, 226); cx.scale(1 + (1 - k), 1 + (1 - k)); chromaText('HAPPY NEW YEAR', 0, 0, 26, 3, SERIF, goldGrad(-14, 14), 0); cx.restore();
+        cx.save(); cx.globalAlpha = clamp((t - 3.7) * 4, 0, 1); bigCall('あけましておめでとう', W / 2, 264, 22, '#fff'); text('お年玉作戦、本日決行！', W / 2, 560, 14, GOLD2); cx.restore(); }
+    }
+    cx.restore();
+    // 紙吹雪
+    for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
+    if (this.fl > 0) { cx.fillStyle = `rgba(${this.flc},${Math.min(1, this.fl)})`; cx.fillRect(0, 0, W, H); }
+    if (t > 3.8) { cx.save(); cx.globalAlpha = .5 + .5 * Math.sin(gT * 5); spaced('TAP TO START', W / 2, K === 'xmas' ? 20 : 610, 10, '#fff', 4); cx.restore(); }
+    else if (t > .3) { cx.save(); cx.globalAlpha = .5; spaced('TAP TO SKIP', W / 2, 20, 7, '#fff', 3); cx.restore(); }
+  },
+  down() { if (this.t < 2.6) { this.t = 2.6; return; } go(Title); },
+};
+
 const Training = {
   ...BtnMix,
   enter() {
@@ -5312,7 +5434,7 @@ const Training = {
 // =====================================================================
 //  MAIN LOOP
 // =====================================================================
-go(Title);
+go(SEASON.eve || SEASON.xday || (NY && SEASON.day === 1) ? Fest : Title);
 let last = performance.now();
 let frameErr = 0;
 function frame(now) {
@@ -5340,7 +5462,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 // テスト用フック
-window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training, Alert, NameEntry, Ranking }, G, MISSIONS, EXTRA };
+window.__santa = { go, scenes: { Title, Prologue, Briefing, Play, Result, Final, Training, Alert, NameEntry, Ranking, Fest }, G, MISSIONS, EXTRA };
 </script>
 </body>
 </html>
