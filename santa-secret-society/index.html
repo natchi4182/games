@@ -4985,7 +4985,9 @@ const NameEntry = {
 const Ranking = {
   ...BtnMix,
   enter(a = {}) {
-    this.a = a; this.t = 0; this.ev = {}; this.sh = 0; this.fl = 0; this.fw = 0; this.conf = []; this.emb = [];
+    this.a = a; this.t = 0; this.ev = {}; this.sh = 0; this.fl = 0; this.fw = 0; this.conf = []; this.emb = []; this.aura = [];
+    const top = save.ranking[0], me = save.ranking.findIndex(e => e.id && e.id === a.hl);
+    this.tick = (me > 0 ? `1位まで あと ${(top.score - save.ranking[me].score).toFixed(1)}%  ///  ` : me === 0 ? '新チャンピオン誕生！  ///  ' : '') + `TOP AGENT : ${top.name}  ${top.score.toFixed(1)}%  ///  CONGRATULATIONS TO ALL AGENTS  ///  秘密結社 S.A.N.T.A. 歴代エージェント  ///  `;
     const toTitle = () => go(Title);
     this.btns = a.from === 'final'
       ? [Btn(24, 572, 150, 50, 'もう一度挑戦', () => { G.mode = 'campaign'; G.results = []; G.entered = false; G.codename = pick(CODENAMES); go(Prologue); }, { size: 15, sub: 'NEW OPERATION' }),
@@ -5027,6 +5029,10 @@ const Ranking = {
     for (const c of this.conf) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy = Math.min(c.vy + 120 * dt, 160); c.rot += c.vr * dt; c.vx += Math.sin(gT * 3 + c.rot) * 30 * dt; }
     this.conf = this.conf.filter(c => c.y < H + 10);
     for (const e of this.emb) { e.x += e.vx * dt; e.y += e.vy * dt; e.life -= dt; } this.emb = this.emb.filter(e => e.life > 0);
+    save.ranking.forEach((e, i) => { const at = this.at(i) + .16; [...e.name].forEach((c, k) => { if (this.once(`f${i}_${k}`, at + .08 + k * .05)) tone(2200 + k * 90, .015, 'square', .02); }); });
+    if (t > this.at(0) + .2 && save.ranking.length) { const y = this.rowY(0); for (let k = 0; k < 2; k++) this.aura.push({ x: rand(18, W - 18), y: y + rand(-12, 14), vy: rand(-60, -25), life: rand(.5, 1), r: rand(1, 2.5) }); }
+    for (const a of this.aura) { a.y += a.vy * dt; a.life -= dt; } this.aura = this.aura.filter(a => a.life > 0);
+    if (t > 3.3) { const cyc = Math.floor((t - 3.3) / 3), c0 = Math.floor((t - dt - 3.3) / 3); if (cyc !== c0 && cyc >= 0) { melody([[84, .12], [88, .12], [91, .12], [96, .3]], 600, 'triangle', .035); } }
     this.sh = Math.max(0, this.sh - dt * 40); this.fl = Math.max(0, this.fl - dt * 2.5);
   },
   mkConf(burstUp) { return { x: burstUp ? W / 2 + rand(-40, 40) : rand(0, W), y: burstUp ? 140 : -10, vx: burstUp ? rand(-260, 260) : rand(-30, 30), vy: burstUp ? rand(-380, -120) : rand(60, 140), rot: rand(0, 6), vr: rand(-10, 10), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff', '#ff9aef']) }; },
@@ -5087,18 +5093,33 @@ const Ranking = {
           if (Math.random() < .12) burst(rand(20, W - 20), y + rand(-14, 14), [GOLD2, '#fff'], 2, 40, .5, 1.5); }
       } else mono(ORD(i + 1), 36, y + 1, 11, '#cfc6ad');
       // 名前・スコア（カウントアップ）
-      cx.save(); if (i < 3 || hl) { cx.shadowColor = hl ? '#ff6b9a' : mc; cx.shadowBlur = i === 0 ? 12 : 6; } serifText(e.name, 62, y + 1, i === 0 ? 20 : 18, hl ? '#fff' : mc, 'left', '900'); cx.restore();
+      const ta = t - at - .16, POOL = /[\u30a0-\u30ff]/.test(e.name) ? 'アカサタナハマヤラワ' : 'ABCDEFGHJKMNPRSTVXYZ0123456789';
+      const shown = [...e.name].map((c, k) => ta >= .08 + k * .05 ? c : POOL[Math.floor(Math.random() * POOL.length)]).join('');
+      cx.save(); if (i < 3 || hl) { cx.shadowColor = hl ? '#ff6b9a' : mc; cx.shadowBlur = i === 0 ? 12 : 6; } serifText(shown, 62, y + 1, i === 0 ? 20 : 18, hl ? '#fff' : ta < .08 + e.name.length * .05 ? '#9ad8ff' : mc, 'left', '900'); cx.restore();
       if (e.ex) { bevel(170, y - 7, 22, 14, 3); cx.fillStyle = CRIM; cx.fill(); mono('EX', 181, y, 7.5, '#fff'); }
       const cnt = clamp((t - at) / .55, 0, 1), sv = e.score * (1 - Math.pow(1 - cnt, 3));
       mono(`${sv.toFixed(1)}%`, 262, y + 1, i === 0 ? 15 : 14, cnt < 1 ? GOLD2 : '#fff', 'right');
       if (cnt >= 1) { const pk = clamp((t - at - .55) * 6, 0, 1); cx.save(); cx.translate(282, y + 1); cx.scale(1 + (1 - pk) * 1.4, 1 + (1 - pk) * 1.4); cx.globalAlpha *= pk; serifText(e.r, 0, 0, 16, gradeCol[e.r] || '#fff', 'center', '900'); cx.restore(); }
       if (hl) { cx.save(); cx.globalAlpha = .6 + .4 * Math.sin(gT * 10); bevel(298, y - 8, 40, 16, 4); cx.fillStyle = '#ff3b5c'; cx.fill(); spaced('NEW', 318, y, 7.5, '#fff', 1.5); cx.restore(); }
       else mono(e.date === '----' ? '----' : e.date.slice(2), 340, y + 1, 8.5, '#8f876f', 'right');
+      if (t > 3.3) { const w2 = ((t - 3.3) % 3) - i * .07; if (w2 > 0 && w2 < .22) { cx.save(); cx.globalCompositeOperation = 'lighter'; bevel(16, y - 17, W - 32, 36, 8); cx.fillStyle = `rgba(255,240,190,${(1 - w2 / .22) * .35})`; cx.fill(); cx.restore(); } }
       // 着地の閃光
       if (land > 0) { cx.save(); cx.globalCompositeOperation = 'lighter'; bevel(16, y - 17, W - 32, 36, 8); cx.fillStyle = `rgba(255,250,220,${land * (i < 3 ? .7 : .35)})`; cx.fill(); cx.restore(); }
       cx.restore();
     });
+    // チャンピオンの金のオーラ
+    cx.save(); cx.globalCompositeOperation = 'lighter'; for (const a of this.aura) { cx.fillStyle = `rgba(255,214,120,${a.life})`; circ(a.x, a.y, a.r); cx.fill(); } cx.restore();
+    // 自分の記録に「YOU!」とスポットライト
+    { const me = save.ranking.findIndex(e => e.id && e.id === this.a.hl); if (me >= 0 && t > this.at(me) + .3) { const y = this.rowY(me), k = clamp((t - this.at(me) - .3) * 4, 0, 1), bx = 10 + Math.sin(gT * 8) * 4;
+      cx.save(); cx.globalCompositeOperation = 'lighter'; const sg = cx.createLinearGradient(0, 0, 0, y + 20); sg.addColorStop(0, 'rgba(255,150,200,0)'); sg.addColorStop(1, `rgba(255,150,200,${.22 * k})`); cx.fillStyle = sg; cx.beginPath(); cx.moveTo(W / 2 - 20, 0); cx.lineTo(W / 2 + 20, 0); cx.lineTo(W - 16, y + 18); cx.lineTo(16, y + 18); cx.closePath(); cx.fill(); cx.restore();
+      cx.save(); cx.globalAlpha = k; cx.fillStyle = '#ff3b7a'; cx.beginPath(); cx.moveTo(bx + 6, y); cx.lineTo(bx - 4, y - 8); cx.lineTo(bx - 4, y + 8); cx.closePath(); cx.fill(); cx.restore(); } }
     cx.restore();
+    // 下のニュースティッカー
+    if (t > 3) { const k = clamp((t - 3) * 4, 0, 1); cx.save(); cx.globalAlpha = k; cx.fillStyle = 'rgba(0,0,0,.7)'; cx.fillRect(0, 544, W, 18); cx.fillStyle = CRIM; cx.fillRect(0, 544, 46, 18); spaced('NEWS', 23, 553, 7.5, '#fff', 2);
+      cx.beginPath(); cx.rect(46, 544, W - 46, 18); cx.clip(); font(10, 'bold'); const tw = cx.measureText(this.tick).width; for (let x = 46 - ((t * 50) % tw); x < W; x += tw) text(this.tick, x, 553, 10, GOLD2, 'left'); cx.restore(); }
+    // 画面の縁を走るマーキー電球
+    { const step = 18, pts = []; for (let x = 6; x <= W - 6; x += step) pts.push([x, 5]); for (let y = 5 + step; y <= H - 5; y += step) pts.push([W - 5, y]); for (let x = W - 6 - step; x >= 6; x -= step) pts.push([x, H - 5]); for (let y = H - 5 - step; y > 5; y -= step) pts.push([5, y]);
+      const ch = Math.floor(gT * 10), on = t > .45; cx.save(); cx.globalCompositeOperation = 'lighter'; pts.forEach(([x, y], i) => { const lit = on && (i + ch) % 3 === 0, c = this.a.hl ? `hsl(${(i * 12 + gT * 120) % 360},100%,65%)` : '#ffd77a'; cx.globalAlpha = lit ? .9 : .18; cx.fillStyle = c; circ(x, y, lit ? 2.6 : 1.8); cx.fill(); if (lit) { cx.globalAlpha = .25; circ(x, y, 6); cx.fill(); } }); cx.restore(); }
     // 紙吹雪
     for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
     // 冒頭：記録庫へのアクセス演出
@@ -5109,7 +5130,7 @@ const Ranking = {
     if (this.fl > 0) { cx.fillStyle = `rgba(255,250,230,${Math.min(1, this.fl)})`; cx.fillRect(0, 0, W, H); }
     const bq = clamp((t - 3.3) * 4, 0, 1); this.btns.forEach((b, i) => { cx.save(); cx.globalAlpha = bq; cx.translate(0, (1 - bq) * 30); drawBtn(b, t); cx.restore(); });
   },
-  down(x, y) { if (this.t < 3.3) { this.t = 3.3; for (let i = 0; i < RANK_N; i++) { this.ev['w' + i] = 1; this.ev['r' + i] = 1; } this.ev.in = this.ev.slam = 1; return; } BtnMix.down.call(this, x, y); },
+  down(x, y) { if (this.t < 3.3) { this.t = 3.3; for (let i = 0; i < RANK_N; i++) { this.ev['w' + i] = 1; this.ev['r' + i] = 1; for (let k = 0; k < 12; k++) this.ev[`f${i}_${k}`] = 1; } this.ev.in = this.ev.slam = 1; return; } BtnMix.down.call(this, x, y); },
 };
 
 const Training = {
