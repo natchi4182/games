@@ -4839,6 +4839,8 @@ const NameEntry = {
   enter(a) {
     this.a = a; this.t = 0; this.time = 30; this.page = 0; this.name = [...(save.lastName || '')].slice(0, NAME_MAX); this.pos = rankPos(Math.round(a.score * 10) / 10);
     this.pop = []; this.rip = []; this.done = false; this.doneT = 0; this.ev = {}; this.sh = 0; this.fl = 0; this.fw = .8; this.conf = []; this.emb = []; this.fly = [];
+    this.stars = [...Array(70)].map(() => ({ x: rand(-1, 1), y: rand(-1, 1), z: rand(.1, 1) })); this.rockets = []; this.sayT = 0;
+    this.say = this.name.length ? `おかえり、${this.name.join('')}。その名前で行くか？` : '名前を教えてくれ、エージェント！';
     const ctl = (x, w, label, sub, fn, glow) => Btn(x, 528, w, 44, label, fn, { kind: glow ? undefined : 'dark', glow, size: 15, sub });
     this.btns = [
       ctl(20, 96, 'カナ', 'KANA', () => { this.page ^= 1; this.btns[0].label = this.page ? 'ABC' : 'カナ'; this.btns[0].sub = this.page ? 'ALPHABET' : 'KANA'; this.flipT = .25; noise(.15, .15, 4000); tone(700, .06, 'square', .04, 300); }),
@@ -4858,8 +4860,9 @@ const NameEntry = {
     burst(sx, 212, [`hsl(${(gT * 200 + n * 50) % 360},100%,70%)`, '#fff', GOLD2], 14, 170, .45, 2.5); ringFx(sx, 212, GOLD2, 40, .3, 2);
     if (from) this.fly.push({ ch, x0: from.x, y0: from.y, x1: sx, y1: 212, t: 0 });
     if (n === NAME_MAX) { popCall('MAX!', W / 2, 168, '#ff9aa8', 16, .6); }
+    this.say = n === NAME_MAX ? 'MAX！ それで決まりか？' : n === 1 ? 'いいぞ、その調子だ！' : pick(['いい響きだ！', 'かっこいい名前じゃないか', 'ふむ…続けてくれ', '伝説になりそうな名前だ', 'トナカイたちも覚えるぞ']); this.sayT = 0;
   },
-  del() { if (this.done) return; if (this.name.length) { const sx = this.slotX(this.name.length - 1); this.name.pop(); tone(400, .06, 'square', .045, -200); burst(sx, 212, ['#ff6b7d', '#fff'], 10, 120, .35, 2); this.sh = 3; } else { SFX.empty(); this.sh = 4; } },
+  del() { if (this.done) return; this.say = 'おっと、書き直しか？'; this.sayT = 0; if (this.name.length) { const sx = this.slotX(this.name.length - 1); this.name.pop(); tone(400, .06, 'square', .045, -200); burst(sx, 212, ['#ff6b7d', '#fff'], 10, 120, .35, 2); this.sh = 3; } else { SFX.empty(); this.sh = 4; } },
   confirm() {
     if (this.done) return; this.done = true; this.doneT = 0;
     const name = this.name.join('') || (G.codename || 'AGENT').slice(0, NAME_MAX);
@@ -4871,6 +4874,8 @@ const NameEntry = {
     for (let i = 0; i < NAME_MAX; i++) { const x = this.slotX(i); burst(x, 212, [`hsl(${i * 60},100%,65%)`, '#fff', GOLD2], 18, 260, .9, 3); }
     ringFx(W / 2, 212, GOLD2, 260, .6, 5); ringFx(W / 2, 212, '#fff', 180, .4, 3);
     for (let k = 0; k < 70; k++) this.conf.push(this.mkConf(true));
+    this.name.forEach((ch, i) => this.rockets.push({ ch, x: this.slotX(i), y: 212, vy: -rand(520, 620), vx: rand(-40, 40), d: i * .09, t: 0, h: (i * 60 + 10) % 360, boom: false }));
+    this.say = T_('伝説の始まりだ！ メリークリスマス！', '伝説の始まりだ！ 良いお年を！'); this.sayT = 0;
     setTimeout(() => go(Ranking, { hl: e.id, from: 'final' }), 1600);
   },
   mkConf(up) { return { x: up ? W / 2 + rand(-60, 60) : rand(0, W), y: up ? 220 : -10, vx: up ? rand(-280, 280) : rand(-30, 30), vy: up ? rand(-420, -150) : rand(60, 140), rot: rand(0, 6), vr: rand(-10, 10), col: pick(['#ff3b5c', GOLD2, '#4fd18b', '#7fb8ff', '#fff', '#ff9aef']) }; },
@@ -4893,6 +4898,11 @@ const NameEntry = {
     for (const r of this.rip) r.t += dt; this.rip = this.rip.filter(r => r.t < .4);
     for (const f of this.fly) f.t += dt; this.fly = this.fly.filter(f => f.t < .22);
     if (this.flipT > 0) this.flipT -= dt; if (this.hotT > 0) this.hotT -= dt;
+    this.sayT += dt;
+    for (const s2 of this.stars) { s2.z -= dt * (this.done ? 1.6 : .35); if (s2.z <= .05) { s2.z = 1; s2.x = rand(-1, 1); s2.y = rand(-1, 1); } }
+    for (const r of this.rockets) { r.t += dt; if (r.t < r.d) continue; r.x += r.vx * dt; r.y += r.vy * dt; r.vy += 420 * dt;
+      if (!r.boom && (r.vy > -60 || r.y < 50)) { r.boom = true; r.bt = 0; burst(r.x, r.y, [`hsl(${r.h},100%,65%)`, `hsl(${(r.h + 40) % 360},100%,80%)`, '#fff'], 40, 260, 1, 3); ringFx(r.x, r.y, `hsl(${r.h},100%,70%)`, 80, .45, 3); noise(.25, .15, 900); tone(600 + r.h, .08, 'triangle', .04); }
+      if (r.boom) r.bt += dt; }
     this.sh = Math.max(0, this.sh - dt * 40); this.fl = Math.max(0, this.fl - dt * 2.5);
   },
   draw(dt) {
@@ -4902,6 +4912,8 @@ const NameEntry = {
     cx.save(); cx.globalCompositeOperation = 'lighter'; cx.translate(W / 2, 80); cx.rotate(gT * .35);
     for (let i = 0; i < 20; i++) { cx.rotate(Math.PI / 10); const g = cx.createLinearGradient(0, 0, 460, 0); g.addColorStop(0, `hsla(${(hue + i * 18) % 360},100%,60%,${t > .35 ? .16 : 0})`); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(460, -24); cx.lineTo(460, 24); cx.fill(); }
     cx.restore();
+    // ワープする星空
+    cx.save(); cx.globalCompositeOperation = 'lighter'; for (const s2 of this.stars) { const px = W / 2 + s2.x / s2.z * 120, py = 240 + s2.y / s2.z * 180, pz = s2.z + (this.done ? .08 : .03), qx = W / 2 + s2.x / pz * 120, qy = 240 + s2.y / pz * 180; cx.strokeStyle = `rgba(255,255,255,${(1 - s2.z) * .7})`; cx.lineWidth = (1 - s2.z) * 2 + .3; cx.beginPath(); cx.moveTo(qx, qy); cx.lineTo(px, py); cx.stroke(); } cx.restore();
     // 虹色にうねるライン（昔のゲーム風）
     cx.save(); cx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 16; i++) { const y = 30 + i * 10 + Math.sin(gT * 3 + i * .5) * 5; cx.fillStyle = `hsla(${(gT * 140 + i * 22) % 360},90%,60%,.09)`; cx.fillRect(0, y, W, 5); }
@@ -4956,7 +4968,22 @@ const NameEntry = {
     for (const r of this.rip) { const q = r.t / .4; cx.save(); cx.globalCompositeOperation = 'lighter'; cx.strokeStyle = `rgba(255,214,120,${1 - q})`; cx.lineWidth = 2; circ(r.x, r.y, 10 + q * 30); cx.stroke(); cx.restore(); }
     this.btns.forEach(b => drawBtn(b, t));
     cx.restore();
-    text('タップで文字を選び「決定」（キーボードも可）', W / 2, 600, 11, '#8f876f', 'center', 'normal');
+    // サンタの応援（吹き出し）
+    { const msg = warn ? `急げ！ あと ${Math.ceil(this.time)} 秒だ！` : this.say, pk = clamp(this.sayT * 8, 0, 1), bob = Math.sin(gT * (this.done ? 14 : 4)) * (this.done ? 4 : 1.5);
+      cx.save(); cx.beginPath(); cx.rect(6, 578, 54, 60); cx.clip(); drawHead('santa', 32, 612 + bob, Math.sin(gT * 2) * .08, 1.1, 1, false, ((gT * .5) % 2) - .5); cx.restore();
+      cx.save(); cx.translate(66, 606); cx.scale(.85 + pk * .15, .85 + pk * .15); cx.globalAlpha = .5 + pk * .5;
+      bevel(0, -14, W - 80, 28, 8); cx.fillStyle = warn ? 'rgba(120,10,30,.9)' : 'rgba(250,246,232,.95)'; cx.fill(); cx.strokeStyle = warn ? '#ff6b7d' : GOLD; cx.lineWidth = 1; cx.stroke();
+      cx.fillStyle = warn ? 'rgba(120,10,30,.9)' : 'rgba(250,246,232,.95)'; cx.beginPath(); cx.moveTo(1, -2); cx.lineTo(-8, 4); cx.lineTo(1, 6); cx.closePath(); cx.fill();
+      text(msg, (W - 80) / 2, 1, 11.5, warn ? '#fff' : INK, 'center'); cx.restore();
+      cx.save(); cx.globalAlpha = .7; mono('タップで文字を選び「決定」（キーボードも可）', W / 2, 630, 7.5, '#8f876f'); cx.restore(); }
+    // 名前の文字が花火になって打ち上がる
+    for (const r of this.rockets) { if (r.t < r.d) continue;
+      if (!r.boom) { cx.save(); cx.globalCompositeOperation = 'lighter'; for (let k = 1; k < 6; k++) { cx.fillStyle = `hsla(${r.h},100%,65%,${.5 - k * .08})`; circ(r.x - r.vx * k * .012, r.y - r.vy * k * .012, 4 - k * .5); cx.fill(); } cx.restore();
+        cx.save(); cx.shadowColor = `hsl(${r.h},100%,60%)`; cx.shadowBlur = 12; serifText(r.ch, r.x, r.y, 22, '#fff', 'center', '900'); cx.restore(); }
+      else if (r.bt < .9) { const k = r.bt / .9; cx.save(); cx.globalAlpha = 1 - k; cx.translate(r.x, r.y); cx.scale(1 + k * 1.6, 1 + k * 1.6); cx.shadowColor = `hsl(${r.h},100%,60%)`; cx.shadowBlur = 16; serifText(r.ch, 0, 0, 24, `hsl(${r.h},100%,80%)`, 'center', '900'); cx.restore(); } }
+    // 画面の縁を走るマーキー電球
+    { const step = 18, pts = []; for (let x = 6; x <= W - 6; x += step) pts.push([x, 5]); for (let y = 5 + step; y <= H - 5; y += step) pts.push([W - 5, y]); for (let x = W - 6 - step; x >= 6; x -= step) pts.push([x, H - 5]); for (let y = H - 5 - step; y > 5; y -= step) pts.push([5, y]);
+      const ch = Math.floor(gT * (this.done ? 24 : warn ? 16 : 10)); cx.save(); cx.globalCompositeOperation = 'lighter'; pts.forEach(([x, y], i) => { const lit = t > .35 && (i + ch) % 3 === 0, c = warn ? '#ff3b5c' : `hsl(${(i * 12 + gT * 120) % 360},100%,65%)`; cx.globalAlpha = lit ? .9 : .18; cx.fillStyle = c; circ(x, y, lit ? 2.6 : 1.8); cx.fill(); if (lit) { cx.globalAlpha = .25; circ(x, y, 6); cx.fill(); } }); cx.restore(); }
     // 紙吹雪
     for (const c of this.conf) { cx.save(); cx.translate(c.x, c.y); cx.rotate(c.rot); cx.scale(1, Math.abs(Math.sin(c.rot * 2)) + .2); cx.fillStyle = c.col; cx.fillRect(-3, -1.8, 6, 3.6); cx.restore(); }
     // 登録完了
