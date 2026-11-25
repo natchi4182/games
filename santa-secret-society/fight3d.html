@@ -316,13 +316,96 @@ function applyRig(f) {
     W[n] = { A, W: Wb };
   }
 }
+
+// ------------------------------------------------------------ Mixamo モーションを各モデルに移し替えて再生
+const ANIMSET = {
+  santa: { idle: 'idle', walk: 'walk', punch: 'punch', kick: 'kick', guard: 'guard', hit: 'hit', ko: 'ko', win: 'win', jump: 'jump', special: 'special_santa', intro: 'idle' },
+  krampus: { idle: 'mutant_idle', walk: 'mutant_walk', punch: 'mutant_punch', kick: 'mutant_swipe', guard: 'guard', hit: 'hit', ko: 'mutant_ko', win: 'mutant_win', jump: 'jump', special: 'special_blackruf', intro: 'mutant_roar' },
+};
+const ONCE = { punch: 1, kick: 1, hit: 1, ko: 1, win: 1, jump: 1, special: 1, guard: 1 };
+function bakeClip(f, M, name) {
+  const R = f.rig, c = M.clips[name], n = c.n, times = new Float32Array(n).map((_, i) => i / M.fps);
+  const sInv = {}, tRest = {};
+  for (const b of M.bones) { sInv[b] = new THREE.Quaternion().fromArray(M.rest[b]).invert(); if (R.rest[b]) tRest[b] = R.rest[b].clone(); }
+  // Tripo は腕を斜めに下ろした姿勢が基準なので、Mixamo（腕を横に伸ばした姿勢）に合わせて補正
+  for (const [side, k] of [['Left', 'L'], ['Right', 'R']]) { const corr = qE(0, 0, R[k].s * (Math.PI / 2 - R[k].a)); for (const b of ['Arm', 'ForeArm', 'Hand']) if (tRest[side + b]) tRest[side + b] = corr.clone().multiply(tRest[side + b]); }
+  const vals = {}; for (const b of M.bones) if (R.B[b]) vals[b] = new Float32Array(n * 4);
+  const hips = R.B.Hips, hv = new Float32Array(n * 3), noLift = /jump/.test(name);
+  const mInv = R.model.matrixWorld.clone().invert(), pM = mInv.clone().multiply(hips.parent.matrixWorld), pMi = pM.clone().invert();
+  const hRest = R.model.worldToLocal(hips.getWorldPosition(new THREE.Vector3())), k = hRest.y / M.restHips[1];
+  const q = new THREE.Quaternion(), W = {};
+  for (let i = 0; i < n; i++) {
+    for (const b of M.bones) {
+      const bone = R.B[b]; if (!bone) continue;
+      const Wb = q.fromArray(c.q[b], i * 4).clone().multiply(sInv[b]).multiply(tRest[b]);
+      const pn = bone.parent.isBone ? bn(bone.parent.name) : null, Wp = pn && W[pn] ? W[pn] : R.pRest[b];
+      Wp.clone().invert().multiply(Wb).toArray(vals[b], i * 4); W[b] = Wb;
+    }
+    const dy = noLift ? 0 : (c.hp[i * 3 + 1] - M.restHips[1]) * k, dz = (c.hp[i * 3 + 2] - M.restHips[2]) * k;
+    new THREE.Vector3(hRest.x, hRest.y + dy, hRest.z + dz).applyMatrix4(pMi).toArray(hv, i * 3);
+  }
+  const tracks = Object.keys(vals).map(b => new THREE.QuaternionKeyframeTrack(R.B[b].name + '.quaternion', times, vals[b]));
+  tracks.push(new THREE.VectorKeyframeTrack(hips.name + '.position', times, hv));
+  return new THREE.AnimationClip(name, c.dur, tracks);
+}
+// 攻撃がいちばん前に伸びる瞬間を探して、当たり判定のタイミングに使う
+function findPeak(f, action, bones) {
+  const R = f.rig, mixer = f.anim.mixer, dur = action.getClip().duration; let best = -1e9, bt = 0, bb = bones[0];
+  action.reset().play(); action.setEffectiveWeight(1);
+  for (let t = 0; t <= dur; t += 1 / 30) { action.time = t; mixer.update(0); R.model.updateMatrixWorld(true);
+    for (const b of bones) { const z = R.model.worldToLocal(R.B[b].getWorldPosition(new THREE.Vector3())).z; if (z > best) { best = z; bt = t; bb = b; } } }
+  action.stop(); return { t: bt, bone: R.B[bb] };
+}
+function setupAnim(f, M) {
+  const set = ANIMSET[f.kind], mixer = new THREE.AnimationMixer(f.rig.model), A = {};
+  f.anim = { mixer, A, cur: null, lastT: 0, lastSt: '' };
+  for (const key in set) { try { const a = mixer.clipAction(bakeClip(f, M, set[key])); A[key] = a; } catch (e) { console.error(set[key], e); } }
+  // 技ごとのタイミング
+  const SPD = { punch: f.S ? 1.7 : 1.3, kick: f.S ? 1.5 : 1.6, special: 1.5 };
+  const pk = findPeak(f, A.punch, ['LeftHand', 'RightHand']), kk = findPeak(f, A.kick, f.S ? ['LeftFoot', 'RightFoot'] : ['LeftHand', 'RightHand']), sp = findPeak(f, A.special, ['LeftHand', 'RightHand']);
+  const mk = (base, pkk, spd) => { const tp = pkk.t / spd; return { ...base, dur: tp + .3, act: [Math.max(0, tp - .06), tp + .05], spd, bone: pkk.bone }; };
+  f.moves = { punch: mk(MOVES.punch, pk, SPD.punch), kick: mk(MOVES.kick, kk, SPD.kick) };
+  f.spRelease = sp.t / SPD.special; f.spDur = f.spRelease + .45; f.spBone = sp.bone; f.spSpd = SPD.special;
+  // ジャンプは踏み切りから着地までを空中時間に合わせる
+  const jc = M.clips[set.jump], base = M.restHips[1]; let t0 = 0, t1 = jc.dur; for (let i = 0; i < jc.n; i++) { if (jc.hp[i * 3 + 1] > base + 8) { t0 = i / 30; break; } } for (let i = jc.n - 1; i >= 0; i--) { if (jc.hp[i * 3 + 1] > base + 8) { t1 = i / 30; break; } }
+  f.jumpAnim = { start: Math.max(0, t0 - .1), spd: Math.max(.6, (t1 - t0 + .2) / .78) };
+}
+function animFor(f) {
+  if (introT > 0 && introT < 1e8) return ['intro', 1];
+  switch (f.st) {
+    case 'walk': return ['walk', (Math.sign(f.vx || 1) * f.face > 0 ? 1 : -1) * clamp(Math.abs(f.vx) / 3.4, .5, 1.3)];
+    case 'punch': return ['punch', f.moves.punch.spd];
+    case 'kick': return ['kick', f.moves.kick.spd];
+    case 'special': return ['special', f.spSpd];
+    case 'hit': return ['hit', 1.5];
+    case 'jump': return ['jump', f.jumpAnim.spd];
+    case 'guard': case 'ko': case 'win': return [f.st, 1];
+  }
+  return ['idle', 1];
+}
+function updAnim(f, dt) {
+  const An = f.anim, [key, ts] = animFor(f), a = An.A[key] || An.A.idle;
+  const re = f.st === An.lastSt && f.t < An.lastT - 1e-4; An.lastT = f.t; An.lastSt = f.st;
+  if (An.cur !== a || re) {
+    a.reset(); a.setLoop(ONCE[key] ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); a.clampWhenFinished = true;
+    if (key === 'jump') a.time = f.jumpAnim.start;
+    a.play(); if (An.cur && An.cur !== a) a.crossFadeFrom(An.cur, key === 'hit' ? .05 : .12, false); else a.setEffectiveWeight(1);
+    An.cur = a; a.paused = false;
+  }
+  a.setEffectiveTimeScale(ts);
+  if (key === 'guard' && a.time > a.getClip().duration * .32) a.paused = true; // 腕を上げたところで止める
+  An.mixer.update(dt);
+}
 // 読み込み（ファイルを直接開いた場合など読めないときは、コードで組んだ人形のまま遊べる）
 const mload = document.createElement('div'); mload.id = 'load'; mload.textContent = 'LOADING MODELS 0%'; document.body.appendChild(mload);
 P.root.visible = E.root.visible = false;
 const prog = { s: 0, b: 0 };
 const loadOne = (f, url, h, key) => new Promise(res => new GLTFLoader().load(url, g => { try { attachModel(f, g, h); } catch (e) { console.error(e); } prog[key] = 1; res(); },
   x => { if (x.total) { prog[key] = x.loaded / x.total; mload.textContent = `LOADING MODELS ${Math.round((prog.s + prog.b) * 50)}%`; } }, () => res()));
-Promise.all([loadOne(P, 'models/santa.glb', 1.85, 's'), loadOne(E, 'models/blackruf.glb', 2.05, 'b')]).then(() => { mload.remove(); P.root.visible = E.root.visible = true; reset(); });
+const loadMotions = fetch('models/motions.json').then(r => r.ok ? r.json() : null).catch(() => null);
+Promise.all([loadOne(P, 'models/santa.glb', 1.85, 's'), loadOne(E, 'models/blackruf.glb', 2.05, 'b'), loadMotions]).then(([, , M]) => {
+  if (M) for (const f of [P, E]) if (f.rig) { try { setupAnim(f, M); } catch (e) { console.error(e); f.anim = null; } }
+  mload.remove(); P.root.visible = E.root.visible = true; reset(); });
 
 
 // ------------------------------------------------------------ ポーズ
@@ -357,7 +440,8 @@ function applyPose(f, dt, t) {
   J.shR.rotation.set(-p.sR, 0, -p.aR); J.elR.rotation.set(-p.eR, 0, 0);
   J.thL.rotation.set(-p.hL, 0, .04); J.knL.rotation.set(p.kL, 0, 0); J.ftL.rotation.set(-p.fL, 0, 0);
   J.thR.rotation.set(-p.hR, 0, -.04); J.knR.rotation.set(p.kR, 0, 0); J.ftR.rotation.set(0, 0, 0);
-  if (f.rig) applyRig(f);
+  if (f.rig && f.anim) { f.rig.inner.position.y = 0; f.rig.inner.rotation.x = 0; updAnim(f, dt); for (const fg of f.rig.fingers) fg.b.quaternion.copy(fg.q0).multiply(qE(0, 0, (fg.thumb ? .5 : 1) * -1.2 * (fg.left ? 1 : -1))); }
+  else if (f.rig) applyRig(f);
   // マントのはためき
   if (f.cape) { const pos = f.cape.geometry.attributes.position, base = f.cape.userData.base; for (let i = 0; i < pos.count; i++) { const y = base[i * 3 + 1], x = base[i * 3], d = -y; pos.setZ(i, base[i * 3 + 2] - d * d * .35 - Math.sin(t * 6 + d * 4 + x * 3) * .06 * d - Math.abs(f.vx) * .05 * d); } pos.needsUpdate = true; f.cape.geometry.computeVertexNormals(); }
   // 被弾の赤い点滅
@@ -386,7 +470,7 @@ function say(a, b = '', hold) { big.textContent = a; sub.textContent = b; big.cl
 function flash(a = .6, col = '#fff') { flashEl.style.transition = 'none'; flashEl.style.background = col; flashEl.style.opacity = a; requestAnimationFrame(() => { flashEl.style.transition = 'opacity .35s'; flashEl.style.opacity = 0; }); }
 function act(f, st) { f.st = st; f.t = 0; f.hitDone = false; }
 function canAct(f) { return !over && introT <= 0 && (f.st === 'idle' || f.st === 'walk' || f.st === 'guard'); }
-function handPos(f, leg) { const o = new THREE.Vector3(); (leg ? f.J.ftL : f.J.hdL).getWorldPosition(o); return o; }
+function handPos(f, leg) { const o = new THREE.Vector3(); (f.spBone && !leg ? f.spBone : leg ? f.J.ftL : f.J.hdL).getWorldPosition(o); return o; }
 function damage(att, def, dmg, kb, at, big = false) {
   const guarded = def.st === 'guard' && def.face === -att.face;
   if (guarded) { dmg = Math.ceil(dmg * .15); kb *= .5; burst(at, 0x7fd8ff, 14, 4, .3); tone(1300, .06, 'triangle', .05, -400); def.vx = att.face * kb; def.meter = Math.min(100, def.meter + 4); }
@@ -410,7 +494,7 @@ function special(f) {
     const light = new THREE.PointLight(col, 30, 6, 2); orb.add(light);
     orb.position.copy(o); scene.add(orb); projs.push({ m: orb, owner: f, vx: f.face * 9, t: 0 });
     tone(f.S ? 880 : 220, .4, 'sawtooth', .07, f.S ? 600 : -100); noise(.4, .3, 3000);
-  }, 260);
+  }, (f.spRelease || .26) * 1000);
   say(f.S ? 'GIFT BOMB!!' : 'ABYSS ORB!!', f.S ? '必殺 プレゼント・ボム' : '必殺 ブラック・コール');
   flash(.35, f.S ? '#ffd040' : '#a040ff'); camPunch = 1;
 }
@@ -430,9 +514,9 @@ function stepFighter(f, o, dt, inp) {
     else { const mv = (inp.right ? 1 : 0) - (inp.left ? 1 : 0); f.vx = mv * 3.4; f.st = mv ? 'walk' : 'idle'; if (mv) f.walk += dt * (mv * f.face > 0 ? 1 : -1); }
   }
   // 攻撃判定
-  const mv = MOVES[f.st];
-  if (mv) { f.vx *= 1 - 10 * dt; if (!f.hitDone && f.t >= mv.act[0] && f.t <= mv.act[1]) { const d = (o.x - f.x) * f.face; if (d > 0 && d < mv.reach && o.y < 1.2 && o.st !== 'ko') { f.hitDone = true; const at = new THREE.Vector3(f.x + f.face * Math.min(d, mv.reach) * .8, mv.h, 0); damage(f, o, mv.dmg, mv.kb, at); } } if (f.t > mv.dur) { act(f, 'idle'); if (!f.hitDone) f.combo = 0; } }
-  if (f.st === 'special' && f.t > .7) act(f, 'idle');
+  const mv = (f.moves || MOVES)[f.st];
+  if (mv) { f.vx *= 1 - 10 * dt; if (!f.hitDone && f.t >= mv.act[0] && f.t <= mv.act[1]) { const d = (o.x - f.x) * f.face; if (d > 0 && d < mv.reach && o.y < 1.2 && o.st !== 'ko') { f.hitDone = true; const at = mv.bone ? mv.bone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(f.x + f.face * Math.min(d, mv.reach) * .8, mv.h, 0); damage(f, o, mv.dmg, mv.kb, at); } } if (f.t > mv.dur) { act(f, 'idle'); if (!f.hitDone) f.combo = 0; } }
+  if (f.st === 'special' && f.t > (f.spDur || .7)) act(f, 'idle');
   if (f.st === 'hit') { f.vx *= 1 - 6 * dt; if (f.t > .35) act(f, 'idle'); }
   if (f.st === 'guard' && inp && !inp.guard) act(f, 'idle');
   // 物理
