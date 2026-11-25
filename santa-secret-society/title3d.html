@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S.A.N.T.A. タイトル（3D）</title>
+<style>html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; } canvas { display: block; }</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<script type="module">
+// タイトル画面の「サンタ VS ブラックルフ」をリアル3Dモデルで表示する透明なレイヤー（本編 index.html から重ねて使う）
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const toParent = m => { try { window.parent.postMessage(m, '*'); } catch (e) {} };
+const lerp = (a, b, t) => a + (b - a) * t, rand = (a, b) => a + Math.random() * (b - a);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true, premultipliedAlpha: false });
+renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, .1, 100);
+// 本編キャンバスの y=230〜460（幅360×高さ230）の帯を描く。足元が y=430 に来るよう合わせてある
+let cw = 0, ch = 0;
+function size(w, h) { w = Math.max(2, Math.round(w)); h = Math.max(2, Math.round(h)); if (w === cw && h === ch) return; cw = w; ch = h; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+size(720, 460);
+camera.position.set(0, 1.12, 5.63); camera.lookAt(0, 1.12, 0);
+
+// 照明：左から金、右から紫（2Dタイトルと同じ配色）
+scene.add(new THREE.HemisphereLight(0x8a7aa0, 0x200810, .9));
+const key = new THREE.DirectionalLight(0xffe0b0, 1.6); key.position.set(-3, 5, 6); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4, bottom: -1, near: 1, far: 20 }); scene.add(key);
+const gold = new THREE.PointLight(0xffb040, 30, 8, 2); gold.position.set(-3, 1.6, 1.5); scene.add(gold);
+const violet = new THREE.PointLight(0xa040ff, 36, 8, 2); violet.position.set(3, 1.6, 1.5); scene.add(violet);
+// ブラックルフは黒い鎧なので正面からも紫の光を当てて輪郭を出す
+const fillV = new THREE.PointLight(0xd0a0ff, 22, 6, 2); fillV.position.set(.9, 1.7, 2.2); scene.add(fillV);
+const fillG = new THREE.PointLight(0xffe0c0, 8, 6, 2); fillG.position.set(-.9, 1.6, 2.2); scene.add(fillG);
+const rimG = new THREE.SpotLight(0xffc060, 40, 12, .7, .5, 1.5); rimG.position.set(-1.5, 4, -4); rimG.target.position.set(-1.3, 1, 0); scene.add(rimG, rimG.target);
+const rimV = new THREE.SpotLight(0xb050ff, 50, 12, .7, .5, 1.5); rimV.position.set(1.5, 4, -4); rimV.target.position.set(1.3, 1, 0); scene.add(rimV, rimV.target);
+// 影だけ映る床
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), new THREE.ShadowMaterial({ opacity: .45 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+// 光の粒（オーラ）
+const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.35, 'rgba(255,255,255,.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); return t; })();
+function aura(x, col) {
+  const n = 70, geo = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), sp = [];
+  for (let i = 0; i < n; i++) { sp.push({ x: rand(-.5, .5), y: rand(0, 2.2), z: rand(-.4, .4), v: rand(.3, .9) }); }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: .09, map: glowTex, color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); pts.position.x = x; scene.add(pts);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, opacity: .25, depthWrite: false, blending: THREE.AdditiveBlending })); halo.scale.set(2.2, 3, 1); halo.position.set(x, 1.1, -.4); scene.add(halo);
+  return { pts, sp, pos, halo };
+}
+const auras = [aura(-1.26, 0xffc040), aura(1.26, 0xa040ff)];
+
+// ---- モデルの読み込みと Mixamo モーションの移し替え（fight3d.html と同じ方式）
+const RIG = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
+const bn = n => n.replace(/^mixamorig:?/, '');
+const _e = new THREE.Euler(), qE = (x, y, z) => new THREE.Quaternion().setFromEuler(_e.set(x, y, z, 'XYZ'));
+function attach(g, height, root) {
+  const model = g.scene; model.updateMatrixWorld(true); let head = null; model.traverse(o => { if (o.isBone && /Head$/.test(o.name)) head = o; });
+  const hy = head ? model.worldToLocal(head.getWorldPosition(new THREE.Vector3())).y : .88; model.scale.setScalar(height * .86 / (hy || .88));
+  model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+  root.add(model); root.updateMatrixWorld(true);
+  const B = {}; model.traverse(o => { if (o.isBone) B[bn(o.name)] = o; });
+  const mqi = model.getWorldQuaternion(new THREE.Quaternion()).invert(), rest = {}, pRest = {};
+  for (const n of RIG) { const b = B[n]; if (!b) continue; rest[n] = mqi.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())); pRest[n] = mqi.clone().multiply(b.parent.getWorldQuaternion(new THREE.Quaternion())); }
+  const lp = n => model.worldToLocal(B[n].getWorldPosition(new THREE.Vector3()));
+  const side = (a, b) => { const d = lp(b).sub(lp(a)); return { s: Math.sign(d.x) || 1, a: Math.atan2(Math.abs(d.x), -d.y) }; };
+  const fingers = []; model.traverse(o => { if (o.isBone && /Hand(Index|Middle|Ring|Pinky|Thumb)\d/.test(o.name)) fingers.push({ b: o, q0: o.quaternion.clone(), thumb: /Thumb/.test(o.name), left: /Left/.test(o.name) }); });
+  return { model, B, rest, pRest, fingers, L: side('LeftArm', 'LeftForeArm'), R: side('RightArm', 'RightForeArm') };
+}
+function bake(R, M, name) {
+  const c = M.clips[name], n = c.n, times = new Float32Array(n).map((_, i) => i / M.fps), sInv = {}, tRest = {};
+  for (const b of M.bones) { sInv[b] = new THREE.Quaternion().fromArray(M.rest[b]).invert(); if (R.rest[b]) tRest[b] = R.rest[b].clone(); }
+  for (const [sd, k] of [['Left', 'L'], ['Right', 'R']]) { const corr = qE(0, 0, R[k].s * (Math.PI / 2 - R[k].a)); for (const b of ['Arm', 'ForeArm', 'Hand']) if (tRest[sd + b]) tRest[sd + b] = corr.clone().multiply(tRest[sd + b]); }
+  const vals = {}; for (const b of M.bones) if (R.B[b]) vals[b] = new Float32Array(n * 4);
+  const hips = R.B.Hips, hv = new Float32Array(n * 3), mInv = R.model.matrixWorld.clone().invert(), pMi = mInv.clone().multiply(hips.parent.matrixWorld).invert();
+  const hRest = R.model.worldToLocal(hips.getWorldPosition(new THREE.Vector3())), k = hRest.y / M.restHips[1], q = new THREE.Quaternion(), W = {};
+  for (let i = 0; i < n; i++) {
+    for (const b of M.bones) { const bone = R.B[b]; if (!bone) continue; const Wb = q.fromArray(c.q[b], i * 4).clone().multiply(sInv[b]).multiply(tRest[b]);
+      const pn = bone.parent.isBone ? bn(bone.parent.name) : null, Wp = pn && W[pn] ? W[pn] : R.pRest[b]; Wp.clone().invert().multiply(Wb).toArray(vals[b], i * 4); W[b] = Wb; }
+    new THREE.Vector3(hRest.x, hRest.y + (c.hp[i * 3 + 1] - M.restHips[1]) * k, hRest.z).applyMatrix4(pMi).toArray(hv, i * 3);
+  }
+  const tracks = Object.keys(vals).map(b => new THREE.QuaternionKeyframeTrack(R.B[b].name + '.quaternion', times, vals[b]));
+  tracks.push(new THREE.VectorKeyframeTrack(hips.name + '.position', times, hv));
+  return new THREE.AnimationClip(name, c.dur, tracks);
+}
+const actors = [
+  { url: 'models/santa.glb', h: 1.85, x: -1.26, face: .6, from: -4.5, at: .7, clips: ['idle', 'win'], fist: true },
+  { url: 'models/blackruf.glb', h: 2.05, x: 1.26, face: -.6, from: 4.5, at: 1.15, clips: ['mutant_idle', 'mutant_roar'], fist: false },
+];
+let T = 0, ready = false;
+Promise.all([...actors.map(a => new Promise((res, rej) => new GLTFLoader().load(a.url, res, undefined, rej))), fetch('models/motions.json').then(r => r.json())]).then(([gs, gb, M]) => {
+  [gs, gb].forEach((g, i) => { const a = actors[i]; a.root = new THREE.Group(); a.root.rotation.y = a.face; a.root.position.x = a.from; scene.add(a.root);
+    a.R = attach(g, a.h, a.root); a.mixer = new THREE.AnimationMixer(a.R.model); a.act = a.clips.map(n => a.mixer.clipAction(bake(a.R, M, n)));
+    a.act[0].play(); a.mixer.addEventListener('finished', () => { a.act[1].fadeOut(.4); a.act[0].reset().fadeIn(.4).play(); });
+    a.next = rand(5, 9); });
+  ready = true; api.ready = true; toParent({ type: 'title3d-ready' });
+}).catch(() => { api.fail = true; toParent({ type: 'title3d-fail' }); });
+
+// 親（index.html）から毎フレーム step(dt, t, w, h) を呼んでもらい、canvas を drawImage してもらう
+const api = window.__t3 = { ready: false, fail: false, canvas: renderer.domElement, step };
+function step(dt, t, w, h) {
+  if (w) size(w, h);
+  dt = Math.min(.05, Math.max(0, dt)); if (t !== undefined) { if (t < T - .5) for (const a of actors) if (a.root) a.root.position.x = t >= a.at ? a.x : a.from; T = t; } else T += dt;
+  for (const a of actors) {
+    if (!a.root) continue;
+    a.root.position.x = lerp(a.root.position.x, T >= a.at ? a.x : a.from, Math.min(1, dt * 9));
+    a.mixer.update(dt);
+    if (a.fist) for (const fg of a.R.fingers) fg.b.quaternion.copy(fg.q0).multiply(qE(0, 0, (fg.thumb ? .5 : 1) * -1.2 * (fg.left ? 1 : -1)));
+    // ときどき見得を切る（サンタは拳を突き上げ、ブラックルフは咆哮）
+    if (T > 3 && (a.next -= dt) <= 0) { a.next = rand(7, 11); const s = a.act[1]; s.reset(); s.setLoop(THREE.LoopOnce, 1); s.clampWhenFinished = false; s.fadeIn(.35).play(); a.act[0].fadeOut(.35); }
+  }
+  auras.forEach((au, i) => { const a = actors[i]; au.pts.position.x = au.halo.position.x = a.root ? a.root.position.x : a.x;
+    au.sp.forEach((p, k) => { p.y += p.v * dt; if (p.y > 2.4) p.y = 0; au.pos[k * 3] = p.x + Math.sin(T * 2 + k) * .08; au.pos[k * 3 + 1] = p.y; au.pos[k * 3 + 2] = p.z; });
+    au.pts.geometry.attributes.position.needsUpdate = true; au.halo.material.opacity = .18 + .08 * Math.sin(T * 3 + i); });
+  renderer.render(scene, camera);
+}
+// 単体で開いたときはプレビューとして自走する
+if (window.parent === window) { let last = performance.now(); document.body.style.background = '#140818'; const loop = now => { requestAnimationFrame(loop); step((now - last) / 1000, undefined, innerWidth, innerWidth * 230 / 360); last = now; }; requestAnimationFrame(loop); }
+</script>
+</body>
+</html>
