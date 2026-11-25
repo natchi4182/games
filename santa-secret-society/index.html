@@ -3966,7 +3966,7 @@ const Title = {
       const hg = cx.createLinearGradient(0, y0 - 2, 0, y0 + 3); hg.addColorStop(0, 'rgba(255,200,120,0)'); hg.addColorStop(.5, 'rgba(255,220,150,.9)'); hg.addColorStop(1, 'rgba(255,200,120,0)'); cx.fillStyle = hg; cx.fillRect(0, y0 - 2, W, 5); }
     // ファイター（リムライトで浮かぶシルエット）
     const t3 = T3.get();
-    if (t3) { const px = Math.min(2, scale * DPR); try { t3.step(dt, t, W * px, 230 * px); cx.drawImage(t3.canvas, 0, 230, W, 230); } catch (e) { T3.off = true; } }
+    if (t3) { const px = Math.min(2, scale * DPR); try { t3.step(dt, t, W * px, 260 * px); cx.drawImage(t3.canvas, 0, 200, W, 260); } catch (e) { T3.off = true; } }
     else { cx.save();
     for (const f of [this.K, this.S]) {
       cx.save(); const s = 1.1, ax = f.x, ay = 430; cx.translate(ax, ay); cx.scale(s, s); cx.translate(-ax, -ay);

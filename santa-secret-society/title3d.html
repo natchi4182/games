@@ -27,11 +27,11 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, 1, .1, 100);
-// 本編キャンバスの y=230〜460（幅360×高さ230）の帯を描く。足元が y=430 に来るよう合わせてある
+// 本編キャンバスの y=200〜460（幅360×高さ260）の帯を描く。足元が y=430 に来るよう合わせてある
 let cw = 0, ch = 0;
 function size(w, h) { w = Math.max(2, Math.round(w)); h = Math.max(2, Math.round(h)); if (w === cw && h === ch) return; cw = w; ch = h; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-size(720, 460);
-camera.position.set(0, 1.12, 5.63); camera.lookAt(0, 1.12, 0);
+size(720, 520);
+camera.position.set(0, 1.32, 6.38); camera.lookAt(0, 1.32, 0);
 
 // 照明：左から金、右から紫（2Dタイトルと同じ配色）
 scene.add(new THREE.HemisphereLight(0x8a7aa0, 0x200810, .9));
@@ -51,13 +51,13 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), new THREE.ShadowMat
 const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.35, 'rgba(255,255,255,.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); return t; })();
 function aura(x, col) {
   const n = 70, geo = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), sp = [];
-  for (let i = 0; i < n; i++) { sp.push({ x: rand(-.5, .5), y: rand(0, 2.2), z: rand(-.4, .4), v: rand(.3, .9) }); }
+  for (let i = 0; i < n; i++) { sp.push({ x: rand(-.5, .5), y: rand(0, 2.6), z: rand(-.4, .4), v: rand(.3, .9) }); }
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: .09, map: glowTex, color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); pts.position.x = x; scene.add(pts);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, opacity: .25, depthWrite: false, blending: THREE.AdditiveBlending })); halo.scale.set(2.2, 3, 1); halo.position.set(x, 1.1, -.4); scene.add(halo);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, opacity: .25, depthWrite: false, blending: THREE.AdditiveBlending })); halo.scale.set(2.6, 3.6, 1); halo.position.set(x, 1.3, -.4); scene.add(halo);
   return { pts, sp, pos, halo };
 }
-const auras = [aura(-1.26, 0xffc040), aura(1.26, 0xa040ff)];
+const auras = [aura(-1.36, 0xffc040), aura(1.36, 0xa040ff)];
 
 // ---- モデルの読み込みと Mixamo モーションの移し替え（fight3d.html と同じ方式）
 const RIG = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
@@ -93,8 +93,8 @@ function bake(R, M, name) {
   return new THREE.AnimationClip(name, c.dur, tracks);
 }
 const actors = [
-  { url: 'models/santa.glb', h: 1.85, x: -1.26, face: .6, from: -4.5, at: .7, clips: ['idle', 'win'], fist: true },
-  { url: 'models/blackruf.glb', h: 2.05, x: 1.26, face: -.6, from: 4.5, at: 1.15, clips: ['mutant_idle', 'mutant_roar'], fist: false },
+  { url: 'models/santa.glb', h: 1.85 * 1.2, x: -1.36, face: .6, from: -4.5, at: .7, clips: ['idle', 'win'], fist: true },
+  { url: 'models/blackruf.glb', h: 2.05 * 1.2, x: 1.36, face: -.6, from: 4.5, at: 1.15, clips: ['mutant_idle', 'mutant_roar'], fist: false },
 ];
 let T = 0, ready = false;
 Promise.all([...actors.map(a => new Promise((res, rej) => new GLTFLoader().load(a.url, res, undefined, rej))), fetch('models/motions.json').then(r => r.json())]).then(([gs, gb, M]) => {
@@ -119,12 +119,12 @@ function step(dt, t, w, h) {
     if (T > 3 && (a.next -= dt) <= 0) { a.next = rand(7, 11); const s = a.act[1]; s.reset(); s.setLoop(THREE.LoopOnce, 1); s.clampWhenFinished = false; s.fadeIn(.35).play(); a.act[0].fadeOut(.35); }
   }
   auras.forEach((au, i) => { const a = actors[i]; au.pts.position.x = au.halo.position.x = a.root ? a.root.position.x : a.x;
-    au.sp.forEach((p, k) => { p.y += p.v * dt; if (p.y > 2.4) p.y = 0; au.pos[k * 3] = p.x + Math.sin(T * 2 + k) * .08; au.pos[k * 3 + 1] = p.y; au.pos[k * 3 + 2] = p.z; });
+    au.sp.forEach((p, k) => { p.y += p.v * dt; if (p.y > 2.8) p.y = 0; au.pos[k * 3] = p.x + Math.sin(T * 2 + k) * .08; au.pos[k * 3 + 1] = p.y; au.pos[k * 3 + 2] = p.z; });
     au.pts.geometry.attributes.position.needsUpdate = true; au.halo.material.opacity = .18 + .08 * Math.sin(T * 3 + i); });
   renderer.render(scene, camera);
 }
 // 単体で開いたときはプレビューとして自走する
-if (window.parent === window) { let last = performance.now(); document.body.style.background = '#140818'; const loop = now => { requestAnimationFrame(loop); step((now - last) / 1000, undefined, innerWidth, innerWidth * 230 / 360); last = now; }; requestAnimationFrame(loop); }
+if (window.parent === window) { let last = performance.now(); document.body.style.background = '#140818'; const loop = now => { requestAnimationFrame(loop); step((now - last) / 1000, undefined, innerWidth, innerWidth * 260 / 360); last = now; }; requestAnimationFrame(loop); }
 </script>
 </body>
 </html>
