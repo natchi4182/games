@@ -54,12 +54,28 @@
   #rot b { font: 900 20px sans-serif; letter-spacing: 2px; }
   #rot small { font: 12px sans-serif; color: #c9bd98; }
   #rot a { margin-top: 8px; font: 700 13px sans-serif; color: #d4af37; }
+  #cut { position: fixed; inset: 0; pointer-events: none; display: none; overflow: hidden; z-index: 20; }
+  #cut.on { display: block; }
+  #cut .band { position: absolute; left: -15%; right: -15%; top: 30%; height: 36%; transform: skewY(-7deg); background: linear-gradient(90deg, #000 0%, var(--c1) 25%, var(--c2) 50%, var(--c1) 75%, #000 100%); box-shadow: 0 0 40px var(--c2); animation: bandIn .9s cubic-bezier(.2, 1.4, .4, 1) both; }
+  #cut .band::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,.0) 0 40px, rgba(255,255,255,.18) 40px 44px, rgba(255,255,255,0) 44px 90px); animation: lines .25s linear infinite; }
+  #cut .band::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: #fff; box-shadow: 0 calc(36vh - 6px) 0 #fff; opacity: .8; }
+  #cut .txt { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%) skewY(7deg); text-align: center; animation: txtIn .9s cubic-bezier(.2, 1.4, .4, 1) both; }
+  #cut small { display: block; font: 900 12px monospace; letter-spacing: 8px; color: #fff; opacity: .85; }
+  #cut b { display: block; font: 900 clamp(28px, 8vh, 64px) / 1.1 Georgia, 'Hiragino Mincho ProN', serif; letter-spacing: 6px; color: #fff; text-shadow: 0 0 14px var(--c2), 4px 4px 0 #000; }
+  #cut i { display: block; font: 900 11px monospace; letter-spacing: 6px; color: var(--c3); font-style: normal; margin-top: 4px; }
+  #cut .who { position: absolute; top: 50%; font-size: clamp(60px, 22vh, 160px); transform: translateY(-50%); filter: drop-shadow(0 0 18px var(--c2)); animation: whoIn .9s ease-out both; }
+  @keyframes bandIn { 0% { transform: skewY(-7deg) scaleY(0); } 30% { transform: skewY(-7deg) scaleY(1.15); } 85% { transform: skewY(-7deg) scaleY(1); opacity: 1; } 100% { transform: skewY(-7deg) scaleY(0); opacity: 0; } }
+  @keyframes txtIn { 0% { transform: translate(60%, -50%) skewY(7deg); opacity: 0; } 25% { transform: translate(0, -50%) skewY(7deg); opacity: 1; } 80% { transform: translate(-4%, -50%) skewY(7deg); opacity: 1; } 100% { transform: translate(-60%, -50%) skewY(7deg); opacity: 0; } }
+  @keyframes whoIn { 0% { opacity: 0; margin-left: -20vw; } 25% { opacity: 1; margin-left: 0; } 85% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes lines { to { background-position: 90px 0; } }
   #end { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); display: none; gap: 10px; }
   #end a, #end button { font: 800 15px sans-serif; padding: 12px 22px; border-radius: 10px; border: 1px solid var(--gold); background: var(--crim); color: #fff; text-decoration: none; cursor: pointer; }
   #end a { background: rgba(0,0,0,.6); }
   #help { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); font: 11px sans-serif; color: rgba(255,255,255,.7); text-shadow: 0 0 4px #000; pointer-events: none; white-space: nowrap; }
   #load { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 13px monospace; letter-spacing: 3px; color: var(--gold); background: #000; }
 </style>
+<script>if (/[?&]embed/.test(location.search)) document.documentElement.classList.add('embed');</script>
+<style>.embed #help, .embed #rot a { display: none !important; }</style>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -87,6 +103,7 @@
   </div>
 </div>
 <div id="rot"><div class="ph"></div><b>スマホを横向きにしてください</b><small>リアルバトルは横画面専用です</small><a href="index.html">本編へ戻る</a></div>
+<div id="cut"><div class="band"></div><div class="who" id="cutWho">🎅</div><div class="txt"><small id="cutSub">SUPER ARTS</small><b id="cutName"></b><i id="cutEn"></i></div></div>
 <div id="end"><button id="again">もう一度</button><a href="index.html">本編へ戻る</a></div>
 
 <script type="module">
@@ -98,6 +115,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 document.getElementById('load').remove();
+// 本編に組み込まれて動いているときは結果を親に返す（単独で開いたときは従来どおり）
+const EMBED = new URLSearchParams(location.search).has('embed') && window.parent !== window;
+const toParent = msg => { try { window.parent.postMessage(msg, '*'); } catch (e) {} };
+if (EMBED) { toParent({ type: 'santa-fight-ready' }); document.getElementById('help').style.display = 'none'; document.querySelector('#rot a').style.display = 'none'; }
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -488,6 +509,7 @@ for (const b of document.querySelectorAll('.btn')) {
 
 // ------------------------------------------------------------ 戦闘
 const MOVES = { punch: { dur: .35, act: [.07, .16], reach: 1.25, dmg: 6, kb: 2.5, h: 1.45 }, kick: { dur: .5, act: [.13, .28], reach: 1.55, dmg: 11, kb: 5, h: .95 } };
+let spFocus = null;
 let time = 60, hitStop = 0, slow = 1, shake = 0, over = false, overT = 0, introT = 2.2, projs = [], camPunch = 0;
 // 本編と同じ仕様：トナカイ援護（開始6秒後から・13秒ごと）／スーパーサンタ（HP40未満か6連続ヒットで1回・12秒）／ブラックルフ激昂（HP30未満で1回）
 const ASSIST_CD = 13, HYPER_T = 12;
@@ -506,7 +528,7 @@ function damage(att, def, dmg, kb, at, big = false) {
   if (guarded) { dmg = Math.ceil(dmg * (hy ? .4 : .15)); kb *= .5; burst(at, 0x7fd8ff, 14, 4, .3); tone(1300, .06, 'triangle', .05, -400); def.vx = att.face * kb; def.meter = Math.min(100, def.meter + 4); }
   else {
     def.hp = Math.max(0, Math.round((def.hp - dmg) * 10) / 10); act(def, 'hit'); def.vx = att.face * kb; def.flash = 1; att.meter = Math.min(100, att.meter + (hy ? 18 : 12)); def.meter = Math.min(100, def.meter + 7);
-    att.combo++; hitStop = big ? .22 : .07 + Math.min(.06, att.combo * .01); shake = big ? 1 : .35; camPunch = big ? 1 : .4;
+    att.combo++; att.maxCombo = Math.max(att.maxCombo || 0, att.combo); hitStop = big ? .22 : .07 + Math.min(.06, att.combo * .01); shake = big ? 1 : .35; camPunch = big ? 1 : .4;
     burst(at, big ? 0xffd040 : 0xffe9b0, big ? 120 : 40, big ? 10 : 6, big ? .9 : .45); burst(at, 0xff4040, big ? 40 : 12, 4, .5); ring(at, big ? 0xffd040 : 0xffffff, big ? 6 : 1.2);
     hitLight.position.copy(at); hitLight.color.setHex(0xffd28a); hitLight.intensity = big ? 120 : 40;
     noise(big ? .5 : .12, big ? .45 : .3, big ? 700 : 1600); tone(big ? 70 : 150, big ? .5 : .1, 'square', .08, -60);
@@ -515,19 +537,49 @@ function damage(att, def, dmg, kb, at, big = false) {
   }
   if (def.hp <= 0 && !over) { over = true; overT = 0; act(def, 'ko'); def.vy = 5; def.vx = att.face * 4; slow = .25; say('K.O.!', '', true); flash(.9); tone(55, 1, 'sawtooth', .1, -20); noise(1, .5, 600); }
 }
+// 必殺技：カットイン → 溜め → 巨大な光弾 → 大爆発
+let slowT = 0;
+function cutin(f, name, en) {
+  const c = $('cut'), S = f.S, mir = f === P && hyper > 0;
+  c.style.setProperty('--c1', S ? (mir ? '#8a5a00' : '#5e0816') : '#2a0a40'); c.style.setProperty('--c2', S ? (mir ? '#ffd040' : '#ff3b5c') : '#b040ff'); c.style.setProperty('--c3', S ? '#ffd860' : '#ff6b8a');
+  $('cutName').textContent = name; $('cutEn').textContent = en; $('cutSub').textContent = mir ? 'HYPER SUPER ARTS' : 'SUPER ARTS';
+  const w = $('cutWho'); w.textContent = S ? '🎅' : '😈'; w.style.left = f === P ? '6%' : 'auto'; w.style.right = f === P ? 'auto' : '6%';
+  c.classList.remove('on'); void c.offsetWidth; c.classList.add('on'); clearTimeout(cutin.tm); cutin.tm = setTimeout(() => { if (!window.__keepCut) c.classList.remove('on'); }, 950);
+}
 function special(f) {
-  act(f, 'special'); f.meter = 0;
-  setTimeout(() => {
-    const o = handPos(f); const col = f.S ? 0xffc040 : 0xa040ff;
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(.28, 24, 16), new THREE.MeshBasicMaterial({ color: col }));
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); glow.scale.set(2.2, 2.2, 1); orb.add(glow);
-    const light = new THREE.PointLight(col, 30, 6, 2); orb.add(light);
-    orb.position.copy(o); if (f === P && hyper > 0) orb.scale.setScalar(1.6); scene.add(orb); projs.push({ m: orb, owner: f, vx: f.face * 9, t: 0, rain: f === P && hyper > 0 });
-    tone(f.S ? 880 : 220, .4, 'sawtooth', .07, f.S ? 600 : -100); noise(.4, .3, 3000);
-  }, ((f.real && f.spRelease) || .26) * 1000);
-  const mir = f === P && hyper > 0;
-  say(mir ? 'MIRACLE PRESENT RAIN!!' : f.S ? 'GIFT BOMB!!' : 'ABYSS ORB!!', mir ? '必殺 ミラクル・プレゼント・レイン' : f.S ? '必殺 プレゼント・ボム' : '必殺 ブラック・コール');
+  act(f, 'special'); f.meter = 0; f.spFired = false;
+  const mir = f === P && hyper > 0, col = f.S ? (mir ? 0xffd040 : 0xffc040) : 0xa040ff;
+  const name = mir ? 'ミラクル・プレゼント・レイン' : f.S ? 'プレゼント・ボム' : 'ブラック・コール', en = mir ? 'MIRACLE PRESENT RAIN' : f.S ? 'GIFT BOMB' : 'ABYSS ORB';
+  cutin(f, name, en); slow = .2; slowT = .75; spFocus = { f, t: 0 };
+  noise(.5, .3, 5000); tone(f.S ? 440 : 110, .6, 'sawtooth', .06, f.S ? 880 : 220); for (let i = 0; i < 5; i++) setTimeout(() => tone((f.S ? 660 : 160) * (1 + i * .2), .12, 'square', .04), i * 90);
   flash(.35, f.S ? '#ffd040' : '#a040ff'); camPunch = 1;
+  setTimeout(() => {
+    if (f.st === 'ko' || over) return;
+    f.spFired = true; const o = handPos(f), big = mir ? 1.9 : 1.35;
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(.28, 24, 16), new THREE.MeshBasicMaterial({ color: col }));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); glow.scale.set(2.6, 2.6, 1); orb.add(glow);
+    const glow2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, opacity: .8, blending: THREE.AdditiveBlending, depthWrite: false })); glow2.scale.set(.9, .9, 1); orb.add(glow2);
+    // 中心にプレゼント箱／闇の結晶、周りを回る光の輪
+    const core = f.S ? new THREE.Mesh(new THREE.BoxGeometry(.26, .26, .26), new THREE.MeshStandardMaterial({ color: 0xb3122e, emissive: 0x801020, emissiveIntensity: 1.5 }))
+                     : new THREE.Mesh(new THREE.OctahedronGeometry(.2), new THREE.MeshStandardMaterial({ color: 0x1a0030, emissive: 0x7a20ff, emissiveIntensity: 2 }));
+    if (f.S) core.add(new THREE.Mesh(new THREE.BoxGeometry(.28, .28, .06), new THREE.MeshStandardMaterial({ color: 0xffd860, emissive: 0xffa020, emissiveIntensity: 1 })));
+    orb.add(core);
+    const rr = [0, 1].map(i => { const r = new THREE.Mesh(new THREE.TorusGeometry(.55 + i * .15, .025, 8, 48), addMat(i ? 0xffffff : col, .9)); orb.add(r); return r; });
+    const light = new THREE.PointLight(col, 40, 7, 2); orb.add(light);
+    orb.position.copy(o); orb.scale.setScalar(big); scene.add(orb); projs.push({ m: orb, owner: f, vx: f.face * 9, t: 0, rain: mir, core, rr, col });
+    tone(f.S ? 880 : 220, .5, 'sawtooth', .08, f.S ? 600 : -100); noise(.6, .4, 3000); shake = Math.max(shake, .6);
+    burst(o, col, 60, 8, .6); ring(o, col, 3); ring(o, 0xffffff, 2);
+  }, ((f.real && f.spRelease) || .26) * 1000);
+}
+// 着弾の大爆発
+function explode(pos, col, mir) {
+  slow = .3; slowT = .45; bloom.strength = 2.2; shake = 1.8; camPunch = 1.2;
+  for (let i = 0; i < 6; i++) setTimeout(() => ring(pos.clone().add(new THREE.Vector3(0, i * .15 - .3, 0)), i % 2 ? 0xffffff : col, 4 + i * 1.8), i * 60);
+  burst(pos, col, 260, 14, 1.1); burst(pos, 0xffffff, 90, 9, .7); burst(new THREE.Vector3(pos.x, .1, 0), col, 80, 9, .8, -4);
+  for (let i = 0; i < (mir ? 8 : 5); i++) setTimeout(() => { const a = rand(0, Math.PI * 2); bolt(pos, pos.clone().add(new THREE.Vector3(Math.cos(a) * rand(2, 4), Math.abs(Math.sin(a)) * rand(1, 4), rand(-1, 1))), i % 2 ? 0xffffff : col); }, i * 50);
+  for (let i = 0; i < 3; i++) setTimeout(() => bolt(new THREE.Vector3(pos.x + rand(-2, 2), 10, rand(-2, 0)), pos, col), 80 + i * 90);
+  hitLight.position.copy(pos); hitLight.color.setHex(col); hitLight.intensity = 160;
+  noise(1, .55, 500); tone(40, 1, 'sawtooth', .12, -10); setTimeout(() => noise(.6, .3, 1500), 150);
 }
 function stepFighter(f, o, dt, inp) {
   f.t += dt * spd(f); f.cd -= dt; if (f.stun > 0) f.stun -= dt;
@@ -572,10 +624,12 @@ function aiInput(dt) {
 }
 // 飛び道具
 function updProjs(dt) {
-  for (let i = projs.length - 1; i >= 0; i--) { const p = projs[i]; p.t += dt; p.m.position.x += p.vx * dt; p.m.rotation.y += dt * 8; p.m.position.y = 1.2 + Math.sin(p.t * 10) * .05;
-    if (Math.random() < .9) burst(p.m.position.clone(), p.owner.S ? 0xffd060 : 0xb060ff, 3, 1.2, .35, 0);
+  for (let i = projs.length - 1; i >= 0; i--) { const p = projs[i]; p.t += dt; p.m.position.x += p.vx * dt; p.m.position.y = 1.2 + Math.sin(p.t * 10) * .05;
+    if (p.core) { p.core.rotation.x += dt * 9; p.core.rotation.y += dt * 7; p.rr[0].rotation.set(p.t * 6, p.t * 4, 0); p.rr[1].rotation.set(-p.t * 5, 0, p.t * 7); }
+    burst(p.m.position.clone(), p.owner.S ? 0xffd060 : 0xb060ff, 5, 1.5, .45, 0); if (Math.random() < .5) burst(p.m.position.clone(), 0xffffff, 2, .8, .3, 0);
+    if (Math.random() < .08) bolt(p.m.position.clone(), p.m.position.clone().add(new THREE.Vector3(rand(-1.2, 1.2), rand(-1, 1.2), rand(-.6, .6))), p.col || 0xffffff);
     const tgt = p.owner === P ? E : P;
-    if (Math.abs(tgt.x - p.m.position.x) < .6 && tgt.y < 1.4 && tgt.st !== 'ko') { damage(p.owner, tgt, 24, 7, p.m.position.clone(), true); if (p.rain) giftRain(tgt); scene.remove(p.m); projs.splice(i, 1); continue; }
+    if (Math.abs(tgt.x - p.m.position.x) < .6 && tgt.y < 1.4 && tgt.st !== 'ko') { damage(p.owner, tgt, 24, 7, p.m.position.clone(), true); explode(p.m.position.clone(), p.col || 0xffd040, p.rain); if (p.rain) giftRain(tgt); scene.remove(p.m); projs.splice(i, 1); continue; }
     if (Math.abs(p.m.position.x) > 14) { scene.remove(p.m); projs.splice(i, 1); } }
 }
 
@@ -794,7 +848,7 @@ function reset() {
   for (const [f, x] of [[P, -2.2], [E, 2.2]]) Object.assign(f, { x, y: 0, vx: 0, vy: 0, face: x < 0 ? 1 : -1, hp: 100, meter: 0, st: 'idle', t: 0, combo: 0, flash: 0 });
   for (const p of projs) scene.remove(p.m); projs = [];
   time = 60; over = false; overT = 0; introT = 2.2; slow = 1; $('end').style.display = 'none';
-  if (xf) endXfx(); hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; f.shrink = null; revert(f); } for (const q of frags) scene.remove(q.m); frags = [];
+  if (xf) endXfx(); spFocus = null; slowT = 0; hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; f.shrink = null; f.maxCombo = 0; revert(f); } for (const q of frags) scene.remove(q.m); frags = [];
   setTimeout(() => say('ROUND 1', 'BLACKRUF を撃退せよ'), 200); setTimeout(() => { say('FIGHT!'); flash(.4); noise(.4, .3, 2500); }, 1500);
 }
 $('again').addEventListener('click', () => { audio(); reset(); });
@@ -809,6 +863,7 @@ function updCamera(dt, t) {
   if (over) { const loser = P.st === 'ko' ? P : E, win = loser === P ? E : P; const k = Math.min(1, overT / 1.5); tx = lerp(mid, win.x + win.face * 1.8, k); tz = lerp(dist, 3.2, k); ty = lerp(1.55, 1.3, k); lx = lerp(mid, win.x, k); ly = lerp(1.05, 1.35, k); }
   if (xf) { const f = xf.f, t = xf.t, k = Math.min(1, t / .5), a = f.face * lerp(.95, -.55, Math.min(1, t / XEND)), R = t < TX ? lerp(4.2, 2.6, t / TX) : lerp(2.6, 3.4, Math.min(1, (t - TX) / 1.2));
     tx = lerp(mid, f.x + Math.sin(a) * R, k); tz = lerp(dist, Math.cos(a) * R, k); ty = lerp(1.35, t < TX ? .9 : 1.5, k); lx = lerp(mid, f.x, k); ly = lerp(1.0, t < TX ? 1.1 : 1.35, k); }
+  else if (spFocus) { const f = spFocus.f, k = Math.sin(Math.min(1, spFocus.t / .8) * Math.PI); tx = lerp(mid, f.x + f.face * .6, k); tz = lerp(dist, 2.4, k); ty = lerp(1.35, 1.25, k); lx = lerp(mid, f.x + f.face * .4, k); ly = lerp(1.0, 1.3, k); }
   else if (deer && deer.ph === 'buck') { tx = (deer.x + E.x) / 2; tz = 3.4; }
   if (camPunch > 0) { tz -= camPunch * 1.2; camPunch = Math.max(0, camPunch - dt * 3); }
   const a = 1 - Math.exp(-4 * dt);
@@ -828,7 +883,7 @@ function frame(now) {
   const gdt = dt * slow;
   if (introT > 0) introT -= dt;
   else if (!over && !xf) { time -= gdt; if (time <= 0) { time = 0; over = true; overT = 0; const pl = P.hp >= E.hp ? E : P; act(pl, 'ko'); say('TIME UP', '', true); } }
-  if (over) { overT += dt; slow = Math.min(1, slow + dt * .5); if (overT > 2.2 && $('end').style.display !== 'flex') { const win = P.st !== 'ko'; say(win ? 'YOU WIN' : 'YOU LOSE', win ? 'ブラックルフを撃退した！' : 'クリスマスが奪われた…', true); $('end').style.display = 'flex'; if (win) { for (let i = 0; i < 6; i++) setTimeout(() => burst(new THREE.Vector3(rand(-6, 6), rand(4, 8), rand(-6, -2)), new THREE.Color().setHSL(Math.random(), 1, .6), 60, 6, 1.2, -3), i * 250); } } }
+  if (over) { overT += dt; slow = Math.min(1, slow + dt * .5); if (overT > 2.2 && $('end').style.display !== 'flex') { const win = P.st !== 'ko'; say(win ? 'YOU WIN' : 'YOU LOSE', win ? 'ブラックルフを撃退した！' : 'クリスマスが奪われた…', true); $('end').style.display = EMBED ? 'none' : 'flex'; if (EMBED) { $('end').style.display = 'flex'; $('end').innerHTML = ''; setTimeout(() => toParent({ type: 'santa-fight-end', win, hpP: P.hp, hpE: E.hp, maxCombo: P.maxCombo || 0 }), 2200); } if (win) { for (let i = 0; i < 6; i++) setTimeout(() => burst(new THREE.Vector3(rand(-6, 6), rand(4, 8), rand(-6, -2)), new THREE.Color().setHSL(Math.random(), 1, .6), 60, 6, 1.2, -3), i * 250); } } }
   const inp = { ...keys }; for (const k in pressed) { inp[k] = true; delete pressed[k]; }
   if (inp.assist) callDeer();
   if (!xf && !over && introT <= 0) { if (!hyperUsed && P.st !== 'ko' && !deer && (P.hp < 40 || P.combo >= 6)) startXf(P); else if (!rageOn && E.st !== 'ko' && E.hp > 0 && E.hp < 30) startXf(E); }
@@ -836,7 +891,12 @@ function frame(now) {
   else { stepFighter(P, E, deer && deer.ph === 'banner' ? gdt * .3 : gdt, inp); stepFighter(E, P, deer && deer.ph === 'banner' ? gdt * .3 : gdt, aiInput(gdt)); }
   if (!over && !xf && introT <= 0 && assistCd > 0) assistCd -= gdt;
   if (hyper > 0 && !xf) { hyper -= gdt; P.meter = Math.min(100, P.meter + gdt * 6); if (hyper <= 0) { hyper = 0; P.shrink = 0; say('HYPER END', '人形の姿に戻った'); burst(new THREE.Vector3(P.x, 1.2, 0), 0xffffff, 40, 4, .6); noise(.3, .3, 2000); } }
-  updDeer(gdt); updGifts(gdt); updFrags(dt); updBolts(dt); updPower(P, gdt, T); updPower(E, gdt, T);
+  updDeer(gdt); updGifts(gdt); updFrags(dt); updBolts(dt);
+  // 必殺の溜め：手元へ光が集まる
+  for (const f of [P, E]) if (f.st === 'special' && !f.spFired) { const h = handPos(f), col = f.S ? (f === P && hyper > 0 ? 0xffd040 : 0xffc040) : 0xa040ff;
+    for (let k = 0; k < 4; k++) { const a = rand(0, 7), r = rand(.8, 1.6), p0 = h.clone().add(new THREE.Vector3(Math.cos(a) * r, rand(-.8, .8), Math.sin(a) * r * .6)); parts.push({ p: p0, v: h.clone().sub(p0).multiplyScalar(4), life: .25, max: .25, c: new THREE.Color(Math.random() < .3 ? 0xffffff : col), g: 0 }); } }
+  if (!over && !xf) { if (slowT > 0) slowT -= dt; else if (slow < 1) slow = Math.min(1, slow + dt * 2.5); bloom.strength = lerp(bloom.strength, .75, Math.min(1, dt * 2)); }
+  if (spFocus) { spFocus.t += dt; if (spFocus.t > .8) spFocus = null; } updPower(P, gdt, T); updPower(E, gdt, T);
   updProjs(gdt); updParts(gdt); updRings(dt);
   applyPose(P, gdt, T); applyPose(E, gdt, T); setFlash(P); setFlash(E);
   for (const f of [P, E]) { f.aura.material.opacity = f.meter >= 100 ? .35 + .2 * Math.sin(T * 10) : f.st === 'special' ? .8 : 0; }

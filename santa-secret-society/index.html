@@ -267,7 +267,7 @@ function bgmStep(T, step, t) {
 function bgmWant() {
   if (scene === Title) return 'theme';
   if (scene === Prologue || scene === Briefing || scene === Training) return 'brief';
-  if (scene === Play) return Play.done ? null : Play.m.id;
+  if (scene === Play) return Play.done || fight3dOn ? null : Play.m.id;
   if (scene === Result) return Result.t > (Result.R || 0) + .9 ? 'report' : null;
   if (scene === Fest) return Fest.t > 3 ? (Fest.kind === 'eve' ? 'delivery' : 'victory') : null;
   if (scene === NameEntry) return 'victory';
@@ -2438,6 +2438,44 @@ function drawRig(f, opt = {}) {
   cx.restore();
 }
 
+// 幹部撃退：WebGL が使える端末では「リアル3Dバトル」（fight3d.html）を全画面で重ねて遊び、結果だけを受け取る。
+// 使えない端末や読み込みに失敗したときは、従来の 2D 版にそのまま切り替える。
+const USE3D = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
+let fight3dOn = false;
+function Fight3D(api) {
+  if (!USE3D) return Fight(api);
+  let frame = null, ready = false, done = false, t = 0, fb = null;
+  const qs = new URLSearchParams(location.search), dq = qs.get('date') ? '&date=' + encodeURIComponent(qs.get('date')) : '';
+  const cleanup = () => { removeEventListener('message', onMsg); if (frame) frame.remove(); frame = null; fight3dOn = false; };
+  function onMsg(e) {
+    const d = e.data; if (!d || !frame || e.source !== frame.contentWindow) return;
+    if (d.type === 'santa-fight-ready') ready = true;
+    if (d.type === 'santa-fight-end' && !done) { done = true; cleanup(); const win = !!d.win, hpP = Math.max(0, d.hpP), hpE = Math.max(0, d.hpE);
+      const rate = win ? .6 + .4 * hpP / 100 : .5 * (100 - hpE) / 100;
+      api.end(rate, [win ? '勝利: 幹部を撃退した!' : '敗北: 幹部を取り逃がした…', `残り体力: ${Math.round(hpP)}%`, `与えたダメージ: ${Math.round(100 - hpE)}`, `最大コンボ: ${d.maxCombo || 0}`], win ? 'YOU WIN' : 'YOU LOSE'); }
+  }
+  function open() {
+    frame = document.createElement('iframe'); frame.src = 'fight3d.html?embed=1' + dq; frame.allow = 'autoplay; fullscreen';
+    frame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:10;background:#000';
+    frame.onload = () => { try { frame.contentWindow.focus(); } catch (e) {} };
+    document.body.appendChild(frame); addEventListener('message', onMsg); fight3dOn = true;
+  }
+  return {
+    update(dt) {
+      if (fb) return fb.update(dt);
+      t += dt; if (!frame && !done) open();
+      // 3D エンジンが起動しない（オフライン等）ときは 2D 版へ
+      if (!ready && t > 15 && !done) { cleanup(); setLandscape(true); fb = Fight(api); }
+    },
+    draw() {
+      if (fb) return fb.draw();
+      drawNight(); text('リアル3Dバトル 起動中…', W / 2, H / 2, 16, GOLD2); text('しばらくお待ちください', W / 2, H / 2 + 26, 11, '#c9bd98', 'center', 'normal');
+    },
+    down(...a) { if (fb && fb.down) fb.down(...a); }, up(...a) { if (fb && fb.up) fb.up(...a); }, move(...a) { if (fb && fb.move) fb.move(...a); },
+    key(c) { if (fb && fb.key) fb.key(c); }, keyup(c) { if (fb && fb.keyup) fb.keyup(c); },
+    get dbg() { return fb && fb.dbg; },
+  };
+}
 function Fight(api) {
   const FL = LAND ? 296 : 392, LIMIT = 60; ctxFL = FL;
   const ARB = LAND ? H : ARB, MY = LAND ? 150 : 220;
@@ -3791,9 +3829,9 @@ const MISSIONS = [
   { id: 'escort', code: 'OP-04', name: '輸送護衛', genre: 'ガンシューティング', icon: '🎯', date: '12月18日', make: Escort,
     story: '完成したプレゼントを北極基地へ輸送中、K.R.A.M.P.U.S. の襲撃ドローン部隊が現れた！\n輸送トラックを守り抜け。',
     how: '・敵をタップして射撃（弾は6発）\n・下の RELOAD を押して装填（キーボードは R）\n・大型機は4発、ミサイルも撃ち落とせる\n・🦌 は味方！撃つと積荷が傷む' },
-  { id: 'fight', code: 'OP-05', name: '幹部撃退', genre: '格闘', icon: '🥊', date: '12月23日', make: Fight,
+  { id: 'fight', code: 'OP-05', name: '幹部撃退', genre: '格闘', icon: '🥊', date: '12月23日', make: Fight3D,
     story: '前夜、K.R.A.M.P.U.S. の幹部「ブラックルフ」が北極倉庫に単身潜入！\nプレゼントを奪われる前に、屋上で決着をつけろ。',
-    how: '・◀ ▶ 移動　▲ ジャンプ　🛡 長押しでガード\n・👊 パンチ（速い）　🦵 キック（強い・長い）\n・ゲージMAXで 🎁 必殺プレゼント・ボム\n・🦌 でトナカイのルドルフが突進して援護（時間で再使用）\n・ピンチか6連続ヒットで「スーパーサンタ」に覚醒！\n・このミッションは横画面。スマホを横に向けて遊ぼう\n・キーボード: A/D 移動 W ジャンプ J パンチ K キック S ガード I 必殺 U 援護' },
+    how: '・◀ ▶ 移動　▲ ジャンプ　🛡 長押しでガード\n・👊 パンチ（速い）　🦵 キック（強い・長い）\n・ゲージMAXで 🎁 必殺プレゼント・ボム\n・🦌 でトナカイのルドルフが突進して援護（時間で再使用）\n・ピンチか6連続ヒットで「スーパーサンタ」に覚醒！\n・3Dバトル：最初は人形。覚醒するとリアルな姿に変身する\n・このミッションは横画面。スマホを横に向けて遊ぼう\n・キーボード: A/D 移動 W ジャンプ J パンチ K キック S ガード I 必殺 U 援護' },
   { id: 'delivery', code: 'OP-06', name: '配達', genre: 'アクション', icon: '🛷', date: '12月24日', make: Delivery,
     story: 'ついに決行の夜。ソリで世界中の家の煙突にプレゼントを届けろ。\n起きている子供に姿を見られたら機密漏洩だ。',
     how: '・画面タップ（スペース）でプレゼントを投下\n・プレゼントは少し後ろへ流れながら落ちる\n・窓が光っている家は子供が起きている。暗くなるのを待て\n・各家の煙突に1つずつ届けよう' },
@@ -3838,10 +3876,25 @@ function chromaText(s, x, y, sz, sp, ff, fill, glitch = 0) {
   cx.save(); cx.shadowColor = 'rgba(200,20,50,.9)'; cx.shadowBlur = 16; spaced(s, x, y, sz, fill, sp, 'center', ff, '900'); cx.restore();
 }
 let titleSeen = false;
+// タイトルの「サンタ VS ブラックルフ」をリアル3Dモデルで描く（title3d.html を裏で読み込み、その canvas を貼り付ける）。
+// 読み込めない環境（WebGL なし・CDN 不通・file:// など）では従来の2D人形のまま
+const T3 = {
+  el: null, off: false,
+  init() {
+    if (this.el || this.off || !USE3D) return;
+    try { const f = document.createElement('iframe'); f.src = 'title3d.html'; f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+      Object.assign(f.style, { position: 'fixed', left: '0', top: '0', width: '8px', height: '8px', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-1' });
+      document.body.appendChild(f); this.el = f; } catch (e) { this.off = true; }
+  },
+  get() {
+    if (this.off || !this.el) return null;
+    try { const a = this.el.contentWindow && this.el.contentWindow.__t3; if (a && a.fail) { this.off = true; return null; } return a && a.ready ? a : null; } catch (e) { this.off = true; return null; }
+  },
+};
 const Title = {
   ...BtnMix,
   enter() {
-    this.t = titleSeen ? 2.7 : 0; titleSeen = true; this.glitch = 0; this.slam = false; this.beats = {};
+    this.t = titleSeen ? 2.7 : 0; titleSeen = true; this.glitch = 0; this.slam = false; this.beats = {}; T3.init();
     const sndLabel = () => muted ? '🔇 SOUND OFF' : '🔊 SOUND ON';
     this.btns = [
       Btn(52, 446, 256, 60, '作戦開始', () => { G.mode = 'campaign'; G.idx = 0; G.results = []; G.entered = false; G.codename = pick(CODENAMES); go(Prologue); }, { glow: true, size: 21, sub: 'OPERATION  START' }),
@@ -3912,14 +3965,16 @@ const Title = {
       for (let i = 0; i < 10; i++) { const q = ((i + (gT * .8) % 1) / 10), yy = y0 + Math.pow(q, 2.2) * (H - y0); cx.globalAlpha = q; cx.beginPath(); cx.moveTo(0, yy); cx.lineTo(W, yy); cx.stroke(); } cx.globalAlpha = 1;
       const hg = cx.createLinearGradient(0, y0 - 2, 0, y0 + 3); hg.addColorStop(0, 'rgba(255,200,120,0)'); hg.addColorStop(.5, 'rgba(255,220,150,.9)'); hg.addColorStop(1, 'rgba(255,200,120,0)'); cx.fillStyle = hg; cx.fillRect(0, y0 - 2, W, 5); }
     // ファイター（リムライトで浮かぶシルエット）
-    cx.save(); cx.translate(0, 0);
+    const t3 = T3.get();
+    if (t3) { const px = Math.min(2, scale * DPR); try { t3.step(dt, t, W * px, 230 * px); cx.drawImage(t3.canvas, 0, 230, W, 230); } catch (e) { T3.off = true; } }
+    else { cx.save();
     for (const f of [this.K, this.S]) {
       cx.save(); const s = 1.1, ax = f.x, ay = 430; cx.translate(ax, ay); cx.scale(s, s); cx.translate(-ax, -ay);
       if (!f.isP) { drawFlames((f.rig.W.hip.x + f.rig.W.neck.x) / 2, (f.rig.W.hip.y + f.rig.W.neck.y) / 2 - 6, '#a03cff', 9, 46); drawEyeTrail(f); }
       else drawFlames((f.rig.W.hip.x + f.rig.W.neck.x) / 2, (f.rig.W.hip.y + f.rig.W.neck.y) / 2 - 6, '#ffcc4a', 9, 40);
       drawRig(f); cx.restore();
     }
-    cx.restore();
+    cx.restore(); }
     // ロゴの背後を暗く
     const vg = cx.createLinearGradient(0, 60, 0, 300); vg.addColorStop(0, 'rgba(0,0,0,.0)'); vg.addColorStop(.5, 'rgba(0,0,0,.35)'); vg.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = vg; cx.fillRect(0, 60, W, 240);
     // VS の光
@@ -4249,7 +4304,7 @@ const Briefing = typeScene(i => {
 
 const Play = {
   enter(i) {
-    setLandscape(MS(i).id === 'fight'); this.snap = null; bgmHype = 0; hurryG = 0; this.i = i; this.m = MS(i); this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
+    setLandscape(MS(i).id === 'fight' && !USE3D); this.snap = null; bgmHype = 0; hurryG = 0; this.i = i; this.m = MS(i); this.done = null; this.cd = 3.6; this.last = 4; this.paused = null; this.resumeT = 0;
     this.g = this.m.make({ end: (rate, lines, msg) => { if (this.done) return; this.done = { rate: clamp(rate, 0, 1), lines, msg: msg || 'MISSION END', t: 0, good: rate >= .6 };
       const good = this.done.good; scrFlash = .9; scrFlashCol = good ? '255,250,230' : '255,60,80'; shake = 14;
       noise(.6, .4, 1800); tone(good ? 880 : 220, .5, 'square', .06, good ? 440 : -100); tone(55, .6, 'sawtooth', .08, -20);
