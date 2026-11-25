@@ -33,7 +33,7 @@
   #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
   #pad { position: fixed; left: 0; right: 0; bottom: 0; padding: 0 14px max(14px, env(safe-area-inset-bottom)); display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; }
   .grp { display: grid; gap: 8px; pointer-events: auto; }
-  .grp.l { grid-template-columns: repeat(3, 58px); grid-template-rows: 58px; }
+  .grp.l { grid-template-columns: repeat(4, 58px); grid-template-rows: 58px; }
   .grp.r { grid-template-columns: repeat(2, 62px); grid-template-rows: 62px 62px; }
   .btn { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid rgba(212,175,55,.6); background: rgba(10,8,14,.55); border-radius: 14px; font-size: 22px; color: #fff; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); touch-action: none; }
   .btn small { font: 700 8px monospace; letter-spacing: 1px; color: var(--gold); margin-top: 2px; }
@@ -41,6 +41,19 @@
   .btn.sp { border-color: #ff3b5c; }
   .btn.sp.ready { animation: rd .35s infinite alternate; }
   @keyframes rd { to { background: rgba(255,59,92,.55); box-shadow: 0 0 18px #ff3b5c; } }
+  .btn.as { position: relative; overflow: hidden; border-color: #ff6b8a; }
+  .btn.as::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: var(--cd, 0%); background: rgba(0,0,0,.6); }
+  .btn.as.ready { animation: rd2 .45s infinite alternate; }
+  @keyframes rd2 { to { box-shadow: 0 0 16px #ff6b8a; background: rgba(255,107,138,.35); } }
+  #hyperTxt { margin-top: 3px; font: 800 10px monospace; letter-spacing: 2px; color: #ffd84a; text-shadow: 0 0 6px #ff9a2a; min-height: 12px; }
+  #rageTxt { margin-top: 3px; font: 800 10px monospace; letter-spacing: 2px; color: #ff5a70; text-shadow: 0 0 6px #ff2040; min-height: 12px; }
+  #rot { position: fixed; inset: 0; z-index: 50; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(#1a0812, #000); text-align: center; }
+  #rot.on { display: flex; }
+  #rot .ph { width: 56px; height: 92px; border: 3px solid #d4af37; border-radius: 10px; animation: rotph 1.6s ease-in-out infinite; }
+  @keyframes rotph { 0%, 20% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+  #rot b { font: 900 20px sans-serif; letter-spacing: 2px; }
+  #rot small { font: 12px sans-serif; color: #c9bd98; }
+  #rot a { margin-top: 8px; font: 700 13px sans-serif; color: #d4af37; }
   #end { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); display: none; gap: 10px; }
   #end a, #end button { font: 800 15px sans-serif; padding: 12px 22px; border-radius: 10px; border: 1px solid var(--gold); background: var(--crim); color: #fff; text-decoration: none; cursor: pointer; }
   #end a { background: rgba(0,0,0,.6); }
@@ -57,22 +70,23 @@
 <body>
 <div id="load">LOADING 3D ENGINE...</div>
 <div id="hud">
-  <div class="side"><div class="name">AGENT SANTA</div><div class="bar"><i class="lag" id="lagP"></i><i class="hp" id="hpP"></i></div><div class="meter" id="mtrPw"><i id="mtrP"></i></div></div>
+  <div class="side"><div class="name">AGENT SANTA</div><div class="bar"><i class="lag" id="lagP"></i><i class="hp" id="hpP"></i></div><div class="meter" id="mtrPw"><i id="mtrP"></i></div><div id="hyperTxt"></div></div>
   <div id="timer">60</div>
-  <div class="side r"><div class="name">BLACKRUF</div><div class="bar"><i class="lag" id="lagE"></i><i class="hp" id="hpE"></i></div><div class="meter" id="mtrEw"><i id="mtrE"></i></div></div>
+  <div class="side r"><div class="name">BLACKRUF</div><div class="bar"><i class="lag" id="lagE"></i><i class="hp" id="hpE"></i></div><div class="meter" id="mtrEw"><i id="mtrE"></i></div><div id="rageTxt"></div></div>
 </div>
-<div id="help">試作：リアル3D版 幹部撃退 ／ キーボード A D 移動・W ジャンプ・J パンチ・K キック・S ガード・I 必殺</div>
+<div id="help">試作：リアル3D版 幹部撃退 ／ キーボード A D 移動・W ジャンプ・J パンチ・K キック・S ガード・I 必殺・U トナカイ</div>
 <div id="msg"><b id="big"></b><small id="sub"></small></div>
 <div id="flash"></div>
 <div id="pad">
   <div class="grp l">
-    <div class="btn" data-k="left">◀</div><div class="btn" data-k="jump">▲</div><div class="btn" data-k="right">▶</div>
+    <div class="btn" data-k="left">◀</div><div class="btn" data-k="jump">▲</div><div class="btn" data-k="right">▶</div><div class="btn as" data-k="assist" id="asBtn">🦌<small>ASSIST</small></div>
   </div>
   <div class="grp r">
     <div class="btn" data-k="guard">🛡<small>GUARD</small></div><div class="btn sp" data-k="special" id="spBtn">🎁<small>SPECIAL</small></div>
     <div class="btn" data-k="punch">👊<small>PUNCH</small></div><div class="btn" data-k="kick">🦵<small>KICK</small></div>
   </div>
 </div>
+<div id="rot"><div class="ph"></div><b>スマホを横向きにしてください</b><small>リアルバトルは横画面専用です</small><a href="index.html">本編へ戻る</a></div>
 <div id="end"><button id="again">もう一度</button><a href="index.html">本編へ戻る</a></div>
 
 <script type="module">
@@ -114,8 +128,13 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .7
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
-function onResize() { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+let portrait = false;
+function onResize() { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  portrait = innerHeight > innerWidth; const r = document.getElementById('rot'); if (r) r.classList.toggle('on', portrait); }
 addEventListener('resize', onResize);
+// 向きを変えた直後は画面サイズが遅れて変わる端末があるので、少し待って測り直す
+addEventListener('orientationchange', () => { for (const ms of [100, 350, 800]) setTimeout(onResize, ms); });
+if (screen.orientation) screen.orientation.addEventListener('change', () => setTimeout(onResize, 120));
 
 // ------------------------------------------------------------ テクスチャ（コードで生成）
 function canvasTex(w, h, draw, repeat) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(...repeat); } return t; }
@@ -276,7 +295,7 @@ function attachModel(f, g, height) {
   model.scale.setScalar(height * .86 / (hy || .88));
   model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
   for (const c of f.root.children) if (c !== f.aura) c.visible = false;
-  f.cape = null;
+  f.cape = null; f.mats = null;
   const inner = new THREE.Group(); inner.add(model); f.root.add(inner);
   const B = {}; model.traverse(o => { if (o.isBone) B[bn(o.name)] = o; });
   f.root.updateMatrixWorld(true);
@@ -319,10 +338,10 @@ function applyRig(f) {
 
 // ------------------------------------------------------------ Mixamo モーションを各モデルに移し替えて再生
 const ANIMSET = {
-  santa: { idle: 'idle', walk: 'walk', punch: 'punch', kick: 'kick', guard: 'guard', hit: 'hit', ko: 'ko', win: 'win', jump: 'jump', special: 'special_santa', intro: 'idle' },
-  krampus: { idle: 'mutant_idle', walk: 'mutant_walk', punch: 'mutant_punch', kick: 'mutant_swipe', guard: 'guard', hit: 'hit', ko: 'mutant_ko', win: 'mutant_win', jump: 'jump', special: 'special_blackruf', intro: 'mutant_roar' },
+  santa: { idle: 'idle', walk: 'walk', punch: 'punch', kick: 'kick', guard: 'guard', hit: 'hit', ko: 'ko', win: 'win', jump: 'jump', special: 'special_santa', intro: 'idle', xform: 'win' },
+  krampus: { idle: 'mutant_idle', walk: 'mutant_walk', punch: 'mutant_punch', kick: 'mutant_swipe', guard: 'guard', hit: 'hit', ko: 'mutant_ko', win: 'mutant_win', jump: 'jump', special: 'special_blackruf', intro: 'mutant_roar', xform: 'mutant_roar' },
 };
-const ONCE = { punch: 1, kick: 1, hit: 1, ko: 1, win: 1, jump: 1, special: 1, guard: 1 };
+const ONCE = { xform: 1, punch: 1, kick: 1, hit: 1, ko: 1, win: 1, jump: 1, special: 1, guard: 1 };
 function bakeClip(f, M, name) {
   const R = f.rig, c = M.clips[name], n = c.n, times = new Float32Array(n).map((_, i) => i / M.fps);
   const sInv = {}, tRest = {};
@@ -372,6 +391,7 @@ function setupAnim(f, M) {
 }
 function animFor(f) {
   if (introT > 0 && introT < 1e8) return ['intro', 1];
+  if (xf && xf.f === f) return ['xform', 1];
   switch (f.st) {
     case 'walk': return ['walk', (Math.sign(f.vx || 1) * f.face > 0 ? 1 : -1) * clamp(Math.abs(f.vx) / 3.4, .5, 1.3)];
     case 'punch': return ['punch', f.moves.punch.spd];
@@ -392,7 +412,7 @@ function updAnim(f, dt) {
     a.play(); if (An.cur && An.cur !== a) a.crossFadeFrom(An.cur, key === 'hit' ? .05 : .12, false); else a.setEffectiveWeight(1);
     An.cur = a; a.paused = false;
   }
-  a.setEffectiveTimeScale(ts);
+  a.setEffectiveTimeScale(ts * spd(f));
   if (key === 'guard' && a.time > a.getClip().duration * .32) a.paused = true; // 腕を上げたところで止める
   An.mixer.update(dt);
 }
@@ -448,10 +468,15 @@ function applyPose(f, dt, t) {
   f.flash = Math.max(0, f.flash - dt * 6);
 }
 // 被弾フラッシュ用に、キャラごとの材質を一括で光らせる
-function setFlash(f) { const mats = new Set(); f.root.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) mats.add(o.material); }); for (const m of mats) { if (m.userData.e0 === undefined) { m.userData.e0 = m.emissive.clone(); m.userData.ei = m.emissiveIntensity; } m.emissive.copy(f.flash > 0 ? new THREE.Color(f.rig ? 0xff5040 : 0xffffff) : m.userData.e0); m.emissiveIntensity = f.flash > 0 ? f.flash * (f.rig ? .35 : .9) : m.userData.ei; } }
+const _fc = new THREE.Color();
+function setFlash(f) { if (!f.mats) { f.mats = new Set(); f.root.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) f.mats.add(o.material); }); }
+  for (const m of f.mats) { if (m.userData.e0 === undefined) { m.userData.e0 = m.emissive.clone(); m.userData.ei = m.emissiveIntensity; }
+    if (f.flash > 0) { m.emissive.setHex(f.rig ? 0xff5040 : 0xffffff); m.emissiveIntensity = f.flash * (f.rig ? .35 : .9); }
+    else if (f.tint) { m.emissive.copy(_fc.setHex(f.tint[0])); m.emissiveIntensity = f.tint[1]; }
+    else { m.emissive.copy(m.userData.e0); m.emissiveIntensity = m.userData.ei; } } }
 
 // ------------------------------------------------------------ 入力
-const keys = {}, KEYMAP = { KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', KeyW: 'jump', ArrowUp: 'jump', KeyS: 'guard', ArrowDown: 'guard', KeyJ: 'punch', KeyK: 'kick', KeyI: 'special' };
+const keys = {}, KEYMAP = { KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', KeyW: 'jump', ArrowUp: 'jump', KeyS: 'guard', ArrowDown: 'guard', KeyJ: 'punch', KeyK: 'kick', KeyI: 'special', KeyU: 'assist' };
 const pressed = {};
 addEventListener('keydown', e => { audio(); const k = KEYMAP[e.code]; if (k) { e.preventDefault(); if (!keys[k]) pressed[k] = true; keys[k] = true; } });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
@@ -465,6 +490,10 @@ for (const b of document.querySelectorAll('.btn')) {
 // ------------------------------------------------------------ 戦闘
 const MOVES = { punch: { dur: .35, act: [.07, .16], reach: 1.25, dmg: 6, kb: 2.5, h: 1.45 }, kick: { dur: .5, act: [.13, .28], reach: 1.55, dmg: 11, kb: 5, h: .95 } };
 let time = 60, hitStop = 0, slow = 1, shake = 0, over = false, overT = 0, introT = 2.2, projs = [], camPunch = 0;
+// 本編と同じ仕様：トナカイ援護（開始6秒後から・13秒ごと）／スーパーサンタ（HP40未満か6連続ヒットで1回・12秒）／ブラックルフ激昂（HP30未満で1回）
+const ASSIST_CD = 13, HYPER_T = 12;
+let hyper = 0, hyperUsed = false, rageOn = false, xf = null, assistCd = 6, deer = null, gifts = [];
+const spd = f => f === P && hyper > 0 ? 1.35 : f === E && rageOn ? 1.1 : 1;
 const big = $('big'), sub = $('sub'), flashEl = $('flash');
 function say(a, b = '', hold) { big.textContent = a; sub.textContent = b; big.classList.remove('on'); sub.classList.remove('on'); void big.offsetWidth; big.classList.add('on'); if (b) sub.classList.add('on'); if (!hold) setTimeout(() => { big.classList.remove('on'); sub.classList.remove('on'); }, 900); }
 function flash(a = .6, col = '#fff') { flashEl.style.transition = 'none'; flashEl.style.background = col; flashEl.style.opacity = a; requestAnimationFrame(() => { flashEl.style.transition = 'opacity .35s'; flashEl.style.opacity = 0; }); }
@@ -472,13 +501,15 @@ function act(f, st) { f.st = st; f.t = 0; f.hitDone = false; }
 function canAct(f) { return !over && introT <= 0 && (f.st === 'idle' || f.st === 'walk' || f.st === 'guard'); }
 function handPos(f, leg) { const o = new THREE.Vector3(); (f.spBone && !leg ? f.spBone : leg ? f.J.ftL : f.J.hdL).getWorldPosition(o); return o; }
 function damage(att, def, dmg, kb, at, big = false) {
+  const hy = att === P && hyper > 0; if (hy) dmg *= 1.5;
+  def.combo = 0;
   const guarded = def.st === 'guard' && def.face === -att.face;
-  if (guarded) { dmg = Math.ceil(dmg * .15); kb *= .5; burst(at, 0x7fd8ff, 14, 4, .3); tone(1300, .06, 'triangle', .05, -400); def.vx = att.face * kb; def.meter = Math.min(100, def.meter + 4); }
+  if (guarded) { dmg = Math.ceil(dmg * (hy ? .4 : .15)); kb *= .5; burst(at, 0x7fd8ff, 14, 4, .3); tone(1300, .06, 'triangle', .05, -400); def.vx = att.face * kb; def.meter = Math.min(100, def.meter + 4); }
   else {
-    def.hp = Math.max(0, def.hp - dmg); act(def, 'hit'); def.vx = att.face * kb; def.flash = 1; att.meter = Math.min(100, att.meter + 12); def.meter = Math.min(100, def.meter + 7);
+    def.hp = Math.max(0, Math.round((def.hp - dmg) * 10) / 10); act(def, 'hit'); def.vx = att.face * kb; def.flash = 1; att.meter = Math.min(100, att.meter + (hy ? 18 : 12)); def.meter = Math.min(100, def.meter + 7);
     att.combo++; hitStop = big ? .22 : .07 + Math.min(.06, att.combo * .01); shake = big ? 1 : .35; camPunch = big ? 1 : .4;
     burst(at, big ? 0xffd040 : 0xffe9b0, big ? 120 : 40, big ? 10 : 6, big ? .9 : .45); burst(at, 0xff4040, big ? 40 : 12, 4, .5); ring(at, big ? 0xffd040 : 0xffffff, big ? 6 : 1.2);
-    hitLight.position.copy(at); hitLight.intensity = big ? 120 : 40;
+    hitLight.position.copy(at); hitLight.color.setHex(0xffd28a); hitLight.intensity = big ? 120 : 40;
     noise(big ? .5 : .12, big ? .45 : .3, big ? 700 : 1600); tone(big ? 70 : 150, big ? .5 : .1, 'square', .08, -60);
     if (big) flash(.7, '#fff6d0');
     if (att.combo >= 3 && !big) say(`${att.combo} HIT!`);
@@ -492,14 +523,15 @@ function special(f) {
     const orb = new THREE.Mesh(new THREE.SphereGeometry(.28, 24, 16), new THREE.MeshBasicMaterial({ color: col }));
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); glow.scale.set(2.2, 2.2, 1); orb.add(glow);
     const light = new THREE.PointLight(col, 30, 6, 2); orb.add(light);
-    orb.position.copy(o); scene.add(orb); projs.push({ m: orb, owner: f, vx: f.face * 9, t: 0 });
+    orb.position.copy(o); if (f === P && hyper > 0) orb.scale.setScalar(1.6); scene.add(orb); projs.push({ m: orb, owner: f, vx: f.face * 9, t: 0, rain: f === P && hyper > 0 });
     tone(f.S ? 880 : 220, .4, 'sawtooth', .07, f.S ? 600 : -100); noise(.4, .3, 3000);
   }, (f.spRelease || .26) * 1000);
-  say(f.S ? 'GIFT BOMB!!' : 'ABYSS ORB!!', f.S ? '必殺 プレゼント・ボム' : '必殺 ブラック・コール');
+  const mir = f === P && hyper > 0;
+  say(mir ? 'MIRACLE PRESENT RAIN!!' : f.S ? 'GIFT BOMB!!' : 'ABYSS ORB!!', mir ? '必殺 ミラクル・プレゼント・レイン' : f.S ? '必殺 プレゼント・ボム' : '必殺 ブラック・コール');
   flash(.35, f.S ? '#ffd040' : '#a040ff'); camPunch = 1;
 }
 function stepFighter(f, o, dt, inp) {
-  f.t += dt; f.cd -= dt;
+  f.t += dt * spd(f); f.cd -= dt; if (f.stun > 0) f.stun -= dt;
   const grounded = f.y <= 0;
   if (f.st === 'ko') { f.vy -= 18 * dt; f.y = Math.max(0, f.y + f.vy * dt); f.x += f.vx * dt; f.vx *= 1 - 3 * dt; f.x = clamp(f.x, -15, 15); return; }
   if (over) { f.vx *= 1 - 8 * dt; f.x += f.vx * dt; if (f.st !== 'win' && f.t > .3 && o.st === 'ko') act(f, 'win'); return; }
@@ -511,13 +543,13 @@ function stepFighter(f, o, dt, inp) {
     else if (inp.kick) act(f, 'kick'), noise(.1, .1, 3000);
     else if (inp.jump) { f.vy = 7.5; f.st = 'jump'; f.t = 0; tone(300, .12, 'triangle', .05, 400); }
     else if (inp.guard) { if (f.st !== 'guard') act(f, 'guard'); }
-    else { const mv = (inp.right ? 1 : 0) - (inp.left ? 1 : 0); f.vx = mv * 3.4; f.st = mv ? 'walk' : 'idle'; if (mv) f.walk += dt * (mv * f.face > 0 ? 1 : -1); }
+    else { const mv = (inp.right ? 1 : 0) - (inp.left ? 1 : 0); f.vx = mv * 3.4 * spd(f); f.st = mv ? 'walk' : 'idle'; if (mv) f.walk += dt * (mv * f.face > 0 ? 1 : -1); }
   }
   // 攻撃判定
   const mv = (f.moves || MOVES)[f.st];
   if (mv) { f.vx *= 1 - 10 * dt; if (!f.hitDone && f.t >= mv.act[0] && f.t <= mv.act[1]) { const d = (o.x - f.x) * f.face; if (d > 0 && d < mv.reach && o.y < 1.2 && o.st !== 'ko') { f.hitDone = true; const at = mv.bone ? mv.bone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(f.x + f.face * Math.min(d, mv.reach) * .8, mv.h, 0); damage(f, o, mv.dmg, mv.kb, at); } } if (f.t > mv.dur) { act(f, 'idle'); if (!f.hitDone) f.combo = 0; } }
   if (f.st === 'special' && f.t > (f.spDur || .7)) act(f, 'idle');
-  if (f.st === 'hit') { f.vx *= 1 - 6 * dt; if (f.t > .35) act(f, 'idle'); }
+  if (f.st === 'hit') { f.vx *= 1 - 6 * dt; if (f.t > .35 && !(f.stun > 0)) act(f, 'idle'); }
   if (f.st === 'guard' && inp && !inp.guard) act(f, 'idle');
   // 物理
   if (!grounded || f.vy > 0) { f.vy -= 20 * dt; f.y += f.vy * dt; if (f.y <= 0) { f.y = 0; f.vy = 0; if (f.st === 'jump') act(f, 'idle'); burst(new THREE.Vector3(f.x, .05, 0), 0xffffff, 10, 2, .4, -2); } }
@@ -536,7 +568,7 @@ function aiInput(dt) {
     if (d > 1.4) ai.plan = { k: toward, t: rand(.2, .5) };
     else { const r = Math.random(); ai.plan = r < .35 ? { k: 'punch', t: .05 } : r < .6 ? { k: 'kick', t: .05 } : r < .72 ? { k: 'guard', t: rand(.3, .6) } : r < .82 ? { k: away, t: rand(.2, .4) } : r < .88 ? { k: 'jump', t: .05 } : { k: 'idle', t: rand(.2, .45) }; }
   }
-  ai.plan.t -= dt; if (ai.plan.k !== 'idle') inp[ai.plan.k] = true;
+  ai.plan.t -= dt * (rageOn ? 1.45 : 1); if (ai.plan.k !== 'idle') inp[ai.plan.k] = true;
   return inp;
 }
 // 飛び道具
@@ -544,8 +576,115 @@ function updProjs(dt) {
   for (let i = projs.length - 1; i >= 0; i--) { const p = projs[i]; p.t += dt; p.m.position.x += p.vx * dt; p.m.rotation.y += dt * 8; p.m.position.y = 1.2 + Math.sin(p.t * 10) * .05;
     if (Math.random() < .9) burst(p.m.position.clone(), p.owner.S ? 0xffd060 : 0xb060ff, 3, 1.2, .35, 0);
     const tgt = p.owner === P ? E : P;
-    if (Math.abs(tgt.x - p.m.position.x) < .6 && tgt.y < 1.4 && tgt.st !== 'ko') { damage(p.owner, tgt, 24, 7, p.m.position.clone(), true); scene.remove(p.m); projs.splice(i, 1); continue; }
+    if (Math.abs(tgt.x - p.m.position.x) < .6 && tgt.y < 1.4 && tgt.st !== 'ko') { damage(p.owner, tgt, 24, 7, p.m.position.clone(), true); if (p.rain) giftRain(tgt); scene.remove(p.m); projs.splice(i, 1); continue; }
     if (Math.abs(p.m.position.x) > 14) { scene.remove(p.m); projs.splice(i, 1); } }
+}
+
+// ------------------------------------------------------------ トナカイ（ルドルフ）
+function makeDeer() {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const fur = std(0x6b4423, { roughness: .9 }), dark = std(0x3a2414, { roughness: .9 }), cream = std(0xd8c0a0, { roughness: 1 }), horn = std(0xc8b08a, { roughness: .6 }), red = std(0xb3122e, { roughness: .5 }), gold = std(0xd4af37, { metalness: 1, roughness: .25 });
+  const torso = mesh(cap(.3, .75), fur, body, [0, 1.0, 0], [0, 0, Math.PI / 2]);
+  mesh(sph(.27), cream, body, [.25, .92, 0], null, [1.2, .9, .85]);
+  mesh(new THREE.TorusGeometry(.32, .05, 8, 24), red, body, [.35, 1.0, 0], [0, Math.PI / 2, 0]);
+  for (const z of [-.12, 0, .12]) mesh(sph(.05), gold, body, [.38, .72, z]);
+  const neck = joint(body, [.55, 1.15, 0]); mesh(cap(.13, .35), fur, neck, [.12, .2, 0], [0, 0, -.6]);
+  const head = joint(neck, [.3, .48, 0]);
+  mesh(sph(.17), fur, head, [0, 0, 0], null, [1.25, .9, .85]);
+  mesh(cap(.09, .14), fur, head, [.2, -.05, 0], [0, 0, Math.PI / 2]);
+  const noseM = new THREE.MeshStandardMaterial({ color: 0xff2030, emissive: 0xff1020, emissiveIntensity: 3 });
+  const nose = mesh(sph(.065), noseM, head, [.33, -.04, 0]); const nl = new THREE.PointLight(0xff2040, 8, 3, 2); nose.add(nl);
+  const ng = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff3050, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); ng.scale.set(.7, .7, 1); nose.add(ng);
+  for (const z of [-.08, .08]) { mesh(sph(.025), std(0x050505, { roughness: .2 }), head, [.12, .06, z]); mesh(new THREE.ConeGeometry(.05, .14, 8), fur, head, [-.05, .14, z * 1.8], [z * 4, 0, -.3]); }
+  for (const z of [-1, 1]) { const c = new THREE.CatmullRomCurve3([new THREE.Vector3(-.02, .12, z * .07), new THREE.Vector3(-.05, .32, z * .18), new THREE.Vector3(-.18, .5, z * .26), new THREE.Vector3(-.3, .62, z * .3)]); mesh(new THREE.TubeGeometry(c, 16, .025, 6), horn, head, [0, 0, 0]);
+    for (const [px, py, l] of [[-.06, .34, .16], [-.16, .48, .14], [-.25, .58, .1]]) mesh(new THREE.CylinderGeometry(.012, .018, l, 6), horn, head, [px + .05, py + l / 2, z * (.2 + px * -.2)], [0, 0, -.5]); }
+  mesh(sph(.08), cream, body, [-.62, 1.12, 0]);
+  const legs = [];
+  for (const [x, z, ph] of [[.42, .14, 0], [.42, -.14, Math.PI], [-.4, .14, Math.PI * .5], [-.4, -.14, Math.PI * 1.5]]) {
+    const up = joint(body, [x, .9, z]); mesh(cap(.07, .3), fur, up, [0, -.2, 0]); const lo = joint(up, [0, -.42, 0]); mesh(cap(.05, .3), dark, lo, [0, -.18, 0]); mesh(new THREE.BoxGeometry(.11, .07, .09), std(0x1a1008), lo, [0, -.38, 0]); legs.push({ up, lo, ph });
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.visible = false; scene.add(g);
+  return { g, body, head, nose, legs };
+}
+const DEER = makeDeer();
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(.12, .12, 1, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xff4060, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+beam.visible = false; scene.add(beam);
+function canAssist() { return assistCd <= 0 && !deer && !over && introT <= 0 && !xf && P.st !== 'ko'; }
+function callDeer() {
+  if (!canAssist()) return;
+  assistCd = ASSIST_CD; deer = { ph: 'banner', t: 0, dir: Math.sign(E.x - P.x) || P.face, x: 0, y: 0, rot: 0 };
+  say('RUDOLPH!!', 'トナカイ援護 ─ ASSIST'); flash(.35, '#ff3b5c'); tone(880, .15, 'square', .05); tone(1320, .2, 'square', .05);
+  setTimeout(() => melody([[76, .2], [79, .2], [84, .4]]), 120);
+}
+function melody(seq) { let t = 0; for (const [n, d] of seq) { setTimeout(() => tone(440 * Math.pow(2, (n - 69) / 12), d * .45, 'triangle', .05), t * 450); t += d; } }
+function sparkleDeer(n) { for (let i = 0; i < n; i++) burst(new THREE.Vector3(deer.x + rand(-.5, .5), deer.y + rand(.6, 1.6), rand(-.3, .3)), Math.random() < .5 ? 0xffd860 : 0xff8aa0, 1, 1.2, .5, -1); }
+function updDeer(dt) {
+  if (!deer) { DEER.g.visible = false; return; }
+  const d = deer; d.t += dt; DEER.g.visible = d.ph !== 'banner';
+  let gallop = 0;
+  if (d.ph === 'banner') { if (d.t >= .7) { d.ph = 'dive'; d.t = 0; d.sx = P.x - d.dir * 4; d.ex = P.x - d.dir * .3; noise(.4, .2, 5000); } }
+  else if (d.ph === 'dive') { const q = Math.min(1, d.t / .38); d.x = lerp(d.sx, d.ex, q); d.y = 6 * Math.pow(1 - q, 2); d.rot = -.5 * (1 - q); sparkleDeer(3); gallop = .5;
+    if (q >= 1) { d.ph = 'dash'; d.t = 0; shake = .5; ring(new THREE.Vector3(d.x, .1, 0), 0xffd860, 2.5); burst(new THREE.Vector3(d.x, .1, 0), 0xffffff, 20, 3, .5, -2); noise(.15, .25, 600); } }
+  else if (d.ph === 'dash') { d.x += d.dir * 12 * dt; d.y = Math.abs(Math.sin(d.t * 18)) * .08; d.rot = 0; gallop = 1; sparkleDeer(2);
+    if (Math.abs(d.x - E.x) < .8 && E.st !== 'ko' && E.y < 1.5) { const wasG = E.st === 'guard' && E.face === -d.dir; damage(P, E, 6, 3, new THREE.Vector3(E.x, 1.3, 0)); if (!wasG && E.st === 'hit') { E.vy = 7; E.stun = 1.3; } say('ANTLER RUSH!'); d.ph = 'buck'; d.t = 0; }
+    if (Math.abs(d.x) > 14) { d.ph = 'fly'; d.t = 0; } }
+  else if (d.ph === 'buck') { d.rot = Math.min(1, d.t / .2) * .55; d.y = Math.min(1, d.t / .2) * .15;
+    if (!d.beamed && d.t >= .26) { d.beamed = true; d.beamT = .45; flash(.25, '#ff4060'); shake = .7; tone(1200, .35, 'sawtooth', .06, -800); noise(.3, .3, 3000);
+      if (E.st !== 'ko') { damage(P, E, 7, 4, new THREE.Vector3(E.x, 1.3 + E.y, 0)); if (E.st === 'hit') E.vy = Math.max(E.vy, 5); say('RED NOSE FLASH!'); } }
+    if (d.t > .75) { d.ph = 'fly'; d.t = 0; melody([[84, .25], [88, .25], [91, .25], [96, .75]]); } }
+  else if (d.ph === 'fly') { d.x += d.dir * 5 * dt; d.y += (3 + d.t * 10) * dt; d.rot = -.45; gallop = .6; sparkleDeer(4); if (d.y > 11) { deer = null; DEER.g.visible = false; return; } }
+  DEER.g.position.set(d.x, d.y, -.7); DEER.g.rotation.set(0, d.dir > 0 ? 0 : Math.PI, d.rot);
+  for (const L of DEER.legs) { const a = Math.sin(d.t * 20 + L.ph) * .8 * gallop; L.up.rotation.z = a; L.lo.rotation.z = Math.max(0, -a) * 1.2 + (d.ph === 'fly' ? .9 : 0); }
+  DEER.head.rotation.z = Math.sin(d.t * 20) * .08 * gallop + (d.ph === 'buck' ? -.3 : 0);
+  // 赤鼻ビーム
+  if (d.beamT > 0) { d.beamT -= dt; const a = DEER.nose.getWorldPosition(new THREE.Vector3()), b = new THREE.Vector3(E.x, 1.3 + E.y, 0), len = a.distanceTo(b);
+    beam.visible = true; beam.position.copy(a).add(b).multiplyScalar(.5); beam.scale.set(1 + Math.random() * .4, len, 1 + Math.random() * .4); beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); beam.material.opacity = Math.min(1, d.beamT * 3);
+    burst(b, 0xff4060, 4, 3, .3, 0); hitLight.position.copy(b); hitLight.color.setHex(0xff4060); hitLight.intensity = 50; }
+  else beam.visible = false;
+}
+// ミラクル・プレゼント・レイン（ハイパー中の必殺）
+function giftRain(tgt) {
+  for (let i = 0; i < 9; i++) setTimeout(() => {
+    const m = new THREE.Group(); const box = new THREE.Mesh(new THREE.BoxGeometry(.32, .32, .32), new THREE.MeshStandardMaterial({ color: [0xb3122e, 0x2e7a46, 0x3a5aa8, 0xd4af37][i % 4], emissive: 0x401010, roughness: .5 }));
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(.34, .34, .08), new THREE.MeshStandardMaterial({ color: 0xffd860, metalness: 1, roughness: .3 })); m.add(box, rib);
+    m.position.set(tgt.x + rand(-1.2, 1.2), 7 + rand(0, 2), rand(-.5, .5)); scene.add(m); gifts.push({ m, vy: -2, vr: rand(-6, 6) });
+  }, i * 90);
+  say('MIRACLE!!', '9連プレゼント・レイン');
+}
+function updGifts(dt) { for (let i = gifts.length - 1; i >= 0; i--) { const g = gifts[i]; g.vy -= 20 * dt; g.m.position.y += g.vy * dt; g.m.rotation.x += g.vr * dt; g.m.rotation.y += g.vr * .7 * dt;
+  if (g.m.position.y < .2) { const p = g.m.position.clone(); burst(p, 0xffd860, 30, 6, .6); burst(p, 0xff3b5c, 12, 4, .5); ring(p, 0xffd860, 2.2); noise(.2, .25, 1500); tone(600 + Math.random() * 400, .08, 'square', .04); shake = Math.max(shake, .4); scene.remove(g.m); gifts.splice(i, 1); } } }
+
+// ------------------------------------------------------------ 覚醒（スーパーサンタ／ブラックルフ激昂）
+function startXf(f) {
+  xf = { f, t: 0, done: false }; if (f === P) hyperUsed = true; else rageOn = true;
+  for (const g of [P, E]) { if (g.st !== 'ko') { act(g, 'idle'); g.vx = 0; } }
+  say(f === P ? 'AWAKENING...' : 'BLACKRUF...', f === P ? 'サンタの体に聖夜の力が満ちていく' : 'ブラックルフの怒りが爆発する', true);
+  for (let i = 0; i < 8; i++) setTimeout(() => tone((f === P ? 220 : 110) * (1 + i * .25), .25, 'sawtooth', .05), i * 170);
+}
+function updXf(dt) {
+  const x = xf, f = x.f, isP = f === P; x.t += dt; const t = x.t;
+  const c = isP ? 0xffd040 : 0xff2040, pos = new THREE.Vector3(f.x, 1.1, 0);
+  if (t < 1.5) { f.tint = Math.sin(t * (20 + t * 30)) > 0 ? [c, .3] : null; shake = Math.max(shake, t * .4);
+    if (Math.random() < .7) burst(new THREE.Vector3(f.x + rand(-.6, .6), rand(0, .4), rand(-.4, .4)), c, 2, 2, .9, 3);
+    if (Math.floor(t / .3) !== Math.floor((t - dt) / .3)) { ring(pos, c, 2 + t * 2); noise(.15, .15, 2000); } }
+  if (!x.flashed && t >= 1.5) { x.flashed = true; flash(.95, isP ? '#fff6c8' : '#ff3050'); shake = 1.4; camPunch = 1; bloom.strength = 2.2;
+    for (let i = 0; i < 4; i++) setTimeout(() => ring(pos, i % 2 ? 0xffffff : c, 5 + i * 2), i * 90);
+    burst(pos, c, 160, 12, 1.2); burst(pos, 0xffffff, 60, 8, .8); noise(.9, .5, 600); tone(55, 1, 'sawtooth', .1, -20);
+    say(isP ? 'SUPER SANTA!!' : 'BLACKRUF RAGE!!', isP ? '覚醒 ─ HYPER MODE（12秒）' : '激昂 ─ 怒りの覚醒', true);
+    if (isP) setTimeout(() => melody([[72, .25], [76, .25], [79, .25], [84, .75]]), 200); }
+  if (t > 1.5) bloom.strength = lerp(bloom.strength, .75, dt * 1.5);
+  if (t >= 3.0) { xf = null; bloom.strength = .75;
+    if (isP) { hyper = HYPER_T; P.hp = Math.min(100, P.hp + 15); } else { E.hp = Math.min(100, E.hp + 10); }
+    say('FIGHT!'); }
+}
+function updPower(f, dt, T) {
+  // 発光・オーラ・体格（ハイパー中は金色、激昂中は赤）
+  if (!xf || xf.f !== f || xf.t >= 1.5) f.tint = f === P && hyper > 0 ? [0xffc050, .035 + .025 * Math.sin(T * 8)] : f === E && rageOn ? [0xff1030, .02 + .015 * Math.sin(T * 6)] : null;
+  const pw = (f === P && hyper > 0) || (f === E && rageOn) || (xf && xf.f === f && xf.t >= 1.5);
+  f.bulk = lerp(f.bulk || 0, pw ? 1 : 0, Math.min(1, dt * 4));
+  if (f.rig) { f.rig.s0 = f.rig.s0 || f.rig.model.scale.x; f.rig.model.scale.setScalar(f.rig.s0 * (1 + f.bulk * .07)); }
+  if (pw && Math.random() < .6) burst(new THREE.Vector3(f.x + rand(-.45, .45), rand(.1, 1.8), rand(-.3, .3)), f === P ? (Math.random() < .5 ? 0xffd040 : 0xff8a20) : (Math.random() < .5 ? 0xff2040 : 0xa040ff), 1, 1, .6, 4);
 }
 
 // ------------------------------------------------------------ HUD
@@ -554,11 +693,15 @@ function hud() {
   $('mtrP').style.width = P.meter + '%'; $('mtrE').style.width = E.meter + '%';
   $('mtrPw').classList.toggle('full', P.meter >= 100); $('mtrEw').classList.toggle('full', E.meter >= 100); $('spBtn').classList.toggle('ready', P.meter >= 100);
   $('timer').textContent = Math.ceil(Math.max(0, time));
+  $('hyperTxt').textContent = hyper > 0 ? `SUPER SANTA  ${hyper.toFixed(1)}s` : '';
+  $('rageTxt').textContent = rageOn ? 'RAGE MODE' : '';
+  const ab = $('asBtn'); ab.style.setProperty('--cd', (assistCd > 0 ? assistCd / ASSIST_CD * 100 : 0) + '%'); ab.classList.toggle('ready', canAssist());
 }
 function reset() {
   for (const [f, x] of [[P, -2.2], [E, 2.2]]) Object.assign(f, { x, y: 0, vx: 0, vy: 0, face: x < 0 ? 1 : -1, hp: 100, meter: 0, st: 'idle', t: 0, combo: 0, flash: 0 });
   for (const p of projs) scene.remove(p.m); projs = [];
   time = 60; over = false; overT = 0; introT = 2.2; slow = 1; $('end').style.display = 'none';
+  hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; }
   setTimeout(() => say('ROUND 1', 'BLACKRUF を撃退せよ'), 200); setTimeout(() => { say('FIGHT!'); flash(.4); noise(.4, .3, 2500); }, 1500);
 }
 $('again').addEventListener('click', () => { audio(); reset(); });
@@ -566,11 +709,13 @@ $('again').addEventListener('click', () => { audio(); reset(); });
 // ------------------------------------------------------------ カメラ
 const camPos = new THREE.Vector3(0, 2, 9), camLook = new THREE.Vector3(0, 1.1, 0);
 function updCamera(dt, t) {
-  const mid = (P.x + E.x) / 2, sep = Math.abs(P.x - E.x), portrait = innerHeight > innerWidth;
-  let dist = (portrait ? 8.5 : 3.6) + sep * (portrait ? 1.0 : .55);
+  const mid = (P.x + E.x) / 2, sep = Math.abs(P.x - E.x);
+  let dist = 3.6 + sep * .55;
   let tx = mid, ty = 1.35, tz = dist, lx = mid, ly = 1.0;
   if (introT > 0) { const k = introT / 2.2; tx = mid + Math.sin(k * 2) * 4; tz = dist + k * 4; ty = 1.4 + k * 2.5; }
   if (over) { const loser = P.st === 'ko' ? P : E, win = loser === P ? E : P; const k = Math.min(1, overT / 1.5); tx = lerp(mid, win.x + win.face * 1.8, k); tz = lerp(dist, 3.2, k); ty = lerp(1.55, 1.3, k); lx = lerp(mid, win.x, k); ly = lerp(1.05, 1.35, k); }
+  if (xf) { const f = xf.f, k = Math.min(1, xf.t / .5); tx = lerp(mid, f.x + f.face * .9, k); tz = lerp(dist, 2.6, k); ty = lerp(1.35, 1.15, k); lx = lerp(mid, f.x, k); ly = lerp(1.0, 1.25, k); }
+  else if (deer && deer.ph === 'buck') { tx = (deer.x + E.x) / 2; tz = 3.4; }
   if (camPunch > 0) { tz -= camPunch * 1.2; camPunch = Math.max(0, camPunch - dt * 3); }
   const a = 1 - Math.exp(-4 * dt);
   camPos.lerp(new THREE.Vector3(tx + Math.sin(t * .4) * .3, ty + Math.sin(t * .6) * .08, tz), a); camLook.lerp(new THREE.Vector3(lx, ly, 0), a);
@@ -584,13 +729,20 @@ let last = performance.now(), T = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = Math.min(.05, (now - last) / 1000); last = now; T += dt;
+  if (portrait) { composer.render(); return; } // 縦画面の間は止める
   if (hitStop > 0) { hitStop -= dt; dt *= .05; }
   const gdt = dt * slow;
   if (introT > 0) introT -= dt;
-  else if (!over) { time -= gdt; if (time <= 0) { time = 0; over = true; overT = 0; const pl = P.hp >= E.hp ? E : P; act(pl, 'ko'); say('TIME UP', '', true); } }
+  else if (!over && !xf) { time -= gdt; if (time <= 0) { time = 0; over = true; overT = 0; const pl = P.hp >= E.hp ? E : P; act(pl, 'ko'); say('TIME UP', '', true); } }
   if (over) { overT += dt; slow = Math.min(1, slow + dt * .5); if (overT > 2.2 && $('end').style.display !== 'flex') { const win = P.st !== 'ko'; say(win ? 'YOU WIN' : 'YOU LOSE', win ? 'ブラックルフを撃退した！' : 'クリスマスが奪われた…', true); $('end').style.display = 'flex'; if (win) { for (let i = 0; i < 6; i++) setTimeout(() => burst(new THREE.Vector3(rand(-6, 6), rand(4, 8), rand(-6, -2)), new THREE.Color().setHSL(Math.random(), 1, .6), 60, 6, 1.2, -3), i * 250); } } }
   const inp = { ...keys }; for (const k in pressed) { inp[k] = true; delete pressed[k]; }
-  stepFighter(P, E, gdt, inp); stepFighter(E, P, gdt, aiInput(gdt));
+  if (inp.assist) callDeer();
+  if (!xf && !over && introT <= 0) { if (!hyperUsed && P.st !== 'ko' && !deer && (P.hp < 40 || P.combo >= 6)) startXf(P); else if (!rageOn && E.st !== 'ko' && E.hp > 0 && E.hp < 30) startXf(E); }
+  if (xf) updXf(dt);
+  else { stepFighter(P, E, deer && deer.ph === 'banner' ? gdt * .3 : gdt, inp); stepFighter(E, P, deer && deer.ph === 'banner' ? gdt * .3 : gdt, aiInput(gdt)); }
+  if (!over && !xf && introT <= 0 && assistCd > 0) assistCd -= gdt;
+  if (hyper > 0 && !xf) { hyper -= gdt; P.meter = Math.min(100, P.meter + gdt * 6); if (hyper <= 0) { hyper = 0; say('HYPER END'); burst(new THREE.Vector3(P.x, 1.2, 0), 0xffffff, 40, 4, .6); noise(.3, .3, 2000); } }
+  updDeer(gdt); updGifts(gdt); updPower(P, gdt, T); updPower(E, gdt, T);
   updProjs(gdt); updParts(gdt); updRings(dt);
   applyPose(P, gdt, T); applyPose(E, gdt, T); setFlash(P); setFlash(E);
   for (const f of [P, E]) { f.aura.material.opacity = f.meter >= 100 ? .35 + .2 * Math.sin(T * 10) : f.st === 'special' ? .8 : 0; }
@@ -606,7 +758,7 @@ function frame(now) {
 }
 introT = 1e9; requestAnimationFrame(frame);
 setTimeout(() => { $('help').style.transition = 'opacity 1s'; $('help').style.opacity = 0; }, 7000);
-window.__f3d = { P, E, get over() { return over; }, set introT(v) { introT = v; }, damage, special };
+window.__f3d = { P, E, get over() { return over; }, set introT(v) { introT = v; }, damage, special, callDeer, startXf, get hyper() { return hyper; }, get rage() { return rageOn; }, get deer() { return deer; }, set assistCd(v) { assistCd = v; } };
 </script>
 </body>
 </html>
