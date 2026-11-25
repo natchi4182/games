@@ -81,6 +81,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 document.getElementById('load').remove();
 const $ = id => document.getElementById(id);
@@ -157,8 +158,8 @@ const signTex = canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#000'; g.fillR
   const ant = new THREE.Mesh(new THREE.CylinderGeometry(.05, .08, 7), railM); ant.position.set(10, 3.5, -4.8); scene.add(ant);
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(.14), new THREE.MeshBasicMaterial({ color: 0xff2030 })); beacon.position.set(10, 7.1, -4.8); scene.add(beacon); scene.userData.beacon = beacon;
   // ネオン看板
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); sign.position.set(-4, 3.0, -6.3); sign.scale.setScalar(.75); scene.add(sign); scene.userData.sign = sign;
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(8.4, .1, .1), railM); frame.position.set(-4, 2.2, -6.3); frame.scale.x = .75; scene.add(frame);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); sign.position.set(-11, 2.6, -9); sign.scale.setScalar(.9); scene.add(sign); scene.userData.sign = sign;
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(8.4, .1, .1), railM); frame.position.set(-11, 1.65, -9); frame.scale.x = .9; scene.add(frame);
 }
 // 照明
 scene.add(new THREE.HemisphereLight(0x4a5aa0, 0x1a0a10, .55));
@@ -167,7 +168,7 @@ moonLight.shadow.mapSize.set(2048, 2048); Object.assign(moonLight.shadow.camera,
 scene.add(moonLight);
 const rimR = new THREE.SpotLight(0xff2a4a, 60, 30, .6, .6, 1.5); rimR.position.set(-8, 6, -4); rimR.target.position.set(0, 1, 0); scene.add(rimR, rimR.target);
 const rimB = new THREE.SpotLight(0x3ac8ff, 50, 30, .6, .6, 1.5); rimB.position.set(8, 6, -4); rimB.target.position.set(0, 1, 0); scene.add(rimB, rimB.target);
-const neonLight = new THREE.PointLight(0xff2040, 14, 14, 2); neonLight.position.set(-4, 2.8, -5); scene.add(neonLight);
+const neonLight = new THREE.PointLight(0xff2040, 14, 14, 2); neonLight.position.set(-9, 2.4, -7.5); scene.add(neonLight);
 const hitLight = new THREE.PointLight(0xffd28a, 0, 8, 2); scene.add(hitLight);
 const fill = new THREE.DirectionalLight(0xffe6d0, .7); fill.position.set(0, 3, 10); scene.add(fill);
 
@@ -264,6 +265,61 @@ function makeFighter(kind) {
 }
 const P = makeFighter('santa'), E = makeFighter('krampus');
 
+// ------------------------------------------------------------ Tripo 製のリアルモデル（骨入り）を読み込み、骨をコードで動かす
+const RIG = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
+const bn = n => n.replace(/^mixamorig:?/, '');
+function attachModel(f, g, height) {
+  const model = g.scene;
+  // 骨入りモデルは外枠の計算が当てにならないので、頭の骨の高さから大きさを合わせる
+  model.updateMatrixWorld(true); let head = null; model.traverse(o => { if (o.isBone && /Head$/.test(o.name)) head = o; });
+  const hy = head ? model.worldToLocal(head.getWorldPosition(new THREE.Vector3())).y : .88;
+  model.scale.setScalar(height * .86 / (hy || .88));
+  model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+  for (const c of f.root.children) if (c !== f.aura) c.visible = false;
+  f.cape = null;
+  const inner = new THREE.Group(); inner.add(model); f.root.add(inner);
+  const B = {}; model.traverse(o => { if (o.isBone) B[bn(o.name)] = o; });
+  f.root.updateMatrixWorld(true);
+  const mqi = model.getWorldQuaternion(new THREE.Quaternion()).invert(), rest = {}, pRest = {};
+  for (const n of RIG) { const b = B[n]; if (!b) continue; rest[n] = mqi.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())); pRest[n] = mqi.clone().multiply(b.parent.getWorldQuaternion(new THREE.Quaternion())); }
+  const lp = n => model.worldToLocal(B[n].getWorldPosition(new THREE.Vector3()));
+  const side = (a, b) => { const d = lp(b).sub(lp(a)); return { s: Math.sign(d.x) || 1, a: Math.atan2(Math.abs(d.x), -d.y) }; };
+  f.rig = { model, inner, B, rest, pRest, L: side('LeftArm', 'LeftForeArm'), R: side('RightArm', 'RightForeArm') };
+  f.J = { ...f.J, hdL: B.LeftHand || f.J.hdL, ftL: B.LeftFoot || f.J.ftL };
+}
+const _e = new THREE.Euler(), _I = new THREE.Quaternion();
+const qE = (x, y, z) => new THREE.Quaternion().setFromEuler(_e.set(x, y, z, 'XYZ'));
+function applyRig(f) {
+  const R = f.rig, p = f.pose;
+  R.inner.position.y = -p.crouch * .8 - p.fall * .1; R.inner.rotation.x = -p.fall * 1.45;
+  const d = {
+    Spine: qE(p.lean * .35, p.twist * .3, 0), Spine1: qE(p.lean * .35, p.twist * .3, 0), Spine2: qE(p.lean * .3, p.twist * .3, 0),
+    Neck: qE(p.head * .5, -p.twist * .3, 0), Head: qE(p.head * .5, -p.twist * .3, 0),
+    LeftArm: qE(-p.sL, 0, R.L.s * (p.aL - R.L.a)), LeftForeArm: qE(-p.eL, 0, 0),
+    RightArm: qE(-p.sR, 0, R.R.s * (p.aR - R.R.a)), RightForeArm: qE(-p.eR, 0, 0),
+    LeftUpLeg: qE(-p.hL, 0, 0), LeftLeg: qE(p.kL, 0, 0), LeftFoot: qE(-p.fL, 0, 0),
+    RightUpLeg: qE(-p.hR, 0, 0), RightLeg: qE(p.kR, 0, 0),
+  };
+  const W = {};
+  for (const n of RIG) {
+    const b = R.B[n]; if (!b) continue;
+    const par = b.parent.isBone ? W[bn(b.parent.name)] : null;
+    const A = (par ? par.A.clone() : new THREE.Quaternion()).multiply(d[n] || _I);
+    const Wb = A.clone().multiply(R.rest[n]);
+    const Wp = par ? par.W : R.pRest[n];
+    b.quaternion.copy(Wp.clone().invert().multiply(Wb));
+    W[n] = { A, W: Wb };
+  }
+}
+// 読み込み（ファイルを直接開いた場合など読めないときは、コードで組んだ人形のまま遊べる）
+const mload = document.createElement('div'); mload.id = 'load'; mload.textContent = 'LOADING MODELS 0%'; document.body.appendChild(mload);
+P.root.visible = E.root.visible = false;
+const prog = { s: 0, b: 0 };
+const loadOne = (f, url, h, key) => new Promise(res => new GLTFLoader().load(url, g => { try { attachModel(f, g, h); } catch (e) { console.error(e); } prog[key] = 1; res(); },
+  x => { if (x.total) { prog[key] = x.loaded / x.total; mload.textContent = `LOADING MODELS ${Math.round((prog.s + prog.b) * 50)}%`; } }, () => res()));
+Promise.all([loadOne(P, 'models/santa.glb', 1.85, 's'), loadOne(E, 'models/blackruf.glb', 2.05, 'b')]).then(() => { mload.remove(); P.root.visible = E.root.visible = true; reset(); });
+
+
 // ------------------------------------------------------------ ポーズ
 const BASE = { lean: 0, twist: 0, head: 0, crouch: 0, sL: 0, eL: 0, sR: 0, eR: 0, aL: .12, aR: .12, hL: 0, kL: 0, hR: 0, kR: 0, fL: 0, fR: 0, tilt: 0, fall: 0 };
 function poseFor(f, t) {
@@ -296,13 +352,14 @@ function applyPose(f, dt, t) {
   J.shR.rotation.set(-p.sR, 0, -p.aR); J.elR.rotation.set(-p.eR, 0, 0);
   J.thL.rotation.set(-p.hL, 0, .04); J.knL.rotation.set(p.kL, 0, 0); J.ftL.rotation.set(-p.fL, 0, 0);
   J.thR.rotation.set(-p.hR, 0, -.04); J.knR.rotation.set(p.kR, 0, 0); J.ftR.rotation.set(0, 0, 0);
+  if (f.rig) applyRig(f);
   // マントのはためき
   if (f.cape) { const pos = f.cape.geometry.attributes.position, base = f.cape.userData.base; for (let i = 0; i < pos.count; i++) { const y = base[i * 3 + 1], x = base[i * 3], d = -y; pos.setZ(i, base[i * 3 + 2] - d * d * .35 - Math.sin(t * 6 + d * 4 + x * 3) * .06 * d - Math.abs(f.vx) * .05 * d); } pos.needsUpdate = true; f.cape.geometry.computeVertexNormals(); }
   // 被弾の赤い点滅
   f.flash = Math.max(0, f.flash - dt * 6);
 }
 // 被弾フラッシュ用に、キャラごとの材質を一括で光らせる
-function setFlash(f) { const mats = new Set(); f.root.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) mats.add(o.material); }); for (const m of mats) { if (m.userData.e0 === undefined) { m.userData.e0 = m.emissive.clone(); m.userData.ei = m.emissiveIntensity; } m.emissive.copy(f.flash > 0 ? new THREE.Color(0xffffff) : m.userData.e0); m.emissiveIntensity = f.flash > 0 ? f.flash * .9 : m.userData.ei; } }
+function setFlash(f) { const mats = new Set(); f.root.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) mats.add(o.material); }); for (const m of mats) { if (m.userData.e0 === undefined) { m.userData.e0 = m.emissive.clone(); m.userData.ei = m.emissiveIntensity; } m.emissive.copy(f.flash > 0 ? new THREE.Color(f.rig ? 0xff5040 : 0xffffff) : m.userData.e0); m.emissiveIntensity = f.flash > 0 ? f.flash * (f.rig ? .35 : .9) : m.userData.ei; } }
 
 // ------------------------------------------------------------ 入力
 const keys = {}, KEYMAP = { KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', KeyW: 'jump', ArrowUp: 'jump', KeyS: 'guard', ArrowDown: 'guard', KeyJ: 'punch', KeyK: 'kick', KeyI: 'special' };
@@ -457,7 +514,7 @@ function frame(now) {
   updCamera(dt, T); hud();
   composer.render();
 }
-reset(); requestAnimationFrame(frame);
+introT = 1e9; requestAnimationFrame(frame);
 setTimeout(() => { $('help').style.transition = 'opacity 1s'; $('help').style.opacity = 0; }, 7000);
 window.__f3d = { P, E, get over() { return over; }, set introT(v) { introT = v; }, damage, special };
 </script>
