@@ -181,7 +181,7 @@ const signTex = canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#000'; g.fillR
   const frame = new THREE.Mesh(new THREE.BoxGeometry(8.4, .1, .1), railM); frame.position.set(-11, 1.65, -9); frame.scale.x = .9; scene.add(frame);
 }
 // 照明
-scene.add(new THREE.HemisphereLight(0x4a5aa0, 0x1a0a10, .55));
+const hemi = new THREE.HemisphereLight(0x4a5aa0, 0x1a0a10, .55); scene.add(hemi);
 const moonLight = new THREE.DirectionalLight(0xb8c8ff, 1.6); moonLight.position.set(-6, 12, 8); moonLight.castShadow = true;
 moonLight.shadow.mapSize.set(2048, 2048); Object.assign(moonLight.shadow.camera, { left: -10, right: 10, top: 8, bottom: -3, near: 1, far: 40 }); moonLight.shadow.bias = -.0005; moonLight.shadow.normalBias = .02;
 scene.add(moonLight);
@@ -449,7 +449,7 @@ function applyPose(f, dt, t) {
   const tgt = poseFor(f, t), sp = f.st === 'punch' || f.st === 'kick' || f.st === 'special' ? 28 : f.st === 'hit' ? 30 : 12, a = 1 - Math.exp(-sp * dt);
   for (const k in BASE) f.pose[k] = lerp(f.pose[k] ?? tgt[k], tgt[k], a);
   const p = f.pose, J = f.J;
-  f.root.position.set(f.x, f.y, 0);
+  f.root.position.set(f.x + (f.jit ? rand(-f.jit, f.jit) : 0), f.y, 0);
   f.root.rotation.set(0, f.face > 0 ? Math.PI / 2 : -Math.PI / 2, 0);
   J.hips.position.y = 1.0 - p.crouch - p.fall * .75;
   J.hips.rotation.set(-p.fall * 1.45, 0, 0);
@@ -679,27 +679,92 @@ function revert(f) {
 }
 
 // ------------------------------------------------------------ 覚醒（スーパーサンタ／ブラックルフ激昂）
-function startXf(f) {
-  xf = { f, t: 0, done: false }; if (f === P) hyperUsed = true; else rageOn = true;
-  for (const g of [P, E]) { if (g.st !== 'ko') { act(g, 'idle'); g.vx = 0; } }
-  say(f === P ? 'AWAKENING...' : 'BLACKRUF...', f === P ? 'サンタの体に聖夜の力が満ちていく' : 'ブラックルフの怒りが爆発する', true);
-  for (let i = 0; i < 8; i++) setTimeout(() => tone((f === P ? 220 : 110) * (1 + i * .25), .25, 'sawtooth', .05), i * 170);
+// 変身演出の舞台装置（魔法陣・光の柱・光の輪・稲妻）
+function runeTex(col) { return canvasTex(512, 512, (g, w, h) => { g.translate(256, 256); g.strokeStyle = col; g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 18;
+  for (const [r, lw] of [[240, 6], [222, 2], [170, 4], [150, 2], [70, 3]]) { g.lineWidth = lw; g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke(); }
+  g.lineWidth = 3; g.beginPath(); for (let i = 0; i <= 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 4 / 5; g.lineTo(Math.cos(a) * 168, Math.sin(a) * 168); } g.stroke();
+  g.beginPath(); for (let i = 0; i <= 6; i++) { const a = i * Math.PI / 3; g.lineTo(Math.cos(a) * 222, Math.sin(a) * 222); } g.stroke();
+  g.font = '900 26px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; const txt = 'S.A.N.T.A. ✦ HOLY NIGHT ✦ S.A.N.T.A. ✦ HOLY NIGHT ✦ ';
+  for (let i = 0; i < txt.length; i++) { const a = i / txt.length * Math.PI * 2; g.save(); g.rotate(a); g.fillText(txt[i], 0, -196); g.restore(); }
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * 110, Math.sin(a) * 110, 8, 0, 7); g.stroke(); } }); }
+const RUNE = { P: runeTex('#ffd860'), E: runeTex('#c060ff') };
+const addMat = (col, op = 1) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+const XFX = (() => {
+  const grp = new THREE.Group(); grp.visible = false; scene.add(grp);
+  const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); grp.add(m); return m; };
+  const circle = add(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({ map: RUNE.P, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  circle.rotation.x = -Math.PI / 2; circle.position.y = .04;
+  const pillar = add(new THREE.CylinderGeometry(.9, .9, 40, 40, 1, true), addMat(0xffd060, 0)); pillar.position.y = 20;
+  const core = add(new THREE.CylinderGeometry(.22, .22, 40, 16, 1, true), addMat(0xffffff, 0)); core.position.y = 20;
+  const rings = [0, 1, 2].map(i => add(new THREE.TorusGeometry(.75 + i * .14, .03, 8, 72), addMat(0xffd060, 0)));
+  const light = new THREE.PointLight(0xffd060, 0, 12, 2); light.position.y = 1.3; grp.add(light);
+  return { grp, circle, pillar, core, rings, light };
+})();
+let bolts = [];
+function bolt(a, b, col) {
+  for (let k = 0; k < 3; k++) { const pts = []; for (let i = 0; i <= 12; i++) { const q = i / 12, p = a.clone().lerp(b, q); if (i > 0 && i < 12) p.add(new THREE.Vector3(rand(-.35, .35), rand(-.2, .2), rand(-.35, .35))); p.x += k * .02; pts.push(p); }
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: k ? col : 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    scene.add(line); bolts.push({ line, life: rand(.08, .16) }); }
+  burst(b, col, 12, 5, .4); hitLight.position.copy(b); hitLight.color.setHex(col); hitLight.intensity = 60;
+  noise(.12, .25, 5000); tone(rand(1500, 2500), .05, 'sawtooth', .03, -1200);
 }
+function updBolts(dt) { for (let i = bolts.length - 1; i >= 0; i--) { const q = bolts[i]; q.life -= dt; q.line.material.opacity = Math.max(0, q.life * 8); if (q.life <= 0) { scene.remove(q.line); q.line.geometry.dispose(); q.line.material.dispose(); bolts.splice(i, 1); } } }
+const TX = 1.7, XEND = 4.3;
+function startXf(f) {
+  const isP = f === P;
+  xf = { f, t: 0, dimL: [hemi, moonLight, rimR, rimB, neonLight, fill].map(l => [l, l.intensity]) }; if (isP) hyperUsed = true; else rageOn = true;
+  for (const g of [P, E]) { if (g.st !== 'ko') { act(g, 'idle'); g.vx = 0; } }
+  const c = isP ? 0xffd060 : 0xb040ff;
+  XFX.circle.material.map = isP ? RUNE.P : RUNE.E; XFX.circle.material.needsUpdate = true;
+  XFX.pillar.material.color.setHex(c); XFX.core.material.color.setHex(isP ? 0xffffff : 0xff2040); XFX.light.color.setHex(c); for (const r of XFX.rings) r.material.color.setHex(c);
+  say(isP ? 'AWAKENING...' : 'BLACKRUF...', isP ? 'サンタの体に聖夜の力が満ちていく' : 'ブラックルフの怒りが爆発する', true);
+  for (let i = 0; i < 10; i++) setTimeout(() => tone((isP ? 220 : 110) * (1 + i * .22), .25, 'sawtooth', .05), i * 160);
+}
+function endXfx() { XFX.grp.visible = false; if (xf && xf.dimL) for (const [l, i0] of xf.dimL) l.intensity = i0; if (xf) { xf.f.jit = 0; if (xf.f.rig) xf.f.rig.inner.rotation.y = 0; } bloom.strength = .75; }
 function updXf(dt) {
   const x = xf, f = x.f, isP = f === P; x.t += dt; const t = x.t;
-  const c = isP ? 0xffd040 : 0xff2040, pos = new THREE.Vector3(f.x, 1.1, 0);
-  if (t < 1.5) { f.tint = Math.sin(t * (20 + t * 30)) > 0 ? [c, .3] : null; shake = Math.max(shake, t * .4);
-    if (Math.random() < .7) burst(new THREE.Vector3(f.x + rand(-.6, .6), rand(0, .4), rand(-.4, .4)), c, 2, 2, .9, 3);
-    if (Math.floor(t / .3) !== Math.floor((t - dt) / .3)) { ring(pos, c, 2 + t * 2); noise(.15, .15, 2000); } }
-  if (!x.flashed && t >= 1.5) { x.flashed = true; transform(f); flash(.95, isP ? '#fff6c8' : '#ff3050'); shake = 1.4; camPunch = 1; bloom.strength = 2.2;
-    for (let i = 0; i < 4; i++) setTimeout(() => ring(pos, i % 2 ? 0xffffff : c, 5 + i * 2), i * 90);
-    burst(pos, c, 160, 12, 1.2); burst(pos, 0xffffff, 60, 8, .8); noise(.9, .5, 600); tone(55, 1, 'sawtooth', .1, -20);
-    say(isP ? 'SUPER SANTA!!' : 'BLACKRUF RAGE!!', isP ? '真の姿へ ─ HYPER MODE（12秒）' : '真の姿へ ─ 怒りの覚醒', true);
-    if (isP) setTimeout(() => melody([[72, .25], [76, .25], [79, .25], [84, .75]]), 200); }
-  if (t > 1.5) bloom.strength = lerp(bloom.strength, .75, dt * 1.5);
-  if (t >= 3.0) { xf = null; bloom.strength = .75;
+  const c = isP ? 0xffd040 : 0xb040ff, c2 = isP ? 0xffffff : 0xff2040, pos = new THREE.Vector3(f.x, 1.1, 0);
+  XFX.grp.visible = true; XFX.grp.position.set(f.x, 0, 0);
+  // 世界が暗くなり、主役だけが照らされる
+  const dim = t < TX ? Math.min(1, t / .5) : t < XEND - .7 ? 1 : Math.max(0, (XEND - t) / .7);
+  for (const [l, i0] of x.dimL) l.intensity = i0 * (1 - .8 * dim);
+  // 床の魔法陣
+  const fade = t > XEND - .6 ? Math.max(0, (XEND - t) / .6) : 1;
+  XFX.circle.material.opacity = Math.min(1, t * 2) * fade; XFX.circle.rotation.z += dt * (t < TX ? 1.5 + t * 3 : 1.2); XFX.circle.scale.setScalar((t < TX ? .4 + Math.min(1, t * 1.5) * .8 : 1.2 + Math.min(1, (t - TX) * 3) * .5) * (1 + Math.sin(t * 12) * .03));
+  // 体を回る光の輪（覚醒の瞬間に外へ弾ける）
+  XFX.rings.forEach((r, i) => { r.position.y = .45 + i * .55 + Math.sin(t * 3 + i) * .08; r.rotation.set(Math.PI / 2 + Math.sin(t * 2 + i) * .45, t * (2 + i), 0);
+    r.scale.setScalar(t < TX ? 1 - (t / TX) * .35 : 1 + (t - TX) * 7); r.material.opacity = t < TX ? Math.min(.9, t * 1.5) : Math.max(0, .9 - (t - TX) * 1.6); });
+  // 天から降りる光の柱 → 覚醒で極太に
+  const pk = t < TX ? t / TX : Math.max(0, 1 - (t - TX) / 1.8);
+  XFX.pillar.material.opacity = t < TX ? .06 + .14 * (t / TX) : .5 * pk * pk; const pw = t < TX ? .3 + .3 * (t / TX) : Math.min(1.5, 1 + (t - TX) * .6); XFX.pillar.scale.set(pw, 1, pw);
+  XFX.core.material.opacity = t < TX ? .3 * (t / TX) : .8 * pk * pk; XFX.core.scale.set(1 + Math.sin(t * 40) * .2, 1, 1 + Math.sin(t * 40) * .2);
+  XFX.light.intensity = t < TX ? 14 * t : 60 * pk * pk;
+  if (t < TX) {
+    // 力が集まってくる（渦を巻いて吸い込まれる光）
+    for (let k = 0; k < 3; k++) { const a = rand(0, 7), r = rand(1.8, 3.2), p0 = new THREE.Vector3(f.x + Math.cos(a) * r, rand(.2, 2.6), Math.sin(a) * r * .6);
+      const v = pos.clone().sub(p0).multiplyScalar(rand(1.6, 2.4)).add(new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(1.5)); parts.push({ p: p0, v, life: .5, max: .5, c: new THREE.Color(Math.random() < .5 ? c : c2), g: 0 }); }
+    f.tint = Math.sin(t * (18 + t * 34)) > 0 ? [c, .35] : null; f.jit = t * .035; shake = Math.max(shake, t * .35);
+    const hb = Math.floor(t / (.5 - t * .2)); if (hb !== x.hb) { x.hb = hb; tone(55, .2, 'sine', .35, -15); noise(.1, .2, 300); }
+    if (t > .9 && Math.random() < .12) bolt(new THREE.Vector3(f.x + rand(-2.5, 2.5), 9, rand(-2, 0)), pos.clone().add(new THREE.Vector3(rand(-.3, .3), rand(-.4, .6), 0)), c);
+  }
+  if (!x.flashed && t >= TX) { x.flashed = true; f.jit = 0; transform(f); flash(.9, isP ? '#fff6c8' : '#ff3050'); shake = 1.8; camPunch = 1.2; bloom.strength = 1.8; slow = .35;
+    for (let i = 0; i < 6; i++) setTimeout(() => ring(pos.clone().setY(.3 + i * .35), i % 2 ? 0xffffff : c, 5 + i * 1.6), i * 70);
+    burst(pos, c, 150, 14, 1.1); burst(pos, 0xffffff, 50, 10, .7); burst(new THREE.Vector3(f.x, .1, 0), c, 80, 8, .8, -4);
+    for (let i = 0; i < 6; i++) setTimeout(() => bolt(new THREE.Vector3(f.x + rand(-4, 4), 10, rand(-3, 0)), new THREE.Vector3(f.x + rand(-1.2, 1.2), 0, rand(-.6, .6)), i % 2 ? c2 : c), i * 60);
+    noise(1.2, .55, 500); tone(45, 1.2, 'sawtooth', .12, -15); tone(110, .8, 'square', .06, 220);
+    if (isP) setTimeout(() => melody([[72, .25], [76, .25], [79, .25], [84, .75]]), 300); }
+  if (x.flashed && !x.titled && t >= TX + .35) { x.titled = true; say(isP ? 'SUPER SANTA!!' : 'BLACKRUF RAGE!!', isP ? '真の姿へ ─ HYPER MODE（12秒）' : '真の姿へ ─ 怒りの覚醒', true); flash(.4, isP ? '#ffd860' : '#b040ff'); shake = 1; }
+  if (t > TX) {
+    if (!over && slow < 1 && t > TX + .7) slow = Math.min(1, slow + dt * 2);
+    bloom.strength = lerp(bloom.strength, .8, dt * 3);
+    // 本物の姿が回転しながら光の中から現れる
+    if (f.rig) { const q = Math.min(1, (t - TX) / 1.1); f.rig.inner.rotation.y = Math.pow(1 - q, 2) * Math.PI * 4; }
+    if (t < TX + 1.2 && Math.random() < .3) bolt(new THREE.Vector3(f.x + rand(-3, 3), 9, rand(-2, 0)), pos.clone().add(new THREE.Vector3(rand(-.4, .4), rand(-.5, .8), 0)), Math.random() < .5 ? c : c2);
+    if (Math.random() < .6) burst(new THREE.Vector3(f.x + rand(-.5, .5), rand(0, .3), rand(-.4, .4)), c, 1, 2, .9, 6);
+  }
+  if (t >= XEND) { endXfx(); xf = null; if (!over) slow = 1;
     if (isP) { hyper = HYPER_T; P.hp = Math.min(100, P.hp + 15); } else { E.hp = Math.min(100, E.hp + 10); }
-    say('FIGHT!'); }
+    say('FIGHT!'); flash(.3); }
 }
 function updPower(f, dt, T) {
   // 発光・オーラ・体格（ハイパー中は金色、激昂中は赤）
@@ -729,7 +794,7 @@ function reset() {
   for (const [f, x] of [[P, -2.2], [E, 2.2]]) Object.assign(f, { x, y: 0, vx: 0, vy: 0, face: x < 0 ? 1 : -1, hp: 100, meter: 0, st: 'idle', t: 0, combo: 0, flash: 0 });
   for (const p of projs) scene.remove(p.m); projs = [];
   time = 60; over = false; overT = 0; introT = 2.2; slow = 1; $('end').style.display = 'none';
-  hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; f.shrink = null; revert(f); } for (const q of frags) scene.remove(q.m); frags = [];
+  if (xf) endXfx(); hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; f.shrink = null; revert(f); } for (const q of frags) scene.remove(q.m); frags = [];
   setTimeout(() => say('ROUND 1', 'BLACKRUF を撃退せよ'), 200); setTimeout(() => { say('FIGHT!'); flash(.4); noise(.4, .3, 2500); }, 1500);
 }
 $('again').addEventListener('click', () => { audio(); reset(); });
@@ -742,7 +807,8 @@ function updCamera(dt, t) {
   let tx = mid, ty = 1.35, tz = dist, lx = mid, ly = 1.0;
   if (introT > 0) { const k = introT / 2.2; tx = mid + Math.sin(k * 2) * 4; tz = dist + k * 4; ty = 1.4 + k * 2.5; }
   if (over) { const loser = P.st === 'ko' ? P : E, win = loser === P ? E : P; const k = Math.min(1, overT / 1.5); tx = lerp(mid, win.x + win.face * 1.8, k); tz = lerp(dist, 3.2, k); ty = lerp(1.55, 1.3, k); lx = lerp(mid, win.x, k); ly = lerp(1.05, 1.35, k); }
-  if (xf) { const f = xf.f, k = Math.min(1, xf.t / .5); tx = lerp(mid, f.x + f.face * .9, k); tz = lerp(dist, 2.6, k); ty = lerp(1.35, 1.15, k); lx = lerp(mid, f.x, k); ly = lerp(1.0, 1.25, k); }
+  if (xf) { const f = xf.f, t = xf.t, k = Math.min(1, t / .5), a = f.face * lerp(.95, -.55, Math.min(1, t / XEND)), R = t < TX ? lerp(4.2, 2.6, t / TX) : lerp(2.6, 3.4, Math.min(1, (t - TX) / 1.2));
+    tx = lerp(mid, f.x + Math.sin(a) * R, k); tz = lerp(dist, Math.cos(a) * R, k); ty = lerp(1.35, t < TX ? .9 : 1.5, k); lx = lerp(mid, f.x, k); ly = lerp(1.0, t < TX ? 1.1 : 1.35, k); }
   else if (deer && deer.ph === 'buck') { tx = (deer.x + E.x) / 2; tz = 3.4; }
   if (camPunch > 0) { tz -= camPunch * 1.2; camPunch = Math.max(0, camPunch - dt * 3); }
   const a = 1 - Math.exp(-4 * dt);
@@ -770,7 +836,7 @@ function frame(now) {
   else { stepFighter(P, E, deer && deer.ph === 'banner' ? gdt * .3 : gdt, inp); stepFighter(E, P, deer && deer.ph === 'banner' ? gdt * .3 : gdt, aiInput(gdt)); }
   if (!over && !xf && introT <= 0 && assistCd > 0) assistCd -= gdt;
   if (hyper > 0 && !xf) { hyper -= gdt; P.meter = Math.min(100, P.meter + gdt * 6); if (hyper <= 0) { hyper = 0; P.shrink = 0; say('HYPER END', '人形の姿に戻った'); burst(new THREE.Vector3(P.x, 1.2, 0), 0xffffff, 40, 4, .6); noise(.3, .3, 2000); } }
-  updDeer(gdt); updGifts(gdt); updFrags(dt); updPower(P, gdt, T); updPower(E, gdt, T);
+  updDeer(gdt); updGifts(gdt); updFrags(dt); updBolts(dt); updPower(P, gdt, T); updPower(E, gdt, T);
   updProjs(gdt); updParts(gdt); updRings(dt);
   applyPose(P, gdt, T); applyPose(E, gdt, T); setFlash(P); setFlash(E);
   for (const f of [P, E]) { f.aura.material.opacity = f.meter >= 100 ? .35 + .2 * Math.sin(T * 10) : f.st === 'special' ? .8 : 0; }
