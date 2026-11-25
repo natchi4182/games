@@ -598,7 +598,7 @@ function stepFighter(f, o, dt, inp) {
   }
   // 攻撃判定
   const mv = ((f.real && f.moves) || MOVES)[f.st];
-  if (mv) { f.vx *= 1 - 10 * dt; if (!f.hitDone && f.t >= mv.act[0] && f.t <= mv.act[1]) { const d = (o.x - f.x) * f.face; if (d > 0 && d < mv.reach && o.y < 1.2 && o.st !== 'ko') { f.hitDone = true; const at = mv.bone ? mv.bone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(f.x + f.face * Math.min(d, mv.reach) * .8, mv.h, 0); damage(f, o, mv.dmg, mv.kb, at); } } if (f.t > mv.dur) { act(f, 'idle'); if (!f.hitDone) f.combo = 0; } }
+  if (mv) { f.vx *= 1 - 10 * dt; if (!f.hitDone && f.t >= mv.act[0] && f.t <= mv.act[1]) { const d = (o.x - f.x) * f.face; const rc = mv.reach * (f.real ? 1.12 : 1); if (d > 0 && d < rc && o.y < 1.2 && o.st !== 'ko') { f.hitDone = true; const at = mv.bone ? mv.bone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(f.x + f.face * Math.min(d, rc) * .8, mv.h, 0); damage(f, o, mv.dmg, mv.kb, at); } } if (f.t > mv.dur) { act(f, 'idle'); if (!f.hitDone) f.combo = 0; } }
   if (f.st === 'special' && f.t > ((f.real && f.spDur) || .7)) act(f, 'idle');
   if (f.st === 'hit') { f.vx *= 1 - 6 * dt; if (f.t > .35 && !(f.stun > 0)) act(f, 'idle'); }
   if (f.st === 'guard' && inp && !inp.guard) act(f, 'idle');
@@ -710,6 +710,8 @@ function updGifts(dt) { for (let i = gifts.length - 1; i >= 0; i--) { const g = 
 
 // ------------------------------------------------------------ 人形 → リアルモデルへの変身（人形の部品がはじけ飛び、中から本物が現れる）
 let frags = [];
+// リアルな姿（ハイパー／激昂）では体が一回り大きくなる
+const GIANT = 1.2;
 function transform(f) {
   if (!f.rig || f.real) return;
   f.root.updateMatrixWorld(true);
@@ -830,7 +832,7 @@ function updPower(f, dt, T) {
     if (f.shrink != null) { f.shrink += dt / .4; gk *= Math.max(.05, 1 - f.shrink); f.tint = [0xffffff, f.shrink * 1.2];
       if (Math.random() < .8) burst(new THREE.Vector3(f.x + rand(-.4, .4), rand(.2, 1.8), 0), 0xffd860, 2, 2, .5, 2);
       if (f.shrink >= 1) { f.shrink = null; f.tint = null; revert(f); f.mats = null; ring(new THREE.Vector3(f.x, 1.1, 0), 0xffffff, 3); burst(new THREE.Vector3(f.x, 1.1, 0), 0xffffff, 50, 5, .6); flash(.3); tone(660, .2, 'triangle', .05, -300); } }
-    f.rig.model.scale.setScalar(f.rig.s0 * (1 + f.bulk * .07) * gk); }
+    f.rig.model.scale.setScalar(f.rig.s0 * (1 + f.bulk * .07) * (f.real ? GIANT : 1) * gk); }
   if (pw && Math.random() < .6) burst(new THREE.Vector3(f.x + rand(-.45, .45), rand(.1, 1.8), rand(-.3, .3)), f === P ? (Math.random() < .5 ? 0xffd040 : 0xff8a20) : (Math.random() < .5 ? 0xff2040 : 0xa040ff), 1, 1, .6, 4);
 }
 
@@ -857,8 +859,10 @@ $('again').addEventListener('click', () => { audio(); reset(); });
 const camPos = new THREE.Vector3(0, 2, 9), camLook = new THREE.Vector3(0, 1.1, 0);
 function updCamera(dt, t) {
   const mid = (P.x + E.x) / 2, sep = Math.abs(P.x - E.x);
-  let dist = 3.6 + sep * .55;
-  let tx = mid, ty = 1.35, tz = dist, lx = mid, ly = 1.0;
+  // 巨大化した側がいるときは少し引いて、頭まで画面に収める
+  const big = (P.real ? 1 : 0) + (E.real ? 1 : 0) > 0 ? 1 : 0;
+  let dist = 3.6 + sep * .55 + big * .9;
+  let tx = mid, ty = 1.35 + big * .2, tz = dist, lx = mid, ly = 1.0 + big * .25;
   if (introT > 0) { const k = introT / 2.2; tx = mid + Math.sin(k * 2) * 4; tz = dist + k * 4; ty = 1.4 + k * 2.5; }
   if (over) { const loser = P.st === 'ko' ? P : E, win = loser === P ? E : P; const k = Math.min(1, overT / 1.5); tx = lerp(mid, win.x + win.face * 1.8, k); tz = lerp(dist, 3.2, k); ty = lerp(1.55, 1.3, k); lx = lerp(mid, win.x, k); ly = lerp(1.05, 1.35, k); }
   if (xf) { const f = xf.f, t = xf.t, k = Math.min(1, t / .5), a = f.face * lerp(.95, -.55, Math.min(1, t / XEND)), R = t < TX ? lerp(4.2, 2.6, t / TX) : lerp(2.6, 3.4, Math.min(1, (t - TX) / 1.2));
