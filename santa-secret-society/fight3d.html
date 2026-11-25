@@ -284,7 +284,8 @@ function attachModel(f, g, height) {
   for (const n of RIG) { const b = B[n]; if (!b) continue; rest[n] = mqi.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())); pRest[n] = mqi.clone().multiply(b.parent.getWorldQuaternion(new THREE.Quaternion())); }
   const lp = n => model.worldToLocal(B[n].getWorldPosition(new THREE.Vector3()));
   const side = (a, b) => { const d = lp(b).sub(lp(a)); return { s: Math.sign(d.x) || 1, a: Math.atan2(Math.abs(d.x), -d.y) }; };
-  f.rig = { model, inner, B, rest, pRest, L: side('LeftArm', 'LeftForeArm'), R: side('RightArm', 'RightForeArm') };
+  const fingers = []; model.traverse(o => { if (o.isBone && /Hand(Index|Middle|Ring|Pinky|Thumb)\d/.test(o.name)) fingers.push({ b: o, q0: o.quaternion.clone(), thumb: /Thumb/.test(o.name), left: /Left/.test(o.name) }); });
+  f.rig = { fingers, model, inner, B, rest, pRest, L: side('LeftArm', 'LeftForeArm'), R: side('RightArm', 'RightForeArm') };
   f.J = { ...f.J, hdL: B.LeftHand || f.J.hdL, ftL: B.LeftFoot || f.J.ftL };
 }
 const _e = new THREE.Euler(), _I = new THREE.Quaternion();
@@ -295,16 +296,20 @@ function applyRig(f) {
   const d = {
     Spine: qE(p.lean * .35, p.twist * .3, 0), Spine1: qE(p.lean * .35, p.twist * .3, 0), Spine2: qE(p.lean * .3, p.twist * .3, 0),
     Neck: qE(p.head * .5, -p.twist * .3, 0), Head: qE(p.head * .5, -p.twist * .3, 0),
-    LeftArm: qE(-p.sL, 0, R.L.s * (p.aL - R.L.a)), LeftForeArm: qE(-p.eL, 0, 0),
-    RightArm: qE(-p.sR, 0, R.R.s * (p.aR - R.R.a)), RightForeArm: qE(-p.eR, 0, 0),
+    LeftArm: qE(-p.sL, 0, R.L.s * (p.aL - R.L.a)), RightArm: qE(-p.sR, 0, R.R.s * (p.aR - R.R.a)),
     LeftUpLeg: qE(-p.hL, 0, 0), LeftLeg: qE(p.kL, 0, 0), LeftFoot: qE(-p.fL, 0, 0),
     RightUpLeg: qE(-p.hR, 0, 0), RightLeg: qE(p.kR, 0, 0),
   };
+  // 前腕は「上腕を下ろした向き」を基準に前へ曲げる（肘の蝶番が横に傾かないように）
+  const abs = { LeftForeArm: ['Spine2', qE(-(p.sL + p.eL), 0, R.L.s * (p.aL - R.L.a))], RightForeArm: ['Spine2', qE(-(p.sR + p.eR), 0, R.R.s * (p.aR - R.R.a))] };
+  // 指を握って拳にする
+  const cu = (window.__f3d && window.__f3d.curl) || ['z', -1.2];
+  for (const fg of R.fingers) { const a = (fg.thumb ? .5 : 1) * cu[1] * (fg.left ? 1 : -1); fg.b.quaternion.copy(fg.q0).multiply(qE(cu[0] === 'x' ? a : 0, cu[0] === 'y' ? a : 0, cu[0] === 'z' ? a : 0)); }
   const W = {};
   for (const n of RIG) {
     const b = R.B[n]; if (!b) continue;
     const par = b.parent.isBone ? W[bn(b.parent.name)] : null;
-    const A = (par ? par.A.clone() : new THREE.Quaternion()).multiply(d[n] || _I);
+    const A = abs[n] && W[abs[n][0]] ? W[abs[n][0]].A.clone().multiply(abs[n][1]) : (par ? par.A.clone() : new THREE.Quaternion()).multiply(d[n] || _I);
     const Wb = A.clone().multiply(R.rest[n]);
     const Wp = par ? par.W : R.pRest[n];
     b.quaternion.copy(Wp.clone().invert().multiply(Wb));
@@ -324,7 +329,7 @@ Promise.all([loadOne(P, 'models/santa.glb', 1.85, 's'), loadOne(E, 'models/black
 const BASE = { lean: 0, twist: 0, head: 0, crouch: 0, sL: 0, eL: 0, sR: 0, eR: 0, aL: .12, aR: .12, hL: 0, kL: 0, hR: 0, kR: 0, fL: 0, fR: 0, tilt: 0, fall: 0 };
 function poseFor(f, t) {
   const st = f.st, k = f.t, b = Math.sin(t * 3 + (f.S ? 0 : 1)) * .03;
-  const P0 = { ...BASE, lean: .12 + b, twist: .35, sL: .95, eL: 1.9, sR: .55, eR: 2.2, hL: .35, kL: .45, hR: -.25, kR: .35, crouch: .06 + b, head: -.08 };
+  const P0 = { ...BASE, lean: .12 + b, twist: .35, sL: 1.15, eL: 1.5, sR: .85, eR: 1.75, aL: .22, aR: .22, hL: .35, kL: .45, hR: -.25, kR: .35, crouch: .06 + b, head: -.08 };
   switch (st) {
     case 'walk': { const w = Math.sin(f.walk * 9); return { ...P0, hL: .35 + w * .45, kL: .4 + Math.max(0, w) * .6, hR: -.25 - w * .45, kR: .35 + Math.max(0, -w) * .6 }; }
     case 'punch': { const e = k < .08 ? k / .08 : k < .2 ? 1 : 1 - (k - .2) / .15; return { ...P0, twist: lerp(.35, -.35, e), lean: .12 + e * .2, sL: lerp(.95, 1.6, e), eL: lerp(1.9, .05, e), sR: .4, eR: 2.3, hL: .5, kL: .5 }; }
@@ -487,6 +492,7 @@ function updCamera(dt, t) {
   camPos.lerp(new THREE.Vector3(tx + Math.sin(t * .4) * .3, ty + Math.sin(t * .6) * .08, tz), a); camLook.lerp(new THREE.Vector3(lx, ly, 0), a);
   camera.position.copy(camPos); if (shake > 0) { camera.position.x += rand(-1, 1) * shake * .25; camera.position.y += rand(-1, 1) * shake * .2; shake = Math.max(0, shake - dt * 2.5); }
   camera.lookAt(camLook);
+  const co = window.__f3d && window.__f3d.cam; if (co) { camera.position.set(...co.pos); camera.lookAt(...co.look); }
 }
 
 // ------------------------------------------------------------ ループ
