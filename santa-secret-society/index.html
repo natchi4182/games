@@ -3968,8 +3968,38 @@ const Title = {
       cx.globalAlpha = 1;
     } else if (t > .3) { const a = .5 + .5 * Math.sin(gT * 6); cx.globalAlpha = a; spaced('TAP TO SKIP', W / 2, 622, 8, '#8f876f', 3); cx.globalAlpha = 1; }
   },
-  down(x, y) { if (this.t < 2.35) { this.t = Math.max(this.t, 2.1); return; } BtnMix.down.call(this, x, y); },
+  down(x, y) {
+    if (this.t < 2.35) { this.t = Math.max(this.t, 2.1); return; }
+    if (this.unlock != null) return;
+    // 裏コマンド：ロゴ「S.A.N.T.A.」をすばやく7回タップ
+    if (y > 140 && y < 220) { const now = gT; this.taps = (this.taps || []).filter(v => now - v < 2.5); this.taps.push(now); const n = this.taps.length;
+      tone(700 + n * 140, .05, 'square', .04); burst(x, y, [GOLD2, '#fff'], 6 + n * 2, 120, .4, 2); shake = n * .8;
+      if (n >= 7) return this.secret(); return; }
+    BtnMix.down.call(this, x, y);
+  },
+  // 裏コマンド：キーボードで ↑↑↓↓←→←→BA
+  key(code) {
+    if (this.unlock != null) return;
+    const K = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
+    this.kseq = [...(this.kseq || []), code].slice(-K.length);
+    if (K.every((k, i) => this.kseq[i] === k)) this.secret();
+  },
+  secret() {
+    this.unlock = 0; this.taps = [];
+    noise(.8, .45, 1200); tone(55, 1, 'sawtooth', .1, -20); setTimeout(() => melody([[60, .2], [67, .2], [72, .2], [79, .6]], 300, 'square', .06), 250);
+  },
 };
+// 裏コマンド成功の演出 → リアルバトルモードへ
+{ const tu = Title.update, td = Title.draw;
+  Title.update = function (dt) { tu.call(this, dt); if (this.unlock != null) { this.unlock += dt; shake = Math.max(shake, this.unlock < .3 ? 14 : 3); if (this.unlock > 2.2 && !this.left) { this.left = true; location.href = 'fight3d.html'; } } };
+  Title.draw = function (dt) { td.call(this, dt); if (this.unlock == null) return; const u = this.unlock;
+    for (let i = 0; i < 24; i++) { cx.fillStyle = `rgba(${Math.random() < .5 ? '255,40,80' : '40,220,255'},${Math.random() * .35})`; cx.fillRect(0, rand(0, H), W, rand(2, 16)); }
+    cx.fillStyle = `rgba(0,0,0,${Math.min(.8, u * 2)})`; cx.fillRect(0, 0, W, H);
+    const k = clamp((u - .25) * 4, 0, 1); cx.save(); cx.translate(W / 2, H / 2 - 30); cx.scale(1 + (1 - k) * 3, 1 + (1 - k) * 3); cx.globalAlpha = k; chromaText('REAL BATTLE', 0, 0, 34, 3, SERIF, goldGrad(-18, 18), u < .8 ? 1 : 0); cx.restore();
+    if (u > .6) { cx.save(); cx.globalAlpha = clamp((u - .6) * 4, 0, 1); bigCall('裏コマンド発動！', W / 2, H / 2 + 14, 22, '#ff6b7d'); spaced('SECRET MODE UNLOCKED', W / 2, H / 2 + 46, 9, '#fff', 3); const lb = clamp((u - .9) / 1.2, 0, 1); cx.fillStyle = 'rgba(255,255,255,.15)'; cx.fillRect(W / 2 - 90, H / 2 + 66, 180, 5); cx.fillStyle = GOLD2; cx.fillRect(W / 2 - 90, H / 2 + 66, 180 * lb, 5); cx.restore(); }
+    if (u < .15) { cx.fillStyle = `rgba(255,255,255,${1 - u / .15})`; cx.fillRect(0, 0, W, H); } };
+  const te = Title.enter; Title.enter = function (a) { te.call(this, a); this.unlock = null; this.left = false; this.taps = []; this.kseq = []; };
+}
 
 // タイプライター付き文章パネル（長い文章はページ送り）
 function typeScene(cfg) {
