@@ -294,9 +294,9 @@ function attachModel(f, g, height) {
   const hy = head ? model.worldToLocal(head.getWorldPosition(new THREE.Vector3())).y : .88;
   model.scale.setScalar(height * .86 / (hy || .88));
   model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
-  for (const c of f.root.children) if (c !== f.aura) c.visible = false;
-  f.cape = null; f.mats = null;
-  const inner = new THREE.Group(); inner.add(model); f.root.add(inner);
+  // 最初は手作りの人形で戦い、覚醒の瞬間にこのリアルモデルへ変身する
+  f.capeRef = f.cape; f.real = false; f.mats = null;
+  const inner = new THREE.Group(); inner.add(model); inner.visible = false; f.root.add(inner);
   const B = {}; model.traverse(o => { if (o.isBone) B[bn(o.name)] = o; });
   f.root.updateMatrixWorld(true);
   const mqi = model.getWorldQuaternion(new THREE.Quaternion()).invert(), rest = {}, pRest = {};
@@ -305,7 +305,6 @@ function attachModel(f, g, height) {
   const side = (a, b) => { const d = lp(b).sub(lp(a)); return { s: Math.sign(d.x) || 1, a: Math.atan2(Math.abs(d.x), -d.y) }; };
   const fingers = []; model.traverse(o => { if (o.isBone && /Hand(Index|Middle|Ring|Pinky|Thumb)\d/.test(o.name)) fingers.push({ b: o, q0: o.quaternion.clone(), thumb: /Thumb/.test(o.name), left: /Left/.test(o.name) }); });
   f.rig = { fingers, model, inner, B, rest, pRest, L: side('LeftArm', 'LeftForeArm'), R: side('RightArm', 'RightForeArm') };
-  f.J = { ...f.J, hdL: B.LeftHand || f.J.hdL, ftL: B.LeftFoot || f.J.ftL };
 }
 const _e = new THREE.Euler(), _I = new THREE.Quaternion();
 const qE = (x, y, z) => new THREE.Quaternion().setFromEuler(_e.set(x, y, z, 'XYZ'));
@@ -431,7 +430,7 @@ Promise.all([loadOne(P, 'models/santa.glb', 1.85, 's'), loadOne(E, 'models/black
 // ------------------------------------------------------------ ポーズ
 const BASE = { lean: 0, twist: 0, head: 0, crouch: 0, sL: 0, eL: 0, sR: 0, eR: 0, aL: .12, aR: .12, hL: 0, kL: 0, hR: 0, kR: 0, fL: 0, fR: 0, tilt: 0, fall: 0 };
 function poseFor(f, t) {
-  const st = f.st, k = f.t, b = Math.sin(t * 3 + (f.S ? 0 : 1)) * .03;
+  const st = xf && xf.f === f ? 'win' : f.st, k = f.t, b = Math.sin(t * 3 + (f.S ? 0 : 1)) * .03;
   const P0 = { ...BASE, lean: .12 + b, twist: .35, sL: 1.15, eL: 1.5, sR: .85, eR: 1.75, aL: .22, aR: .22, hL: .35, kL: .45, hR: -.25, kR: .35, crouch: .06 + b, head: -.08 };
   switch (st) {
     case 'walk': { const w = Math.sin(f.walk * 9); return { ...P0, hL: .35 + w * .45, kL: .4 + Math.max(0, w) * .6, hR: -.25 - w * .45, kR: .35 + Math.max(0, -w) * .6 }; }
@@ -460,8 +459,8 @@ function applyPose(f, dt, t) {
   J.shR.rotation.set(-p.sR, 0, -p.aR); J.elR.rotation.set(-p.eR, 0, 0);
   J.thL.rotation.set(-p.hL, 0, .04); J.knL.rotation.set(p.kL, 0, 0); J.ftL.rotation.set(-p.fL, 0, 0);
   J.thR.rotation.set(-p.hR, 0, -.04); J.knR.rotation.set(p.kR, 0, 0); J.ftR.rotation.set(0, 0, 0);
-  if (f.rig && f.anim) { f.rig.inner.position.y = 0; f.rig.inner.rotation.x = 0; updAnim(f, dt); for (const fg of f.rig.fingers) fg.b.quaternion.copy(fg.q0).multiply(qE(0, 0, (fg.thumb ? .5 : 1) * -1.2 * (fg.left ? 1 : -1))); }
-  else if (f.rig) applyRig(f);
+  if (f.real && f.anim) { f.rig.inner.position.y = 0; f.rig.inner.rotation.x = 0; updAnim(f, dt); for (const fg of f.rig.fingers) fg.b.quaternion.copy(fg.q0).multiply(qE(0, 0, (fg.thumb ? .5 : 1) * -1.2 * (fg.left ? 1 : -1))); }
+  else if (f.real) applyRig(f);
   // マントのはためき
   if (f.cape) { const pos = f.cape.geometry.attributes.position, base = f.cape.userData.base; for (let i = 0; i < pos.count; i++) { const y = base[i * 3 + 1], x = base[i * 3], d = -y; pos.setZ(i, base[i * 3 + 2] - d * d * .35 - Math.sin(t * 6 + d * 4 + x * 3) * .06 * d - Math.abs(f.vx) * .05 * d); } pos.needsUpdate = true; f.cape.geometry.computeVertexNormals(); }
   // 被弾の赤い点滅
@@ -471,7 +470,7 @@ function applyPose(f, dt, t) {
 const _fc = new THREE.Color();
 function setFlash(f) { if (!f.mats) { f.mats = new Set(); f.root.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) f.mats.add(o.material); }); }
   for (const m of f.mats) { if (m.userData.e0 === undefined) { m.userData.e0 = m.emissive.clone(); m.userData.ei = m.emissiveIntensity; }
-    if (f.flash > 0) { m.emissive.setHex(f.rig ? 0xff5040 : 0xffffff); m.emissiveIntensity = f.flash * (f.rig ? .35 : .9); }
+    if (f.flash > 0) { m.emissive.setHex(f.real ? 0xff5040 : 0xffffff); m.emissiveIntensity = f.flash * (f.real ? .35 : .9); }
     else if (f.tint) { m.emissive.copy(_fc.setHex(f.tint[0])); m.emissiveIntensity = f.tint[1]; }
     else { m.emissive.copy(m.userData.e0); m.emissiveIntensity = m.userData.ei; } } }
 
@@ -499,7 +498,7 @@ function say(a, b = '', hold) { big.textContent = a; sub.textContent = b; big.cl
 function flash(a = .6, col = '#fff') { flashEl.style.transition = 'none'; flashEl.style.background = col; flashEl.style.opacity = a; requestAnimationFrame(() => { flashEl.style.transition = 'opacity .35s'; flashEl.style.opacity = 0; }); }
 function act(f, st) { f.st = st; f.t = 0; f.hitDone = false; }
 function canAct(f) { return !over && introT <= 0 && (f.st === 'idle' || f.st === 'walk' || f.st === 'guard'); }
-function handPos(f, leg) { const o = new THREE.Vector3(); (f.spBone && !leg ? f.spBone : leg ? f.J.ftL : f.J.hdL).getWorldPosition(o); return o; }
+function handPos(f, leg) { const o = new THREE.Vector3(); (f.real ? (leg ? f.rig.B.LeftFoot : f.spBone || f.rig.B.LeftHand) : leg ? f.J.ftL : f.J.hdL).getWorldPosition(o); return o; }
 function damage(att, def, dmg, kb, at, big = false) {
   const hy = att === P && hyper > 0; if (hy) dmg *= 1.5;
   def.combo = 0;
@@ -525,7 +524,7 @@ function special(f) {
     const light = new THREE.PointLight(col, 30, 6, 2); orb.add(light);
     orb.position.copy(o); if (f === P && hyper > 0) orb.scale.setScalar(1.6); scene.add(orb); projs.push({ m: orb, owner: f, vx: f.face * 9, t: 0, rain: f === P && hyper > 0 });
     tone(f.S ? 880 : 220, .4, 'sawtooth', .07, f.S ? 600 : -100); noise(.4, .3, 3000);
-  }, (f.spRelease || .26) * 1000);
+  }, ((f.real && f.spRelease) || .26) * 1000);
   const mir = f === P && hyper > 0;
   say(mir ? 'MIRACLE PRESENT RAIN!!' : f.S ? 'GIFT BOMB!!' : 'ABYSS ORB!!', mir ? '必殺 ミラクル・プレゼント・レイン' : f.S ? '必殺 プレゼント・ボム' : '必殺 ブラック・コール');
   flash(.35, f.S ? '#ffd040' : '#a040ff'); camPunch = 1;
@@ -546,9 +545,9 @@ function stepFighter(f, o, dt, inp) {
     else { const mv = (inp.right ? 1 : 0) - (inp.left ? 1 : 0); f.vx = mv * 3.4 * spd(f); f.st = mv ? 'walk' : 'idle'; if (mv) f.walk += dt * (mv * f.face > 0 ? 1 : -1); }
   }
   // 攻撃判定
-  const mv = (f.moves || MOVES)[f.st];
+  const mv = ((f.real && f.moves) || MOVES)[f.st];
   if (mv) { f.vx *= 1 - 10 * dt; if (!f.hitDone && f.t >= mv.act[0] && f.t <= mv.act[1]) { const d = (o.x - f.x) * f.face; if (d > 0 && d < mv.reach && o.y < 1.2 && o.st !== 'ko') { f.hitDone = true; const at = mv.bone ? mv.bone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(f.x + f.face * Math.min(d, mv.reach) * .8, mv.h, 0); damage(f, o, mv.dmg, mv.kb, at); } } if (f.t > mv.dur) { act(f, 'idle'); if (!f.hitDone) f.combo = 0; } }
-  if (f.st === 'special' && f.t > (f.spDur || .7)) act(f, 'idle');
+  if (f.st === 'special' && f.t > ((f.real && f.spDur) || .7)) act(f, 'idle');
   if (f.st === 'hit') { f.vx *= 1 - 6 * dt; if (f.t > .35 && !(f.stun > 0)) act(f, 'idle'); }
   if (f.st === 'guard' && inp && !inp.guard) act(f, 'idle');
   // 物理
@@ -655,6 +654,30 @@ function giftRain(tgt) {
 function updGifts(dt) { for (let i = gifts.length - 1; i >= 0; i--) { const g = gifts[i]; g.vy -= 20 * dt; g.m.position.y += g.vy * dt; g.m.rotation.x += g.vr * dt; g.m.rotation.y += g.vr * .7 * dt;
   if (g.m.position.y < .2) { const p = g.m.position.clone(); burst(p, 0xffd860, 30, 6, .6); burst(p, 0xff3b5c, 12, 4, .5); ring(p, 0xffd860, 2.2); noise(.2, .25, 1500); tone(600 + Math.random() * 400, .08, 'square', .04); shake = Math.max(shake, .4); scene.remove(g.m); gifts.splice(i, 1); } } }
 
+// ------------------------------------------------------------ 人形 → リアルモデルへの変身（人形の部品がはじけ飛び、中から本物が現れる）
+let frags = [];
+function transform(f) {
+  if (!f.rig || f.real) return;
+  f.root.updateMatrixWorld(true);
+  const c = new THREE.Vector3(f.x, 1.1, 0);
+  for (const ch of f.root.children) { if (ch === f.aura || ch === f.rig.inner) continue;
+    ch.traverse(o => { if (!o.isMesh || !o.visible) return; const m = new THREE.Mesh(o.geometry, o.material); o.getWorldPosition(m.position); o.getWorldQuaternion(m.quaternion); o.getWorldScale(m.scale); m.castShadow = true; scene.add(m);
+      const v = m.position.clone().sub(c); v.z += rand(-.3, .3); v.normalize().multiplyScalar(rand(3, 8)); v.y += rand(2, 6);
+      frags.push({ m, v, w: new THREE.Vector3(rand(-14, 14), rand(-14, 14), rand(-14, 14)), life: rand(1, 1.6) }); });
+    ch.visible = false; }
+  f.rig.inner.visible = true; f.real = true; f.cape = null; f.mats = null; f.grow = 0;
+  if (f.anim) f.anim.cur = null;
+  burst(c, 0xffffff, 80, 9, .9); noise(.6, .45, 3000); tone(90, .6, 'square', .08, 300);
+}
+function updFrags(dt) { for (let i = frags.length - 1; i >= 0; i--) { const q = frags[i]; q.life -= dt; q.v.y -= 14 * dt; q.m.position.addScaledVector(q.v, dt);
+  q.m.rotation.x += q.w.x * dt; q.m.rotation.y += q.w.y * dt; q.m.rotation.z += q.w.z * dt; q.m.scale.multiplyScalar(1 - dt * .7);
+  if (Math.random() < .2) burst(q.m.position.clone(), 0xffd860, 1, .5, .3, 0);
+  if (q.life <= 0 || q.m.position.y < -2) { scene.remove(q.m); frags.splice(i, 1); } } }
+function revert(f) {
+  if (!f.rig) return;
+  f.real = false; for (const ch of f.root.children) ch.visible = ch !== f.rig.inner; f.rig.inner.visible = false; f.cape = f.capeRef; f.mats = null; f.grow = null;
+}
+
 // ------------------------------------------------------------ 覚醒（スーパーサンタ／ブラックルフ激昂）
 function startXf(f) {
   xf = { f, t: 0, done: false }; if (f === P) hyperUsed = true; else rageOn = true;
@@ -668,10 +691,10 @@ function updXf(dt) {
   if (t < 1.5) { f.tint = Math.sin(t * (20 + t * 30)) > 0 ? [c, .3] : null; shake = Math.max(shake, t * .4);
     if (Math.random() < .7) burst(new THREE.Vector3(f.x + rand(-.6, .6), rand(0, .4), rand(-.4, .4)), c, 2, 2, .9, 3);
     if (Math.floor(t / .3) !== Math.floor((t - dt) / .3)) { ring(pos, c, 2 + t * 2); noise(.15, .15, 2000); } }
-  if (!x.flashed && t >= 1.5) { x.flashed = true; flash(.95, isP ? '#fff6c8' : '#ff3050'); shake = 1.4; camPunch = 1; bloom.strength = 2.2;
+  if (!x.flashed && t >= 1.5) { x.flashed = true; transform(f); flash(.95, isP ? '#fff6c8' : '#ff3050'); shake = 1.4; camPunch = 1; bloom.strength = 2.2;
     for (let i = 0; i < 4; i++) setTimeout(() => ring(pos, i % 2 ? 0xffffff : c, 5 + i * 2), i * 90);
     burst(pos, c, 160, 12, 1.2); burst(pos, 0xffffff, 60, 8, .8); noise(.9, .5, 600); tone(55, 1, 'sawtooth', .1, -20);
-    say(isP ? 'SUPER SANTA!!' : 'BLACKRUF RAGE!!', isP ? '覚醒 ─ HYPER MODE（12秒）' : '激昂 ─ 怒りの覚醒', true);
+    say(isP ? 'SUPER SANTA!!' : 'BLACKRUF RAGE!!', isP ? '真の姿へ ─ HYPER MODE（12秒）' : '真の姿へ ─ 怒りの覚醒', true);
     if (isP) setTimeout(() => melody([[72, .25], [76, .25], [79, .25], [84, .75]]), 200); }
   if (t > 1.5) bloom.strength = lerp(bloom.strength, .75, dt * 1.5);
   if (t >= 3.0) { xf = null; bloom.strength = .75;
@@ -683,7 +706,12 @@ function updPower(f, dt, T) {
   if (!xf || xf.f !== f || xf.t >= 1.5) f.tint = f === P && hyper > 0 ? [0xffc050, .035 + .025 * Math.sin(T * 8)] : f === E && rageOn ? [0xff1030, .02 + .015 * Math.sin(T * 6)] : null;
   const pw = (f === P && hyper > 0) || (f === E && rageOn) || (xf && xf.f === f && xf.t >= 1.5);
   f.bulk = lerp(f.bulk || 0, pw ? 1 : 0, Math.min(1, dt * 4));
-  if (f.rig) { f.rig.s0 = f.rig.s0 || f.rig.model.scale.x; f.rig.model.scale.setScalar(f.rig.s0 * (1 + f.bulk * .07)); }
+  if (f.rig) { f.rig.s0 = f.rig.s0 || f.rig.model.scale.x; let gk = 1; if (f.grow != null && f.grow < 1) { f.grow = Math.min(1, f.grow + dt / .5); const x = f.grow - 1; gk = .35 + .65 * (1 + 2.7 * x * x * x + 1.7 * x * x); }
+    // ハイパー終了：リアルモデルが光とともに縮み、人形の姿に戻る
+    if (f.shrink != null) { f.shrink += dt / .4; gk *= Math.max(.05, 1 - f.shrink); f.tint = [0xffffff, f.shrink * 1.2];
+      if (Math.random() < .8) burst(new THREE.Vector3(f.x + rand(-.4, .4), rand(.2, 1.8), 0), 0xffd860, 2, 2, .5, 2);
+      if (f.shrink >= 1) { f.shrink = null; f.tint = null; revert(f); f.mats = null; ring(new THREE.Vector3(f.x, 1.1, 0), 0xffffff, 3); burst(new THREE.Vector3(f.x, 1.1, 0), 0xffffff, 50, 5, .6); flash(.3); tone(660, .2, 'triangle', .05, -300); } }
+    f.rig.model.scale.setScalar(f.rig.s0 * (1 + f.bulk * .07) * gk); }
   if (pw && Math.random() < .6) burst(new THREE.Vector3(f.x + rand(-.45, .45), rand(.1, 1.8), rand(-.3, .3)), f === P ? (Math.random() < .5 ? 0xffd040 : 0xff8a20) : (Math.random() < .5 ? 0xff2040 : 0xa040ff), 1, 1, .6, 4);
 }
 
@@ -701,7 +729,7 @@ function reset() {
   for (const [f, x] of [[P, -2.2], [E, 2.2]]) Object.assign(f, { x, y: 0, vx: 0, vy: 0, face: x < 0 ? 1 : -1, hp: 100, meter: 0, st: 'idle', t: 0, combo: 0, flash: 0 });
   for (const p of projs) scene.remove(p.m); projs = [];
   time = 60; over = false; overT = 0; introT = 2.2; slow = 1; $('end').style.display = 'none';
-  hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; }
+  hyper = 0; hyperUsed = false; rageOn = false; xf = null; assistCd = 6; deer = null; DEER.g.visible = false; beam.visible = false; for (const g of gifts) scene.remove(g.m); gifts = []; for (const f of [P, E]) { f.tint = null; f.stun = 0; f.bulk = 0; f.shrink = null; revert(f); } for (const q of frags) scene.remove(q.m); frags = [];
   setTimeout(() => say('ROUND 1', 'BLACKRUF を撃退せよ'), 200); setTimeout(() => { say('FIGHT!'); flash(.4); noise(.4, .3, 2500); }, 1500);
 }
 $('again').addEventListener('click', () => { audio(); reset(); });
@@ -741,8 +769,8 @@ function frame(now) {
   if (xf) updXf(dt);
   else { stepFighter(P, E, deer && deer.ph === 'banner' ? gdt * .3 : gdt, inp); stepFighter(E, P, deer && deer.ph === 'banner' ? gdt * .3 : gdt, aiInput(gdt)); }
   if (!over && !xf && introT <= 0 && assistCd > 0) assistCd -= gdt;
-  if (hyper > 0 && !xf) { hyper -= gdt; P.meter = Math.min(100, P.meter + gdt * 6); if (hyper <= 0) { hyper = 0; say('HYPER END'); burst(new THREE.Vector3(P.x, 1.2, 0), 0xffffff, 40, 4, .6); noise(.3, .3, 2000); } }
-  updDeer(gdt); updGifts(gdt); updPower(P, gdt, T); updPower(E, gdt, T);
+  if (hyper > 0 && !xf) { hyper -= gdt; P.meter = Math.min(100, P.meter + gdt * 6); if (hyper <= 0) { hyper = 0; P.shrink = 0; say('HYPER END', '人形の姿に戻った'); burst(new THREE.Vector3(P.x, 1.2, 0), 0xffffff, 40, 4, .6); noise(.3, .3, 2000); } }
+  updDeer(gdt); updGifts(gdt); updFrags(dt); updPower(P, gdt, T); updPower(E, gdt, T);
   updProjs(gdt); updParts(gdt); updRings(dt);
   applyPose(P, gdt, T); applyPose(E, gdt, T); setFlash(P); setFlash(E);
   for (const f of [P, E]) { f.aura.material.opacity = f.meter >= 100 ? .35 + .2 * Math.sin(T * 10) : f.st === 'special' ? .8 : 0; }
@@ -758,7 +786,7 @@ function frame(now) {
 }
 introT = 1e9; requestAnimationFrame(frame);
 setTimeout(() => { $('help').style.transition = 'opacity 1s'; $('help').style.opacity = 0; }, 7000);
-window.__f3d = { P, E, get over() { return over; }, set introT(v) { introT = v; }, damage, special, callDeer, startXf, get hyper() { return hyper; }, get rage() { return rageOn; }, get deer() { return deer; }, set assistCd(v) { assistCd = v; } };
+window.__f3d = { get xf() { return xf; }, P, E, get over() { return over; }, set introT(v) { introT = v; }, damage, special, callDeer, startXf, get hyper() { return hyper; }, set hyper(v) { hyper = v; }, get rage() { return rageOn; }, get deer() { return deer; }, set assistCd(v) { assistCd = v; } };
 </script>
 </body>
 </html>
