@@ -5,6 +5,7 @@ const FONT = B + 'fonts/node_modules/@fontsource/dela-gothic-one/files/dela-goth
 const SANTA = { fill: '#e8102e', fill2: '#ff5a5a', in: '#fff', out: '#4a0010' };
 const KUROU = { fill: '#7b2cff', fill2: '#c070ff', in: '#fff', out: '#16062c' };
 const DEER = { fill: '#9a4e1c', fill2: '#e0802a', in: '#fff', out: '#2a1204' };
+const XMAS = { fill: '#178a3a', fill2: '#5ad86a', in: '#fff', out: '#063014' };
 const GOLD = { fill: '#e8a800', fill2: '#ffe066', in: '#fff', out: '#4a2a00' };
 const L = [
   ['01_ok', 'OK！', GOLD, { pos: 'top', rot: -6 }],
@@ -23,6 +24,14 @@ const L = [
   ['14_sugu', 'すぐ行く！', DEER, { pos: 'top', rot: -6 }],
   ['15_hirameita', 'ひらめいた！', DEER, { pos: 'top', size: 50, rot: -4 }],
   ['16_oyasumi', 'おやすみ〜', DEER, { pos: 'top', rot: 0, zzz: true }],
+  ['17_hohoho', 'ホーホーホー！', SANTA, { rot: -5, snow: true }],
+  ['18_present', 'プレゼントだよ！', SANTA, { rot: -4, size: 46, star: true }],
+  ['19_iiko', 'いい子にしてた？', SANTA, { rot: -3, size: 46 }],
+  ['20_merry', 'メリークリスマス！', XMAS, { rot: -4, size: 42, snow: true, star: true }],
+  ['21_kuribocchi', 'クリぼっち…', KUROU, { rot: 3, snow: true }],
+  ['22_kureteyaru', 'くれてやる！', KUROU, { rot: -5 }],
+  ['23_haitatsu', '配達中！', DEER, { rot: -6, star: true }],
+  ['24_jingle', 'ジングルベル♪', DEER, { rot: -4, size: 50, notes: true }],
 ];
 (async () => {
   const b = await chromium.launch();
@@ -53,6 +62,13 @@ const L = [
       g.lineWidth = size * .26; g.strokeStyle = C.in; g.strokeText(text, 0, 0);
       const gr = g.createLinearGradient(0, -size / 2, 0, size / 2); gr.addColorStop(0, C.fill2); gr.addColorStop(.55, C.fill); gr.addColorStop(1, C.fill);
       g.fillStyle = gr; g.fillText(text, 0, 0); g.restore();
+      const occ = g.getImageData(0, 0, Wd, Ht).data, free = (x, y, r) => { for (const [dx, dy] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) { const X = Math.round(x + dx), Y = Math.round(y + dy); if (X < 0 || Y < 0 || X >= Wd || Y >= Ht || occ[(Y * Wd + X) * 4 + 3] > 10) return false; } return true; };
+      const deco = (n, fn) => { let sd = n * 7 + Wd + text.length * 13; const R = () => (sd = (sd * 9301 + 49297) % 233280) / 233280; let k = 0, tries = 0; while (k < n && tries++ < n * 20) { if (fn(R(), R(), R()) !== false) k++; } };
+      if (o.snow) deco(14, (a, b, c3) => { const x = M + a * (Wd - M * 2), y = Ht * .3 + b * (Ht * .65 - M), r = 3 + c3 * 5; if (!free(x, y, r + 6)) return false; g.save(); g.translate(x, y); g.strokeStyle = '#8ab8ff'; g.lineWidth = 5; g.lineCap = 'round';
+        for (let k = 0; k < 3; k++) { g.rotate(Math.PI / 3); g.beginPath(); g.moveTo(-r, 0); g.lineTo(r, 0); g.stroke(); } g.strokeStyle = '#fff'; g.lineWidth = 2.4; for (let k = 0; k < 3; k++) { g.rotate(Math.PI / 3); g.beginPath(); g.moveTo(-r, 0); g.lineTo(r, 0); g.stroke(); } g.restore(); });
+      if (o.star) deco(6, (a, b, c3) => { const x = M + 8 + a * (Wd - M * 2 - 16), y = Ht * .32 + b * Ht * .55, r = 7 + c3 * 8; if (!free(x, y, r + 4)) return false; g.save(); g.translate(x, y); g.beginPath(); for (let k = 0; k < 8; k++) { const rr = k % 2 ? r * .3 : r; g.lineTo(Math.cos(k * Math.PI / 4) * rr, Math.sin(k * Math.PI / 4) * rr); } g.closePath();
+        g.lineWidth = 4; g.strokeStyle = '#fff'; g.stroke(); g.fillStyle = '#ffc820'; g.fill(); g.restore(); });
+      if (o.notes) [['♪', 40, 150, 40], ['♫', 320, 170, 44], ['♪', 300, 250, 32]].forEach(([s, x, y, z]) => { g.font = `${z}px Dela`; g.textAlign = 'center'; g.lineJoin = 'round'; g.lineWidth = z * .3; g.strokeStyle = '#fff'; g.strokeText(s, x, y); g.fillStyle = '#e8a800'; g.fillText(s, x, y); });
       if (o.zzz) { g.save(); g.font = '34px Dela'; g.textAlign = 'center'; g.lineJoin = 'round'; [['Z', 70, 150, 34], ['z', 40, 185, 26], ['z', 18, 212, 20]].forEach(([s, x, y, z]) => { g.font = `${z}px Dela`; g.lineWidth = z * .35; g.strokeStyle = '#fff'; g.strokeText(s, x, y); g.fillStyle = '#4a6aff'; g.fillText(s, x, y); }); g.restore(); }
     }
     return c.toDataURL('image/png');
@@ -60,7 +76,7 @@ const L = [
   const save = (name, url) => fs.writeFileSync(B + 'out/' + name, Buffer.from(url.split(',')[1], 'base64'));
   let n = 1;
   for (const [id, text, C, o] of L) save(String(n++).padStart(2, '0') + '.png', await draw(id, text, C, o, 370, 320));
-  save('main.png', await draw('03_kakatte', '', SANTA, {}, 240, 240, 'main'));
+  save('main.png', await draw('20_merry', '', SANTA, {}, 240, 240, 'main'));
   save('tab.png', await draw('06_merikuri', '', SANTA, {}, 96, 74, 'tab'));
   await b.close(); console.log('ok');
 })();
