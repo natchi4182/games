@@ -931,6 +931,40 @@ if (STUDIO) window.__studio = (() => {
   renderer.setPixelRatio(1);
   const c2 = document.createElement('canvas'), g2 = c2.getContext('2d', { willReadFrequently: true });
   const grab = () => { g2.clearRect(0, 0, c2.width, c2.height); g2.drawImage(renderer.domElement, 0, 0); return g2.getImageData(0, 0, c2.width, c2.height); };
+  // クリスマスの小道具（プレゼント・ツリー・サンタ帽・鈴）
+  const propG = new THREE.Group(); scene.add(propG);
+  const PM = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .75, ...o });
+  const MK = {
+    gift(o) { const g = new THREE.Group(), z = o.size || .4, ribM = PM(o.rib || 0xe0b030, { metalness: .5, roughness: .5 });
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(z, z * .85, z), PM(o.color || 0xc8102e))); g.add(new THREE.Mesh(new THREE.BoxGeometry(z * 1.03, z * .87, z * .2), ribM)); g.add(new THREE.Mesh(new THREE.BoxGeometry(z * .2, z * .87, z * 1.03), ribM));
+      for (const sx of [-1, 1]) { const b = new THREE.Mesh(new THREE.TorusGeometry(z * .16, z * .05, 8, 16), ribM); b.position.set(sx * z * .13, z * .5, 0); b.rotation.set(0, Math.PI / 2, sx * .6); g.add(b); } return g; },
+    tree(o) { const g = new THREE.Group(), gm = PM(0x1f6a3a, { roughness: .8 });
+      [[.62, .7, .55], [.5, .6, 1.0], [.36, .5, 1.4]].forEach(([r, h, y]) => { const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 18), gm); c.position.y = y; g.add(c); });
+      const tr = new THREE.Mesh(new THREE.CylinderGeometry(.09, .11, .3, 10), PM(0x5a3418)); tr.position.y = .15; g.add(tr);
+      const star = new THREE.Mesh(new THREE.OctahedronGeometry(.13), new THREE.MeshStandardMaterial({ color: 0xffd860, emissive: 0xffb020, emissiveIntensity: 1.5, metalness: .6 })); star.position.y = 1.72; g.add(star);
+      const cols = [0xff2a3a, 0xffd860, 0x4a8aff, 0xff7ad0, 0xffffff];
+      for (let i = 0; i < 18; i++) { const y = .45 + (i / 18) * 1.1, r = .6 * (1 - (y - .3) / 1.5) + .02, a = i * 2.4; const b = new THREE.Mesh(new THREE.SphereGeometry(.045, 10, 8), new THREE.MeshStandardMaterial({ color: cols[i % 5], emissive: cols[i % 5], emissiveIntensity: .5, metalness: .4, roughness: .3 })); b.position.set(Math.cos(a) * r, y, Math.sin(a) * r); g.add(b); }
+      return g; },
+    hat(o) { const g = new THREE.Group(), z = o.size || .3; const c = new THREE.Mesh(new THREE.ConeGeometry(z * .55, z * 1.3, 20), PM(0xc8102e)); c.position.y = z * .6; c.rotation.z = -.35; c.position.x = z * .18; g.add(c);
+      const br = new THREE.Mesh(new THREE.TorusGeometry(z * .55, z * .14, 10, 24), PM(0xf6f2ea, { roughness: 1 })); br.rotation.x = Math.PI / 2; g.add(br);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(z * .16, 12, 10), PM(0xf6f2ea, { roughness: 1 })); ball.position.set(z * .45, z * 1.15, 0); g.add(ball); return g; },
+    bell(o) { const g = new THREE.Group(), z = o.size || .12, m = PM(0xf0c040, { metalness: .7, roughness: .3, emissive: 0x402800 });
+      const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector2(z * (.25 + .75 * Math.pow(t, 1.8)) * (t > .92 ? 1.08 : 1), z * (1 - t) * 1.3)); }
+      g.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 20), m)); const cl = new THREE.Mesh(new THREE.SphereGeometry(z * .2), m); cl.position.y = -z * .05; g.add(cl); return g; },
+  };
+  function anchor(f, a) {
+    const v = new THREE.Vector3();
+    if (a === 'hands') { const l = handPos(f), r = new THREE.Vector3(); (f.real ? f.rig.B.RightHand : f.J.hdR).getWorldPosition(r); return l.add(r).multiplyScalar(.5); }
+    if (a === 'head') { (f.real ? f.rig.B.Head : f.J.head).getWorldPosition(v); return v; }
+    return v;
+  }
+  function props(sp, f) {
+    while (propG.children.length) propG.remove(propG.children[0]);
+    for (const o of sp.props || []) { const m = MK[o.type](o); m.traverse(q => { if (q.isMesh) q.castShadow = true; });
+      if (o.at === 'deer') { DEER.g.updateMatrixWorld(true); m.position.copy(DEER.g.localToWorld(new THREE.Vector3(...(o.p || [0, 0, 0])))); m.rotation.y = DEER.g.rotation.y; }
+      else { const base = f && o.at ? anchor(f, o.at) : new THREE.Vector3(); m.position.copy(base).add(new THREE.Vector3(...(o.p || [0, 0, 0]))); }
+      if (o.r) m.rotation.set(o.r[0], o.r[1] + (o.at === 'deer' ? DEER.g.rotation.y : 0), o.r[2]); if (o.s) m.scale.setScalar(o.s); propG.add(m); }
+  }
   // 黒背景と灰色背景で2回描き、その差から透明度を求める（ブルームの光はにじみとして残す）
   function snap(sp) {
     const [w, h] = sp.size || [900, 900]; renderer.setSize(w, h, false); composer.setSize(w, h); c2.width = w; c2.height = h;
@@ -955,6 +989,7 @@ if (STUDIO) window.__studio = (() => {
       DEER.head.rotation.z = d.head || 0;
       for (const c of DEER.nose.children) if (c.isSprite) c.scale.setScalar(d.glow ?? .45);
     }
+    props(sp, sp.who === 'P' ? P : sp.who === 'E' ? E : null);
     for (const b of sp.bursts || []) burst(new THREE.Vector3(...b.p), b.c, b.n || 30, b.sp || 2, b.life || 1, b.g ?? 0);
     if (sp.bursts) for (let i = 0; i < 6; i++) updParts(.04);
     camera.position.set(...(sp.cam || [0, 1.1, 7])); camera.lookAt(...(sp.look || [0, 1, 0]));
