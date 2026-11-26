@@ -117,6 +117,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 document.getElementById('load').remove();
 // 本編に組み込まれて動いているときは結果を親に返す（単独で開いたときは従来どおり）
 const EMBED = new URLSearchParams(location.search).has('embed') && window.parent !== window;
+// ?studio：LINEスタンプなどの素材撮影用。1体ずつ背景なしでポーズを撮る
+const STUDIO = new URLSearchParams(location.search).has('studio');
 const toParent = msg => { try { window.parent.postMessage(msg, '*'); } catch (e) {} };
 if (EMBED) { toParent({ type: 'santa-fight-ready' }); document.getElementById('help').style.display = 'none'; document.querySelector('#rot a').style.display = 'none'; }
 const $ = id => document.getElementById(id);
@@ -131,7 +133,7 @@ function tone(f, d, type = 'square', v = .06, slide = 0) { if (!AC) return; cons
 function noise(d = .2, v = .2, f = 1200) { if (!AC) return; const n = AC.sampleRate * d, b = AC.createBuffer(1, n, AC.sampleRate), c = b.getChannelData(0); for (let i = 0; i < n; i++) c[i] = (Math.random() * 2 - 1) * (1 - i / n); const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain(); s.buffer = b; fl.type = 'lowpass'; fl.frequency.value = f; g.gain.value = v; s.connect(fl).connect(g).connect(AC.destination); s.start(); }
 
 // ------------------------------------------------------------ レンダラー
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: STUDIO });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
@@ -201,6 +203,7 @@ const signTex = canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#000'; g.fillR
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); sign.position.set(-11, 2.6, -9); sign.scale.setScalar(.9); scene.add(sign); scene.userData.sign = sign;
   const frame = new THREE.Mesh(new THREE.BoxGeometry(8.4, .1, .1), railM); frame.position.set(-11, 1.65, -9); frame.scale.x = .9; scene.add(frame);
 }
+const STAGE = scene.children.slice();
 // 照明
 const hemi = new THREE.HemisphereLight(0x4a5aa0, 0x1a0a10, .55); scene.add(hemi);
 const moonLight = new THREE.DirectionalLight(0xb8c8ff, 1.6); moonLight.position.set(-6, 12, 8); moonLight.castShadow = true;
@@ -468,6 +471,7 @@ function poseFor(f, t) {
 }
 function applyPose(f, dt, t) {
   const tgt = poseFor(f, t), sp = f.st === 'punch' || f.st === 'kick' || f.st === 'special' ? 28 : f.st === 'hit' ? 30 : 12, a = 1 - Math.exp(-sp * dt);
+  if (f.poseOv) Object.assign(tgt, f.poseOv);
   for (const k in BASE) f.pose[k] = lerp(f.pose[k] ?? tgt[k], tgt[k], a);
   const p = f.pose, J = f.J;
   f.root.position.set(f.x + (f.jit ? rand(-f.jit, f.jit) : 0), f.y, 0);
@@ -880,6 +884,7 @@ function updCamera(dt, t) {
 // ------------------------------------------------------------ ループ
 let last = performance.now(), T = 0;
 function frame(now) {
+  if (STUDIO) return;
   requestAnimationFrame(frame);
   let dt = Math.min(.05, (now - last) / 1000); last = now; T += dt;
   if (portrait) { composer.render(); return; } // 縦画面の間は止める
@@ -916,6 +921,55 @@ function frame(now) {
 }
 introT = 1e9; requestAnimationFrame(frame);
 setTimeout(() => { $('help').style.transition = 'opacity 1s'; $('help').style.opacity = 0; }, 7000);
+if (STUDIO) window.__studio = (() => {
+  for (const o of STAGE) o.visible = false;
+  scene.traverse(o => { if (o.isPoints && o.geometry === snowGeo) o.visible = false; });
+  scene.fog = null;
+  document.querySelectorAll('body > *').forEach(e => { if (e !== renderer.domElement && e.tagName !== 'SCRIPT') e.style.display = 'none'; });
+  const front = new THREE.DirectionalLight(0xfff4e8, 1.3); front.position.set(1.5, 3, 8); scene.add(front);
+  const front2 = new THREE.PointLight(0xe0c8ff, 0, 12, 1.5); front2.position.set(-1.5, 2.2, 3.5); scene.add(front2);
+  renderer.setPixelRatio(1);
+  const c2 = document.createElement('canvas'), g2 = c2.getContext('2d', { willReadFrequently: true });
+  const grab = () => { g2.clearRect(0, 0, c2.width, c2.height); g2.drawImage(renderer.domElement, 0, 0); return g2.getImageData(0, 0, c2.width, c2.height); };
+  // 黒背景と灰色背景で2回描き、その差から透明度を求める（ブルームの光はにじみとして残す）
+  function snap(sp) {
+    const [w, h] = sp.size || [900, 900]; renderer.setSize(w, h, false); composer.setSize(w, h); c2.width = w; c2.height = h;
+    camera.aspect = w / h; camera.fov = sp.fov || 30; camera.updateProjectionMatrix();
+    introT = 0; xf = null; over = false; parts.length = 0; updParts(0);
+    const F = { P, E };
+    for (const k of ['P', 'E']) { const f = F[k]; f.root.visible = sp.who === k; f.aura.material.opacity = 0; f.tint = null; f.flash = 0; f.shrink = null; }
+    DEER.g.visible = sp.who === 'deer'; beam.visible = false;
+    if (sp.who === 'P' || sp.who === 'E') {
+      const f = F[sp.who];
+      if (sp.real && !f.real) transform(f); else if (!sp.real && f.real) revert(f);
+      for (const q of frags) scene.remove(q.m); frags = []; parts.length = 0; updParts(0);
+      if (f.rig) { f.rig.s0 = f.rig.s0 || f.rig.model.scale.x; f.rig.model.scale.setScalar(f.rig.s0); f.grow = null; }
+      f.x = 0; f.y = sp.y || 0; f.vx = 0; f.face = 1; f.st = sp.st || 'idle'; f.t = sp.t ?? 2; f.walk = sp.walk || 0; f.poseOv = sp.pose || null; f.jit = 0;
+      if (f.anim) { f.anim.cur = null; f.anim.lastSt = ''; }
+      for (let i = 0; i < 3; i++) applyPose(f, i ? 0 : 1, sp.T || 0);
+      if (f.real && f.anim && (sp.anim || f.anim.cur)) { const a = sp.anim ? f.anim.A[sp.anim] : f.anim.cur; a.reset(); a.play(); for (const o of Object.values(f.anim.A)) if (o !== a) o.stop(); a.enabled = true; a.paused = false; a.setEffectiveWeight(1); a.time = sp.at ?? 0; f.anim.mixer.update(0); }
+      f.root.rotation.y = sp.rotY ?? .5; f.aura.material.opacity = sp.aura || 0; setFlash(f);
+    } else if (sp.who === 'deer') {
+      const d = sp.deer || {}; DEER.g.position.set(0, d.y || 0, 0); DEER.g.rotation.set(0, d.rotY ?? -.5, d.rot || 0);
+      for (const L of DEER.legs) { const a = Math.sin((d.t || 0) * 20 + L.ph) * .8 * (d.gallop || 0); L.up.rotation.z = a; L.lo.rotation.z = Math.max(0, -a) * 1.2 + (d.fly ? .9 : 0); }
+      DEER.head.rotation.z = d.head || 0;
+      for (const c of DEER.nose.children) if (c.isSprite) c.scale.setScalar(d.glow ?? .45);
+    }
+    for (const b of sp.bursts || []) burst(new THREE.Vector3(...b.p), b.c, b.n || 30, b.sp || 2, b.life || 1, b.g ?? 0);
+    if (sp.bursts) for (let i = 0; i < 6; i++) updParts(.04);
+    camera.position.set(...(sp.cam || [0, 1.1, 7])); camera.lookAt(...(sp.look || [0, 1, 0]));
+    bloom.strength = sp.bloom ?? .35; front.intensity = sp.front ?? 1.3; front2.intensity = sp.fill ?? 0;
+    scene.background = new THREE.Color(0x000000); composer.render(); const A = grab();
+    scene.background = new THREE.Color(0x808080); composer.render(); const B = grab();
+    const n = w * h, o = g2.createImageData(w, h), a = A.data, b = B.data, r = o.data;
+    const gr = [b[0] - a[0], b[1] - a[1], b[2] - a[2]].map(v => Math.max(1, v));
+    for (let i = 0; i < n; i++) { const j = i * 4; let al = 0; for (let c = 0; c < 3; c++) al = Math.max(al, 1 - (b[j + c] - a[j + c]) / gr[c]);
+      al = Math.max(0, Math.min(1, al)); const glow = Math.max(0, (Math.max(a[j], a[j + 1], a[j + 2]) / 255 - .12) / .88); if (glow > al) al = glow;
+      if (al < .004) { r[j + 3] = 0; continue; } for (let c = 0; c < 3; c++) r[j + c] = Math.min(255, a[j + c] / al); r[j + 3] = al * 255; }
+    g2.putImageData(o, 0, 0); return c2.toDataURL('image/png');
+  }
+  return { snap, get ready() { return !document.getElementById('load'); } };
+})();
 window.__f3d = { get xf() { return xf; }, P, E, get over() { return over; }, set introT(v) { introT = v; }, damage, special, callDeer, startXf, get hyper() { return hyper; }, set hyper(v) { hyper = v; }, get rage() { return rageOn; }, get deer() { return deer; }, set assistCd(v) { assistCd = v; } };
 </script>
 </body>
